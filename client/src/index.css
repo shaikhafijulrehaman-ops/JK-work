@@ -213,3 +213,16 @@
   animation: glow 5s ease-in-out infinite;
 }
 
+/* Premium Liquid Gooey Transition and Glassmorphism */
+.liquid-container {
+  filter: url("#premium-goo");
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.premium-glass-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(8, 145, 178, 0.08);
+}

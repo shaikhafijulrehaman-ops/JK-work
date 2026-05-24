@@ -178,10 +178,10 @@ export default function LandingPage() {
 
   // Most Booked Services
   const mostBooked = [
-    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, rating: '4.9★', durationText: '5-6 Hours', imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=300&auto=format&fit=crop' },
-    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, rating: '4.8★', durationText: '1 Hour', imageUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=300&auto=format&fit=crop' },
-    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, rating: '4.9★', durationText: '6 Hours', imageUrl: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=300&auto=format&fit=crop' },
-    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, rating: '4.8★', durationText: '1 Hour', imageUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=300&auto=format&fit=crop' }
+    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, rating: '4.9★', durationText: '5-6 Hours', imageUrl: '/services/housecleaning.jpg' },
+    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/electrician.jpg' },
+    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, rating: '4.9★', durationText: '6 Hours', imageUrl: '/services/babycare.jpg' },
+    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/cooking-service.jpg' }
   ];
 
 
