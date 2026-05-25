@@ -61,4 +61,7 @@ router.get('/stats/audit', protect, restrictTo('ADMIN'), statsCtrl.getAuditLogs)
 router.get('/notifications', protect, statsCtrl.getMyNotifications);
 router.put('/notifications/:id/read', protect, statsCtrl.markAsRead);
 
+// ==================== ADMIN DASHBOARD ====================
+router.use('/admin', require('./adminRoutes'));
+
 module.exports = router;

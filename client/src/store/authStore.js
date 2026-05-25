@@ -106,13 +106,13 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // Register User
-  register: async (email, password, name, phone, role) => {
+  register: async (email, password, name, phone, role, partnerDetails = {}) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name, phone, role })
+        body: JSON.stringify({ email, password, name, phone, role, ...partnerDetails })
       });
       const data = await res.json();
 
@@ -126,7 +126,7 @@ export const useAuthStore = create((set, get) => ({
       }
     } catch (e) {
       // Local register sandbox bypass
-      const mockUser = { id: `user-${Date.now()}`, email, name, phone, role: role || 'USER' };
+      const mockUser = { id: `user-${Date.now()}`, email, name, phone, role: role || 'USER', ...partnerDetails };
       localStorage.setItem('jk_user', JSON.stringify(mockUser));
       set({ user: mockUser, isAuthenticated: true, loading: false });
       return { success: true, user: mockUser };

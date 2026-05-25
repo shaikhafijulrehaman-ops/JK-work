@@ -17,6 +17,8 @@ import BookingPage from './pages/BookingPage';
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import WorkerPortal from './pages/WorkerPortal';
+import NotificationsPage from './pages/NotificationsPage';
+import AccountPage from './pages/AccountPage';
 
 // Admin Pages
 import AdminOverview from './pages/admin/AdminOverview';
@@ -66,6 +68,16 @@ export default function App() {
             <Route path="/dashboard" element={
               <ProtectedRoute allowedRoles={['USER']}>
                 <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/notifications" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <NotificationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/account" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <AccountPage />
               </ProtectedRoute>
             } />
 

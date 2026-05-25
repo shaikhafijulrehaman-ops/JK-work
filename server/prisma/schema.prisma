@@ -15,6 +15,12 @@ enum Role {
   ADMIN
 }
 
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum WorkerStatus {
   AVAILABLE
   ON_JOB
@@ -127,20 +133,28 @@ model Service {
 }
 
 model Worker {
-  id             String       @id @default(uuid())
-  userId         String       @unique
-  status         WorkerStatus @default(AVAILABLE)
-  rating         Float        @default(5.0)
-  totalJobs      Int          @default(0)
-  commissionRate Float        @default(0.70) // 70% to worker, 30% to JK Enterprises
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  status         WorkerStatus   @default(AVAILABLE)
+  approvalStatus ApprovalStatus @default(PENDING)
+  aadhaar        String?
+  experienceYears Int?
+  profilePhoto   String?
+  address        String?
+  bankDetails    String?
+  emergencyContact String?
+  availability   String?
+  rating         Float          @default(5.0)
+  totalJobs      Int            @default(0)
+  commissionRate Float          @default(0.70) // 70% to worker, 30% to JK Enterprises
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   // Relations
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   skills         WorkerSkill[]
   bookings       Booking[]
-  reviews        Review[]     @relation("WorkerReviews")
+  reviews        Review[]       @relation("WorkerReviews")
 }
 
 model WorkerSkill {

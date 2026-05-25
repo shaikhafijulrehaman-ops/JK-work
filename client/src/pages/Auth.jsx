@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Mail, Lock, User, Phone, CheckCircle, PhoneCall, Key } from 'lucide-react';
+import AuthSignupFlow from '../components/auth/AuthSignupFlow';
 
 export default function Auth() {
   const { login, register, sendOtp, verifyOtp, error, loading } = useAuthStore();
@@ -98,127 +99,9 @@ export default function Auth() {
         
         {/* ==================== SIGN UP COMPONENT ==================== */}
         <div className="absolute top-0 left-0 w-1/2 h-full transition-all duration-600 ease-in-out sign-up-container opacity-0 z-1 pointer-events-none">
-          <form onSubmit={handleSignUp} className="flex flex-col items-center justify-center h-full px-10 bg-white text-center">
-            <h2 className="font-poppins font-extrabold text-2xl text-slate-800 tracking-wide mb-1">
-              Create Account
-            </h2>
-            <p className="text-xs text-slate-400 mb-4">Register to book instant home services</p>
-
-            {/* Social logins */}
-            <div className="flex space-x-3 mb-4">
-              <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M12.24 10.285V13.4h6.887c-.648 2.41-2.519 4.1-5.136 4.1A5.72 5.72 0 0 1 8.2 11.8a5.72 5.72 0 0 1 5.79-5.7 5.66 5.66 0 0 1 4.07 1.68l2.5-2.4a9.124 9.124 0 0 0-6.57-2.78 9.2 9.2 0 0 0-9.2 9.2 9.2 9.2 0 0 0 9.2 9.2c5.03 0 9.1-3.6 9.1-9.2a8.67 8.67 0 0 0-.17-1.84Z"/>
-                </svg>
-              </button>
-              <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-.93 8-4.96 8-9.75Z"/>
-                </svg>
-              </button>
-              <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77Z"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Registration Form inputs */}
-            <div className="w-full space-y-3 px-2">
-              <div className="form-group">
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="Full Name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required 
-                />
-                <label className="form-label flex items-center space-x-1">
-                  <User className="w-3.5 h-3.5 inline mr-1" /> Full Name
-                </label>
-              </div>
-
-              <div className="form-group">
-                <input 
-                  type="email" 
-                  className="form-input" 
-                  placeholder="Email Address"
-                  value={regEmail}
-                  onChange={e => setRegEmail(e.target.value)}
-                  required 
-                />
-                <label className="form-label flex items-center space-x-1">
-                  <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
-                </label>
-              </div>
-
-              <div className="form-group">
-                <input 
-                  type="tel" 
-                  className="form-input" 
-                  placeholder="Phone"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  required 
-                />
-                <label className="form-label flex items-center space-x-1">
-                  <Phone className="w-3.5 h-3.5 inline mr-1" /> Phone (Anchepalya verification)
-                </label>
-              </div>
-
-              <div className="form-group">
-                <input 
-                  type="password" 
-                  className="form-input" 
-                  placeholder="Password"
-                  value={regPassword}
-                  onChange={e => setRegPassword(e.target.value)}
-                  required 
-                />
-                <label className="form-label flex items-center space-x-1">
-                  <Lock className="w-3.5 h-3.5 inline mr-1" /> Password
-                </label>
-              </div>
-
-              {/* User vs Worker Registration Role Select */}
-              <div className="flex items-center justify-center space-x-4 mb-4 text-xs font-semibold">
-                <span className="text-slate-500">I want to register as:</span>
-                <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700">
-                  <input 
-                    type="radio" 
-                    name="role" 
-                    value="USER" 
-                    checked={regRole === 'USER'}
-                    onChange={() => setRegRole('USER')}
-                    className="text-brand focus:ring-brand w-3.5 h-3.5"
-                  />
-                  <span>Customer</span>
-                </label>
-                <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700">
-                  <input 
-                    type="radio" 
-                    name="role" 
-                    value="WORKER"
-                    checked={regRole === 'WORKER'}
-                    onChange={() => setRegRole('WORKER')}
-                    className="text-brand focus:ring-brand w-3.5 h-3.5"
-                  />
-                  <span className="text-brand">Service Worker</span>
-                </label>
-              </div>
-            </div>
-
-            {localErr && <div className="text-red-500 text-[10px] font-semibold mb-2">{localErr}</div>}
-
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-brand-navy to-brand text-white font-poppins font-bold text-xs py-3 rounded-lg hover:shadow-lg hover:shadow-brand/20 transition-all tracking-wider uppercase disabled:opacity-50"
-            >
-              {loading ? 'Creating...' : 'Register'}
-            </button>
-          </form>
+          <div className="h-full bg-white">
+            <AuthSignupFlow />
+          </div>
         </div>
 
         {/* ==================== SIGN IN COMPONENT ==================== */}
@@ -668,109 +551,9 @@ export default function Auth() {
                   transition={{ type: 'spring', stiffness: 80, damping: 14 }}
                   className="w-full"
                 >
-                  <form onSubmit={handleSignUp}>
-                    <div className="text-center mb-6">
-                      <h3 className="font-poppins font-bold text-xl text-slate-800">Create Account</h3>
-                      <p className="text-xs text-slate-400">Register to book instant home services</p>
-                    </div>
-
-                    <div className="space-y-4 mb-4">
-                      <div className="form-group">
-                        <input 
-                          type="text" 
-                          className="form-input" 
-                          placeholder="Full Name"
-                          value={name}
-                          onChange={e => setName(e.target.value)}
-                          required 
-                        />
-                        <label className="form-label flex items-center space-x-1">
-                          <User className="w-3.5 h-3.5 inline mr-1" /> Full Name
-                        </label>
-                      </div>
-
-                      <div className="form-group">
-                        <input 
-                          type="email" 
-                          className="form-input" 
-                          placeholder="Email Address"
-                          value={regEmail}
-                          onChange={e => setRegEmail(e.target.value)}
-                          required 
-                        />
-                        <label className="form-label flex items-center space-x-1">
-                          <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
-                        </label>
-                      </div>
-
-                      <div className="form-group">
-                        <input 
-                          type="tel" 
-                          className="form-input" 
-                          placeholder="Phone"
-                          value={phone}
-                          onChange={e => setPhone(e.target.value)}
-                          required 
-                        />
-                        <label className="form-label flex items-center space-x-1">
-                          <Phone className="w-3.5 h-3.5 inline mr-1" /> Phone
-                        </label>
-                      </div>
-
-                      <div className="form-group">
-                        <input 
-                          type="password" 
-                          className="form-input" 
-                          placeholder="Password"
-                          value={regPassword}
-                          onChange={e => setRegPassword(e.target.value)}
-                          required 
-                        />
-                        <label className="form-label flex items-center space-x-1">
-                          <Lock className="w-3.5 h-3.5 inline mr-1" /> Password
-                        </label>
-                      </div>
-
-                      {/* Worker vs User toggle */}
-                      <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-3 flex items-center justify-between text-xs font-semibold backdrop-blur-sm">
-                        <span className="text-slate-500">Register as:</span>
-                        <div className="flex space-x-3">
-                          <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700">
-                            <input 
-                              type="radio" 
-                              name="mobile-role" 
-                              value="USER" 
-                              checked={regRole === 'USER'}
-                              onChange={() => setRegRole('USER')}
-                              className="text-brand focus:ring-brand w-3.5 h-3.5"
-                            />
-                            <span>Customer</span>
-                          </label>
-                          <label className="flex items-center space-x-1.5 cursor-pointer text-slate-700">
-                            <input 
-                              type="radio" 
-                              name="mobile-role" 
-                              value="WORKER"
-                              checked={regRole === 'WORKER'}
-                              onChange={() => setRegRole('WORKER')}
-                              className="text-brand focus:ring-brand w-3.5 h-3.5"
-                            />
-                            <span className="text-brand">Service Worker</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    {localErr && <div className="text-red-500 text-xs font-semibold text-center mb-4">{localErr}</div>}
-
-                    <button 
-                      type="submit"
-                      disabled={loading}
-                      className="w-full bg-gradient-to-r from-brand-navy via-brand-dark to-brand text-white font-poppins font-bold text-sm py-3.5 rounded-xl shadow-lg shadow-cyan-800/10 hover:shadow-brand/20 transition-all tracking-wider uppercase disabled:opacity-50"
-                    >
-                      {loading ? 'Creating...' : 'Register'}
-                    </button>
-                  </form>
+                  <div className="h-[400px]">
+                    <AuthSignupFlow onCancel={() => { setIsActive(false); setLocalErr(null); }} />
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

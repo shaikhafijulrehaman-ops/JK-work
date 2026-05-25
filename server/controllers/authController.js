@@ -69,10 +69,13 @@ const sendTokenResponse = (user, statusCode, res) => {
  */
 exports.register = async (req, res) => {
   try {
-    const { email, password, name, phone, role } = req.body;
+    const { 
+      email, password, name, phone, role,
+      aadhaar, experience, profilePhoto, address, bankDetails, emergencyContact, availability, category 
+    } = req.body;
 
     if (!email || !password || !name || !phone) {
-      return res.status(400).json({ success: false, message: 'Please provide all required fields.' });
+      return res.status(400).json({ success: false, message: 'Please provide all required basic fields.' });
     }
 
     // Check if email or phone already exists
@@ -103,19 +106,30 @@ exports.register = async (req, res) => {
       }
     });
 
-    // If role is WORKER, instantiate worker profile
+    // If role is WORKER, instantiate worker profile with pending status
     if (userRole === 'WORKER') {
       const worker = await db.worker.create({
         data: {
           userId: user.id,
-          status: 'AVAILABLE',
+          status: 'AVAILABLE', // Still AVAILABLE technically if they are online, but approvalStatus prevents bookings
+          approvalStatus: 'PENDING',
+          aadhaar: aadhaar || null,
+          experienceYears: experience ? parseInt(experience) : null,
+          profilePhoto: profilePhoto || null,
+          address: address || null,
+          bankDetails: bankDetails ? JSON.stringify(bankDetails) : null,
+          emergencyContact: emergencyContact || null,
+          availability: availability ? JSON.stringify(availability) : null,
           rating: 5.0,
           commissionRate: 0.70 // Default 70% commission
         }
       });
 
-      // Default all skills to Electrician if registering as demo worker
-      const defaultSkill = await db.service.findUnique({ where: { name: 'Electrician Service' } });
+      // Default to Electrician if category is not mapped, or try to find by name
+      let defaultSkill = await db.service.findFirst({ where: { name: { contains: category || 'Electrician', mode: 'insensitive' } } });
+      if (!defaultSkill) {
+        defaultSkill = await db.service.findFirst();
+      }
       if (defaultSkill) {
         await db.workerSkill.create({
           data: {
