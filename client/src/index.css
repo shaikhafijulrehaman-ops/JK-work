@@ -31,16 +31,16 @@
 }
 
 .form-input {
-  @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-lg outline-none transition-all duration-300 font-inter focus:border-brand focus:ring-1 focus:ring-brand placeholder-transparent text-sm;
+  @apply w-full px-4 py-3 bg-white border border-slate-300 rounded-lg outline-none transition-all duration-300 font-inter focus:border-brand focus:ring-1 focus:ring-brand placeholder-transparent text-sm text-slate-950 font-medium shadow-sm;
 }
 
 .form-label {
-  @apply absolute left-4 top-3 text-slate-400 text-sm pointer-events-none transition-all duration-300 transform origin-left;
+  @apply absolute left-4 top-3 text-slate-700 font-semibold text-sm pointer-events-none transition-all duration-300 transform origin-left;
 }
 
 .form-input:focus ~ .form-label,
 .form-input:not(:placeholder-shown) ~ .form-label {
-  @apply -translate-y-6 scale-75 text-brand bg-slate-50 px-1 left-3 top-3.5;
+  @apply -translate-y-6 scale-75 text-brand-dark bg-white font-bold px-1.5 left-3 top-3.5 rounded;
 }
 
 /* Auth Double-Slider Animation Classes */
@@ -221,8 +221,8 @@
 }
 
 .premium-glass-card {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(8, 145, 178, 0.08);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(8, 145, 178, 0.12);
 }
