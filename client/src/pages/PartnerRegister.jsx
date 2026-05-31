@@ -333,6 +333,58 @@ export default function PartnerRegister() {
         console.log("Application Saved");
         console.log("Approval Request Created");
         console.log("Full Database Response (Worker):", data);
+
+        // Save to local storage for local client-side sandbox admin panel visibility
+        const newUserId = data.user?.id || `user-worker-${Date.now()}`;
+        const newWorkerId = data.worker?.id || `w-${Date.now()}`;
+        
+        const newSandboxUser = {
+          id: newUserId,
+          email: formData.email,
+          name: formData.name,
+          phone: formData.phone,
+          role: 'WORKER',
+          isEmailVerified: true,
+          isPhoneVerified: true,
+          pincode: formData.pincode,
+          serviceArea: formData.serviceArea,
+          createdAt: new Date().toISOString()
+        };
+        
+        const newSandboxWorker = {
+          id: newWorkerId,
+          userId: newUserId,
+          approvalStatus: 'PENDING',
+          experienceYears: formData.experience ? parseInt(formData.experience) : 3,
+          address: formData.address,
+          createdAt: new Date().toISOString(),
+          rating: 5.0,
+          user: newSandboxUser,
+          skills: [{ service: { name: formData.category } }],
+          aadhaar: JSON.stringify({ front: formData.aadhaarFront, back: formData.aadhaarBack }),
+          profilePhoto: JSON.stringify({ profile: formData.profilePhoto, selfie: formData.selfiePhoto }),
+          bankDetails: JSON.stringify({
+            holderName: formData.bankHolder,
+            bankName: formData.bankName,
+            accountNumber: formData.accountNumber,
+            ifsc: formData.ifscCode,
+            upi: formData.upiId || null
+          }),
+          availability: 'Full Time'
+        };
+
+        const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+        if (!localUsers.some(u => u.phone === newSandboxUser.phone)) {
+          localUsers.push(newSandboxUser);
+          localStorage.setItem('jk_sandbox_users', JSON.stringify(localUsers));
+        }
+
+        const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
+        if (!localWorkers.some(w => w.user?.phone === newSandboxUser.phone)) {
+          localWorkers.push(newSandboxWorker);
+          localStorage.setItem('jk_sandbox_workers', JSON.stringify(localWorkers));
+        }
+
         setRegMode('success');
       } else {
         setError(data.message || 'Onboarding failed.');
