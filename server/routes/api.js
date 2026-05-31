@@ -14,15 +14,26 @@ const reviewCtrl = require('../controllers/reviewController');
 const paymentCtrl = require('../controllers/paymentController');
 const aiAgentCtrl = require('../controllers/aiAgentController');
 const statsCtrl = require('../controllers/statsController');
+const addressCtrl = require('../controllers/addressController');
 
 // ==================== AUTHENTICATION ====================
 router.post('/auth/register', authCtrl.register);
+router.post('/auth/register-partner', authCtrl.registerPartner);
 router.post('/auth/login', authLimiter, authCtrl.login);
 router.get('/auth/refresh', authCtrl.refresh);
 router.get('/auth/logout', authCtrl.logout);
 router.get('/auth/me', protect, authCtrl.getMe);
 router.post('/auth/otp', authCtrl.sendOTP);
 router.post('/auth/forgot-password', authCtrl.forgotPassword);
+router.post('/auth/waitlist', authCtrl.joinWaitlist);
+router.post('/auth/sync-supabase', authCtrl.syncSupabase);
+
+// ==================== ADDRESS BOOK CRUD ====================
+router.get('/addresses', protect, addressCtrl.getAddresses);
+router.post('/addresses', protect, addressCtrl.createAddress);
+router.put('/addresses/:id', protect, addressCtrl.updateAddress);
+router.delete('/addresses/:id', protect, addressCtrl.deleteAddress);
+router.put('/addresses/:id/default', protect, addressCtrl.setDefaultAddress);
 
 // ==================== SERVICE CATALOG ====================
 router.get('/services', serviceCtrl.getAllServices);

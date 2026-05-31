@@ -12,6 +12,7 @@ export default function PartnerSignup({ onBack }) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [err, setErr] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   // Step 1
   const [name, setName] = useState('');
@@ -61,11 +62,49 @@ export default function PartnerSignup({ onBack }) {
 
     const res = await register(email, password, name, phone, 'WORKER', partnerDetails);
     if (res.success) {
-      navigate('/worker/dashboard');
+      setIsSubmitted(true);
     } else {
       setErr(res.error);
     }
   };
+
+  if (isSubmitted) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full flex flex-col items-center justify-center p-6 text-center space-y-6"
+      >
+        <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center relative">
+          <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-20"></div>
+          <CheckCircle className="w-10 h-10 text-emerald-500" />
+        </div>
+        
+        <div>
+          <h3 className="font-poppins font-black text-xl text-slate-900 leading-tight">Application Submitted Successfully</h3>
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed max-w-sm mx-auto">
+            Your application has been submitted successfully. Our team will review your details and contact you shortly.
+          </p>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 w-full">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase">Application Status</span>
+            <span className="bg-amber-100 text-amber-800 font-extrabold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Pending Approval
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={() => navigate('/')}
+          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-colors"
+        >
+          Go to Homepage
+        </button>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div 

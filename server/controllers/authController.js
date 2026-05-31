@@ -70,7 +70,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 exports.register = async (req, res) => {
   try {
     const { 
-      email, password, name, phone, role,
+      email, password, name, phone, role, pincode, serviceArea,
       aadhaar, experience, profilePhoto, address, bankDetails, emergencyContact, availability, category 
     } = req.body;
 
@@ -79,11 +79,21 @@ exports.register = async (req, res) => {
     }
 
     // Check if email or phone already exists
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
+    console.log('------------------------------');
     const existingEmail = await db.user.findUnique({ where: { email } });
     if (existingEmail) {
       return res.status(400).json({ success: false, message: 'Email address already registered.' });
     }
 
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { phone } }, null, 2));
+    console.log('------------------------------');
     const existingPhone = await db.user.findUnique({ where: { phone } });
     if (existingPhone) {
       return res.status(400).json({ success: false, message: 'Phone number already registered.' });
@@ -102,7 +112,9 @@ exports.register = async (req, res) => {
         phone,
         role: userRole,
         isEmailVerified: true,
-        isPhoneVerified: true
+        isPhoneVerified: true,
+        pincode: pincode || null,
+        serviceArea: serviceArea || null
       }
     });
 
@@ -148,6 +160,113 @@ exports.register = async (req, res) => {
 };
 
 /**
+ * Register a Service Partner (role = WORKER, approvalStatus = PENDING)
+ */
+exports.registerPartner = async (req, res) => {
+  try {
+    const { 
+      name, email, password, phone, 
+      category, experience, employmentType,
+      pincode, address, serviceArea,
+      aadhaarFront, aadhaarBack, selfiePhoto, profilePhoto,
+      bankDetails
+    } = req.body;
+
+    if (!email || !password || !name || !phone) {
+      return res.status(400).json({ success: false, message: 'Please provide all basic details.' });
+    }
+
+    // Check if user already exists
+    const existingUser = await db.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already registered.' });
+    }
+
+    const existingPhone = await db.user.findUnique({ where: { phone } });
+    if (existingPhone) {
+      return res.status(400).json({ success: false, message: 'Mobile number already registered.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create User record with WORKER role
+    const user = await db.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        phone,
+        role: 'WORKER',
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        pincode: pincode || null,
+        serviceArea: serviceArea || null
+      }
+    });
+
+    // Serialize documents & bank details
+    const serializedAadhaar = JSON.stringify({ front: aadhaarFront, back: aadhaarBack });
+    const serializedPhotos = JSON.stringify({ profile: profilePhoto, selfie: selfiePhoto });
+    const serializedBank = JSON.stringify(bankDetails);
+
+    // Create Worker Profile
+    const worker = await db.worker.create({
+      data: {
+        userId: user.id,
+        status: 'AVAILABLE',
+        approvalStatus: 'PENDING',
+        aadhaar: serializedAadhaar,
+        experienceYears: experience ? parseInt(experience) : null,
+        profilePhoto: serializedPhotos,
+        address: address || null,
+        bankDetails: serializedBank,
+        rating: 5.0,
+        commissionRate: 0.70
+      }
+    });
+
+    console.log("Service Partner Registration Success");
+    console.log("Application Saved");
+    console.log("Approval Request Created");
+    console.log("Full Database Response:", JSON.stringify(worker, null, 2));
+
+    // Map skill
+    if (category) {
+      let skillService = await db.service.findFirst({
+        where: { name: { contains: category, mode: 'insensitive' } }
+      });
+      if (!skillService) {
+        skillService = await db.service.findFirst();
+      }
+      if (skillService) {
+        await db.workerSkill.create({
+          data: {
+            workerId: worker.id,
+            serviceId: skillService.id
+          }
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Service Partner application submitted successfully.',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Partner registration error:', error);
+    res.status(500).json({ success: false, message: 'Server error during partner registration.' });
+  }
+};
+
+
+/**
  * Login User / Worker / Admin
  */
 exports.login = async (req, res) => {
@@ -158,6 +277,11 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide email and password.' });
     }
 
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { email }, include: { workerProfile: true } }, null, 2));
+    console.log('------------------------------');
     const user = await db.user.findUnique({ 
       where: { email },
       include: { workerProfile: true }
@@ -171,6 +295,23 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+
+    // BLOCK WORKER LOGIN IF NOT APPROVED
+    if (user.role === 'WORKER' && user.workerProfile) {
+      const status = user.workerProfile.approvalStatus;
+      if (status !== 'APPROVED') {
+        let msg = 'Your application is currently under review.';
+        if (status === 'REJECTED') {
+          msg = 'Your application was not approved. Please contact support.';
+        }
+        return res.status(403).json({
+          success: false,
+          message: msg,
+          approvalStatus: status,
+          workerName: user.name
+        });
+      }
     }
 
     sendTokenResponse(user, 200, res);
@@ -192,6 +333,11 @@ exports.refresh = async (req, res) => {
     }
 
     // Verify session in database first (token rotation check)
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: Session');
+    console.log('Query Parameters:', JSON.stringify({ where: { refreshToken: token }, include: { user: true } }, null, 2));
+    console.log('------------------------------');
     const session = await db.session.findUnique({
       where: { refreshToken: token },
       include: { user: true }
@@ -202,6 +348,11 @@ exports.refresh = async (req, res) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026');
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { id: decoded.userId } }, null, 2));
+    console.log('------------------------------');
     const user = session.user || await db.user.findUnique({ where: { id: decoded.userId } });
 
     if (!user) {
@@ -261,6 +412,11 @@ exports.logout = async (req, res) => {
  */
 exports.getMe = async (req, res) => {
   try {
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { id: req.user.id }, include: { workerProfile: true } }, null, 2));
+    console.log('------------------------------');
     const user = await db.user.findUnique({
       where: { id: req.user.id },
       include: { workerProfile: true }
@@ -316,6 +472,11 @@ exports.forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide email address.' });
     }
 
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: User');
+    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
+    console.log('------------------------------');
     const user = await db.user.findUnique({ where: { email } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'No user registered with this email.' });
@@ -333,3 +494,82 @@ exports.forgotPassword = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
+
+/**
+ * Register user details in waitlist
+ */
+exports.joinWaitlist = async (req, res) => {
+  try {
+    const { name, mobile, email, selectedArea, pincode } = req.body;
+    if (!name || !mobile || !email || !selectedArea || !pincode) {
+      return res.status(400).json({ success: false, message: 'Please provide all waitlist fields.' });
+    }
+
+    const waitlistEntry = await db.waitlist.create({
+      data: {
+        name,
+        mobile,
+        email,
+        selected_area: selectedArea,
+        pincode
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Successfully joined the waitlist!',
+      data: waitlistEntry
+    });
+  } catch (error) {
+    console.error('Waitlist join error:', error);
+    res.status(500).json({ success: false, message: 'Server error during waitlist submission.' });
+  }
+};
+
+/**
+ * Sync Supabase User
+ */
+exports.syncSupabase = async (req, res) => {
+  try {
+    const { id, email, name, phone, role, pincode, serviceArea } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required for syncing.' });
+    }
+
+    // Check if customer already exists
+    console.log('--- BEFORE findUnique Call ---');
+    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
+    console.log('Model Name: Customer');
+    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
+    console.log('------------------------------');
+    let customer = await db.customer.findUnique({ where: { email } });
+
+    if (!customer) {
+      // Create customer if not exists
+      customer = await db.customer.create({
+        data: {
+          id: id || undefined,
+          email,
+          name: name || 'User',
+          phone: phone || '0000000000',
+          pincode: pincode || null,
+          serviceArea: serviceArea || null
+        }
+      });
+      console.log('CUSTOMER INSERT RESPONSE: Customer created successfully', customer);
+    } else {
+      console.log('CUSTOMER INSERT RESPONSE: Customer already exists', customer);
+    }
+
+    res.status(200).json({
+      success: true,
+      user: { ...customer, role: 'USER' },
+      message: 'Supabase sync successful.'
+    });
+  } catch (error) {
+    console.error('Supabase sync error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error during supabase sync.' });
+  }
+};
+

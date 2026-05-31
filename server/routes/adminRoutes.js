@@ -12,7 +12,13 @@ router.put('/workers/:id/approve', protect, restrictTo('ADMIN'), adminController
 // Reject a worker
 router.put('/workers/:id/reject', protect, restrictTo('ADMIN'), adminController.rejectWorker);
 
+// Update status manually (e.g. UNDER_REVIEW)
+router.put('/workers/:id/status', protect, restrictTo('ADMIN'), adminController.updateWorkerStatus);
+
 // Get analytics
 router.get('/analytics', protect, restrictTo('ADMIN'), adminController.getAnalytics);
+
+// Get full dashboard data
+router.get('/dashboard-data', protect, restrictTo('ADMIN'), adminController.getDashboardData);
 
 module.exports = router;

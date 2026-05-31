@@ -19,6 +19,13 @@ import Dashboard from './pages/Dashboard';
 import WorkerPortal from './pages/WorkerPortal';
 import NotificationsPage from './pages/NotificationsPage';
 import AccountPage from './pages/AccountPage';
+import ManageAddresses from './pages/ManageAddresses';
+import ProfilePage from './pages/ProfilePage';
+import BookingsPage from './pages/BookingsPage';
+import SettingsPage from './pages/SettingsPage';
+import HelpPage from './pages/HelpPage';
+import PartnerRegister from './pages/PartnerRegister';
+import CustomerRegister from './pages/CustomerRegister';
 
 // Admin Pages
 import AdminOverview from './pages/admin/AdminOverview';
@@ -63,6 +70,8 @@ export default function App() {
             <Route path="/services" element={<ServicesPage />} />
             <Route path="/book" element={<BookingPage />} />
             <Route path="/auth" element={isAuthenticated ? <Navigate to="/services" replace /> : <Auth />} />
+            <Route path="/partner-register" element={<PartnerRegister />} />
+            <Route path="/customer-register" element={<CustomerRegister />} />
 
             {/* ==================== USER PROTECTED DASHBOARD ==================== */}
             <Route path="/dashboard" element={
@@ -75,9 +84,39 @@ export default function App() {
                 <NotificationsPage />
               </ProtectedRoute>
             } />
+            <Route path="/account/notifications" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <NotificationsPage />
+              </ProtectedRoute>
+            } />
             <Route path="/account" element={
               <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
                 <AccountPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/profile" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <ProfilePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/bookings" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <BookingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/addresses" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <ManageAddresses />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/settings" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <SettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/help" element={
+              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+                <HelpPage />
               </ProtectedRoute>
             } />
 
@@ -91,22 +130,22 @@ export default function App() {
             {/* ==================== ADMIN COMMAND CONSOLE (RBAC) ==================== */}
             <Route path="/admin" element={
               <ProtectedRoute allowedRoles={['ADMIN']}>
-                <AdminOverview />
+                <AdminOverview defaultTab="dashboard" />
               </ProtectedRoute>
             } />
             <Route path="/admin/bookings" element={
               <ProtectedRoute allowedRoles={['ADMIN']}>
-                <AdminBookings />
+                <AdminOverview defaultTab="bookings" />
               </ProtectedRoute>
             } />
             <Route path="/admin/workers" element={
               <ProtectedRoute allowedRoles={['ADMIN']}>
-                <AdminWorkers />
+                <AdminOverview defaultTab="partner-approvals" />
               </ProtectedRoute>
             } />
             <Route path="/admin/services" element={
               <ProtectedRoute allowedRoles={['ADMIN']}>
-                <AdminServices />
+                <AdminOverview defaultTab="services" />
               </ProtectedRoute>
             } />
 

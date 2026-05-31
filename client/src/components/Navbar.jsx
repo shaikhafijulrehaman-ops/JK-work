@@ -32,6 +32,9 @@ export default function Navbar({ onCartToggle }) {
   const [showLocationSelect, setShowLocationSelect] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState('Prestige Jindal City, Anchepalya');
   
+  // Account menu toggle
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  
   // Dynamic search in Navbar
   const [navSearch, setNavSearch] = useState('');
 
@@ -53,10 +56,13 @@ export default function Navbar({ onCartToggle }) {
 
   const serviceAreas = [
     'Prestige Jindal City, Anchepalya',
-    'Tumkur Main Road, Anchepalya',
-    'Chikkabidarakallu, Anchepalya',
-    'Anchepalya Village Base',
-    'Jindal Nagar Metro Sector'
+    'Nagasandra Zone',
+    'Bagalagunte Hub',
+    'Peenya Industrial Area',
+    'Peenya Metro Sector',
+    'Madavara Corridor',
+    'Chikkabidarakallu Hub',
+    'Doddabidarakallu Sector'
   ];
 
   return (
@@ -155,7 +161,7 @@ export default function Navbar({ onCartToggle }) {
             {/* Dedicated Notifications Link */}
             {isAuthenticated && (
               <Link 
-                to="/notifications"
+                to="/account/notifications"
                 className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors"
               >
                 <Bell className="w-5 h-5" />
@@ -182,25 +188,43 @@ export default function Navbar({ onCartToggle }) {
 
             {/* User Session Profile Link */}
             {isAuthenticated && user ? (
-              <Link 
-                to="/account" 
-                className="flex items-center space-x-2 pl-2 border-l border-slate-100 hover:opacity-80 transition-opacity"
-              >
-                <div className="flex flex-col text-right">
-                  <span className="text-xs font-semibold text-slate-800 leading-tight">{user.name}</span>
-                  <span className="text-[9px] font-bold text-brand tracking-tighter uppercase">{user.role}</span>
+              <div className="flex items-center space-x-4 pl-2 border-l border-slate-100">
+                {user.role === 'USER' && (
+                  <Link to="/dashboard" className="text-slate-600 hover:text-brand font-semibold text-xs transition-colors uppercase tracking-wider">
+                    My Bookings
+                  </Link>
+                )}
+                
+                <div className="relative">
+                  <Link 
+                    to={user.role === 'ADMIN' ? '/admin' : user.role === 'WORKER' ? '/worker/dashboard' : '/account'}
+                    className="flex items-center space-x-2 hover:opacity-80 transition-opacity cursor-pointer"
+                  >
+                    <div className="flex flex-col text-right">
+                      <span className="text-xs font-semibold text-slate-800 leading-tight">{user.name}</span>
+                      <span className="text-[9px] font-bold text-brand tracking-tighter uppercase">{user.role}</span>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 ring-2 ring-slate-100 hover:ring-brand/30 transition-all">
+                      <UserIcon className="w-4 h-4" />
+                    </div>
+                  </Link>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                  <UserIcon className="w-4 h-4" />
-                </div>
-              </Link>
+              </div>
             ) : (
-              <Link 
-                to="/auth" 
-                className="bg-brand hover:bg-brand-dark text-white font-medium text-xs px-5 py-2.5 rounded-lg shadow-md shadow-brand/10 hover:shadow-brand/20 transition-all font-inter"
-              >
-                Log In
-              </Link>
+              <div className="flex items-center space-x-3">
+                <Link 
+                  to="/partner-register" 
+                  className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs px-4 py-2.5 rounded-lg transition-all font-inter"
+                >
+                  Register as Partner
+                </Link>
+                <Link 
+                  to="/auth" 
+                  className="bg-brand hover:bg-brand-dark text-white font-medium text-xs px-5 py-2.5 rounded-lg shadow-md shadow-brand/10 hover:shadow-brand/20 transition-all font-inter"
+                >
+                  Log In
+                </Link>
+              </div>
             )}
 
           </div>
@@ -255,6 +279,9 @@ export default function Navbar({ onCartToggle }) {
           <Link to="/services" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
             Our Services
           </Link>
+          <Link to="/partner-register" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
+            Register as Partner
+          </Link>
           {isAuthenticated && user && (
             <>
               {user.role === 'ADMIN' && (
@@ -276,7 +303,7 @@ export default function Navbar({ onCartToggle }) {
                 Notifications
               </Link>
               <div className="border-t border-slate-50 pt-2 flex items-center justify-between px-3 mt-2">
-                <Link to="/account" onClick={() => setIsOpen(false)} className="flex items-center space-x-2">
+                <Link to={user.role === 'ADMIN' ? '/admin' : user.role === 'WORKER' ? '/worker/dashboard' : '/account'} onClick={() => setIsOpen(false)} className="flex items-center space-x-2">
                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
                     <UserIcon className="w-4 h-4" />
                   </div>

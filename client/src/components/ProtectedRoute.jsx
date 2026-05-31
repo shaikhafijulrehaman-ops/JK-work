@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   const location = useLocation();
 
   // If auth status is resolving, display a sleek loading animation
-  if (loading) {
+  if (loading && !isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="flex flex-col items-center space-y-3">

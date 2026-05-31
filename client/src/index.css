@@ -226,3 +226,48 @@
   -webkit-backdrop-filter: blur(30px);
   border: 1px solid rgba(8, 145, 178, 0.12);
 }
+
+/* Hide scrollbars across client layout components */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+/* Webcam Face Scan & Shutter Flash Animations */
+@keyframes scanline {
+  0% {
+    top: 0%;
+  }
+  50% {
+    top: 100%;
+  }
+  100% {
+    top: 0%;
+  }
+}
+
+@keyframes shutterFlash {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-scan {
+  animation: scanline 3s linear infinite;
+}
+
+.animate-flash-shutter {
+  animation: shutterFlash 0.3s ease-out forwards;
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+

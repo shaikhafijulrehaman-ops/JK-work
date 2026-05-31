@@ -2,17 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  ChevronLeft, ChevronRight, User as UserIcon, LogOut, 
-  MapPin, Heart, ShieldQuestion, Star, Settings, FileText, Bell,
-  Sparkles, CheckCircle2, AlertCircle, PhoneCall, Compass, Home
+  ChevronLeft, User, Phone, Mail, MapPin, Compass,
+  Sparkles, CheckCircle2, AlertCircle, PhoneCall, Home, Shield,
+  Settings, HelpCircle, Bell, FileText, ArrowRight, LogOut, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function AccountPage() {
+export default function ProfilePage() {
   const { user, logout, fetchAddresses, addAddress } = useAuthStore();
   const navigate = useNavigate();
 
-  // Address and Profile completion state
   const [addresses, setAddresses] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [altMobile, setAltMobile] = useState('');
@@ -24,21 +23,17 @@ export default function AccountPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const handleBack = () => navigate('/account');
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
   };
 
-  const handleBack = () => {
-    navigate(-1);
-  };
-
-  // Load addresses to check for completion
   const loadAddresses = async () => {
     const data = await fetchAddresses();
     setAddresses(data || []);
     
-    // Pre-fill profile completion fields if a default address exists
     if (data && data.length > 0) {
       const def = data.find(a => a.isDefault) || data[0];
       setHouseFlat(def.houseFlat || '');
@@ -53,7 +48,6 @@ export default function AccountPage() {
   }, []);
 
   // Compute profile completion percentage
-  // Name +15, Phone +15, Email +10, Pincode +15, ServiceArea +15, AltMobile +15, DefaultAddress +15 = 100%
   const hasName = !!user?.name;
   const hasPhone = !!user?.phone;
   const hasEmail = !!user?.email && !user?.email.includes('@jkenterprises.com');
@@ -71,7 +65,7 @@ export default function AccountPage() {
   if (hasAltMobile) completionScore += 15;
   if (hasAddress) completionScore += 15;
 
-  const handleCompleteProfileSubmit = async (e) => {
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
@@ -105,76 +99,74 @@ export default function AccountPage() {
     }
   };
 
-  const menuItems = [
-    { title: 'Profile Settings', icon: <UserIcon className="w-5 h-5 text-slate-700" />, path: '/account/profile' },
-    { title: 'My Bookings', icon: <FileText className="w-5 h-5 text-slate-700" />, path: '/account/bookings' },
-    { title: 'Saved Addresses', icon: <MapPin className="w-5 h-5 text-slate-700" />, path: '/account/addresses' },
-    { title: 'Notifications', icon: <Bell className="w-5 h-5 text-slate-700" />, path: '/account/notifications' },
-    { title: 'Settings', icon: <Settings className="w-5 h-5 text-slate-700" />, path: '/account/settings' },
-    { title: 'Help Center', icon: <ShieldQuestion className="w-5 h-5 text-slate-700" />, path: '/account/help' },
-  ];
-
   return (
     <div className="min-h-screen bg-slate-50 font-inter pb-24 text-slate-800 relative">
-      {/* Header */}
-      <div className="bg-white sticky top-0 z-10 border-b border-slate-100 shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center">
-          <button onClick={handleBack} className="p-2 -ml-2 rounded-full hover:bg-slate-50 text-slate-600 transition-colors mr-2">
-            <ChevronLeft className="w-6 h-6" />
+      {/* Sticky Header */}
+      <div className="bg-white sticky top-0 z-20 border-b border-slate-100 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <button 
+              onClick={handleBack} 
+              className="p-2 -ml-2 rounded-full hover:bg-slate-50 text-slate-600 transition-colors mr-3 border border-slate-100"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h1 className="font-poppins font-black text-lg text-slate-900">My Profile</h1>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="text-red-500 hover:text-red-600 font-poppins font-black text-xs uppercase tracking-wider bg-red-50 hover:bg-red-100/50 px-3.5 py-2 rounded-xl transition-all"
+          >
+            Logout
           </button>
-          <h1 className="font-poppins font-black text-xl text-slate-900">Account Dashboard</h1>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         
-        {/* Profile Details Card */}
-        <div className="bg-white rounded-3xl p-6 mb-4 border border-slate-100 shadow-sm relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand/10 to-transparent rounded-bl-full select-none pointer-events-none" />
+        {/* Profile Card Header Component */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden flex flex-col items-center text-center">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand/5 to-transparent rounded-bl-full pointer-events-none" />
           
-          <div className="flex items-center space-x-4 text-left">
-            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 overflow-hidden border-2 border-brand/20">
+          <div className="relative group cursor-pointer mb-4">
+            <div className="w-24 h-24 rounded-full bg-slate-50 border-4 border-white shadow-md flex items-center justify-center text-slate-500 overflow-hidden ring-2 ring-brand/10 group-hover:ring-brand/40 transition-all">
               {user?.profilePhoto ? (
                 <img src={user.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon className="w-8 h-8 text-slate-400" />
+                <User className="w-10 h-10 text-slate-400" />
               )}
             </div>
-            <div className="flex flex-col">
-              <span className="font-poppins font-black text-lg text-slate-950">{user?.name || 'Customer'}</span>
-              <span className="text-xs font-semibold text-slate-500 mt-0.5">+91 {user?.phone || '99999 99999'}</span>
-              
-              {user?.serviceArea && (
-                <span className="inline-flex items-center text-[10.5px] font-extrabold text-brand-dark uppercase tracking-wider mt-1.5 bg-cyan-50 border border-brand/15 px-2.5 py-0.5 rounded-lg w-max select-none">
-                  <Compass className="w-3 h-3 mr-1 animate-spin text-brand" /> {user.serviceArea} ({user.pincode})
-                </span>
-              )}
+            <div className="absolute bottom-0 right-0 p-1.5 bg-brand text-white rounded-full shadow border-2 border-white">
+              <Camera className="w-3.5 h-3.5" />
             </div>
           </div>
-          
-          <button 
-            onClick={() => navigate('/account/profile')}
-            className="text-brand font-poppins font-bold text-xs uppercase tracking-wider border border-brand/20 hover:bg-cyan-50 px-4 py-2 rounded-xl mt-4 md:mt-0 transition-colors self-start md:self-center select-none cursor-pointer"
-          >
-            Edit Profile
-          </button>
+
+          <h2 className="font-poppins font-black text-xl text-slate-950">{user?.name || 'Customer'}</h2>
+          <p className="text-xs font-semibold text-slate-400 mt-1">{user?.email}</p>
+          <p className="text-xs font-bold text-slate-500 mt-0.5">+91 {user?.phone}</p>
+
+          {user?.serviceArea && (
+            <span className="inline-flex items-center text-[10px] font-extrabold text-brand-dark uppercase tracking-wider mt-3 bg-cyan-50 border border-brand/15 px-3 py-1 rounded-xl shadow-xs">
+              <Compass className="w-3.5 h-3.5 mr-1.5 text-brand animate-spin" /> {user.serviceArea} ({user.pincode})
+            </span>
+          )}
         </div>
 
-        {/* Profile Completion Meter */}
-        <div className="bg-white rounded-3xl p-6 mb-6 border border-slate-100 shadow-sm text-left">
+        {/* Profile Completion Card */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm text-left">
           <div className="flex items-center justify-between mb-3.5">
             <div className="flex items-center space-x-2">
               <Sparkles className="w-5 h-5 text-brand animate-pulse" />
-              <h3 className="font-poppins font-black text-sm text-slate-950">Profile Onboarding Check</h3>
+              <h3 className="font-poppins font-black text-sm text-slate-950">Profile Completion</h3>
             </div>
             <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${
               completionScore === 100 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
             }`}>
-              {completionScore}% Completed
+              {completionScore}% Verified
             </span>
           </div>
 
-          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mb-4 border border-slate-100">
+          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mb-4 border border-slate-100/50">
             <motion.div 
               className="h-full bg-gradient-to-r from-brand to-teal-400"
               initial={{ width: 0 }}
@@ -186,7 +178,7 @@ export default function AccountPage() {
           {completionScore < 100 ? (
             <div className="space-y-3">
               <p className="text-[11px] text-slate-400 font-semibold leading-relaxed">
-                Add alternate contacts and addresses to unlock priority fast checkout bookings.
+                Add an alternate contact number and primary address to unlock full-page fast checkout.
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-bold text-slate-500 select-none">
@@ -202,77 +194,124 @@ export default function AccountPage() {
                     <span>No Saved Address Registered</span>
                   </div>
                 )}
-                {hasAltMobile && hasAddress && (
-                  <div className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 p-2 rounded-xl text-emerald-700 col-span-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                    <span>Priority details unlocked!</span>
-                  </div>
-                )}
               </div>
 
-              {completionScore < 100 && (
-                <button 
-                  onClick={() => setShowEditModal(true)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl shadow-md transition-colors uppercase tracking-widest mt-2 select-none"
-                >
-                  Complete Profile Details
-                </button>
-              )}
+              <button 
+                onClick={() => setShowEditModal(true)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl shadow-md transition-all uppercase tracking-widest mt-2"
+              >
+                Complete Your Profile
+              </button>
             </div>
           ) : (
             <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center space-x-2.5 shadow-inner">
               <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
               <span className="text-[10.5px] text-emerald-800 font-extrabold uppercase tracking-wide">
-                Premium Customer Status Active! All details verified.
+                Verified customer profile status active!
               </span>
             </div>
           )}
         </div>
 
-        {/* Menu Options */}
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-6 text-left">
-          {menuItems.map((item, index) => (
-            <Link 
-              key={index} 
-              to={item.path}
-              className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-all border-b last:border-b-0 border-slate-100 group"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="p-2 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-md transition-all text-slate-700">
-                  {item.icon}
-                </div>
-                <span className="font-poppins font-bold text-sm text-slate-800 group-hover:text-slate-950 transition-colors">
-                  {item.title}
-                </span>
-              </div>
-              <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
-            </Link>
-          ))}
+        {/* Section: Personal Information */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm text-left space-y-4">
+          <h3 className="font-poppins font-black text-sm text-slate-950 pb-2 border-b border-slate-50 uppercase tracking-wider text-brand">
+            Personal Information
+          </h3>
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Full Name</span>
+              <p className="text-xs text-slate-800 font-extrabold">{user?.name || 'Not Provided'}</p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Mobile Number</span>
+              <p className="text-xs text-slate-800 font-extrabold">+91 {user?.phone || 'Not Provided'}</p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Email Address</span>
+              <p className="text-xs text-slate-800 font-extrabold">{user?.email || 'Not Provided'}</p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Alternate Mobile</span>
+              <p className="text-xs text-slate-800 font-extrabold">{altMobile ? `+91 ${altMobile}` : 'Not Provided'}</p>
+            </div>
+          </div>
         </div>
 
-        {/* Logout */}
-        <button 
-          onClick={handleLogout}
-          className="w-full bg-white rounded-3xl px-6 py-4.5 flex items-center justify-between hover:bg-red-50/50 transition-all border border-slate-100 shadow-sm text-red-500 group select-none text-left"
-        >
-          <div className="flex items-center space-x-4">
-            <div className="p-2 rounded-lg bg-red-50 group-hover:bg-white group-hover:shadow-md transition-all">
-              <LogOut className="w-5 h-5 text-red-500" />
-            </div>
-            <span className="font-poppins font-black text-sm uppercase tracking-widest">Logout</span>
+        {/* Section: Address Management Summary */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm text-left space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-poppins font-black text-sm text-slate-950 uppercase tracking-wider text-brand">
+              Address Details
+            </h3>
+            <Link to="/account/addresses" className="text-xs font-black text-brand uppercase hover:underline">
+              Manage Address
+            </Link>
           </div>
-          <ChevronRight className="w-5 h-5 text-red-300 group-hover:text-red-500 transition-colors" />
-        </button>
+          {addresses.length === 0 ? (
+            <div className="text-center py-4 space-y-2">
+              <MapPin className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="text-xs text-slate-400 font-medium">No saved addresses.</p>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              <div className="flex items-start space-x-3 text-xs bg-slate-50 border border-slate-100 p-3 rounded-2xl">
+                <Home className="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
+                <div className="space-y-1 pr-2">
+                  <span className="font-bold text-slate-800 block">Primary Home Address</span>
+                  <p className="text-slate-500 font-semibold leading-relaxed">
+                    {houseFlat}, {street}
+                  </p>
+                  {landmark && <p className="text-[10.5px] text-slate-400 font-bold">Landmark: {landmark}</p>}
+                  <p className="text-[10.5px] text-slate-400 font-bold">Pincode: {user?.pincode} • Area: {user?.serviceArea}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* Footer info */}
-        <div className="text-center mt-12 space-y-1 select-none">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">JK Enterprises Marketplace</p>
-          <p className="text-[9px] text-slate-400">Version 2.0.0 • Made with ❤️ in Anchepalya</p>
+        {/* Grid Sections: Secondary Options */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden text-left divide-y divide-slate-100">
+          <Link to="/account/bookings" className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
+            <div className="flex items-center space-x-3">
+              <FileText className="w-5 h-5 text-slate-400 group-hover:text-brand transition-colors" />
+              <span className="text-xs font-black text-slate-700 group-hover:text-slate-900 transition-colors uppercase tracking-wider">My Bookings</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
+          </Link>
+          <Link to="/account/addresses" className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
+            <div className="flex items-center space-x-3">
+              <MapPin className="w-5 h-5 text-slate-400 group-hover:text-brand transition-colors" />
+              <span className="text-xs font-black text-slate-700 group-hover:text-slate-900 transition-colors uppercase tracking-wider">Saved Addresses</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
+          </Link>
+          <Link to="/account/notifications" className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
+            <div className="flex items-center space-x-3">
+              <Bell className="w-5 h-5 text-slate-400 group-hover:text-brand transition-colors" />
+              <span className="text-xs font-black text-slate-700 group-hover:text-slate-900 transition-colors uppercase tracking-wider">Notifications</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
+          </Link>
+          <Link to="/account/settings" className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
+            <div className="flex items-center space-x-3">
+              <Settings className="w-5 h-5 text-slate-400 group-hover:text-brand transition-colors" />
+              <span className="text-xs font-black text-slate-700 group-hover:text-slate-900 transition-colors uppercase tracking-wider">Settings</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
+          </Link>
+          <Link to="/account/help" className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
+            <div className="flex items-center space-x-3">
+              <HelpCircle className="w-5 h-5 text-slate-400 group-hover:text-brand transition-colors" />
+              <span className="text-xs font-black text-slate-700 group-hover:text-slate-900 transition-colors uppercase tracking-wider">Help Center</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-brand transition-all transform group-hover:translate-x-1" />
+          </Link>
         </div>
 
       </div>
 
-      {/* Complete Profile Glassmorphic dialog modal */}
+      {/* Edit Details Glassmorphic dialog modal */}
       <AnimatePresence>
         {showEditModal && (
           <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -291,17 +330,13 @@ export default function AccountPage() {
                 </div>
                 <button 
                   onClick={() => setShowEditModal(false)}
-                  className="w-7 h-7 rounded-full hover:bg-slate-100 border text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-semibold"
+                  className="w-7 h-7 rounded-full hover:bg-slate-100 border text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-semibold animate-transition"
                 >
                   ✕
                 </button>
               </div>
 
-              <form onSubmit={handleCompleteProfileSubmit} className="space-y-4">
-                <p className="text-[10.5px] text-slate-400 font-semibold leading-normal mb-2">
-                  Please complete the following details. Submitting this automatically builds your primary address profile!
-                </p>
-
+              <form onSubmit={handleUpdateProfile} className="space-y-4">
                 <div className="form-group">
                   <input 
                     type="tel" 
@@ -383,9 +418,9 @@ export default function AccountPage() {
                   <button 
                     type="submit" 
                     disabled={loading}
-                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl uppercase tracking-widest shadow-md"
+                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl uppercase tracking-widest shadow-md animate-transition"
                   >
-                    {loading ? 'Updating Details...' : 'Save & Verify'}
+                    {loading ? 'Saving...' : 'Save details'}
                   </button>
                 </div>
               </form>

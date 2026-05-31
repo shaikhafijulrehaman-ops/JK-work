@@ -13,15 +13,22 @@ export const useNotificationStore = create((set, get) => ({
     }
   ],
 
+  loading: false,
+
   // Load user alerts
   fetchNotifications: async () => {
+    set({ loading: true });
     try {
       const res = await fetch(`${API_URL}/notifications`, { method: 'GET' });
       const data = await res.json();
       if (data.success) {
-        set({ notifications: data.notifications });
+        set({ notifications: data.notifications, loading: false });
+      } else {
+        set({ loading: false });
       }
-    } catch (e) {}
+    } catch (e) {
+      set({ loading: false });
+    }
   },
 
   // Add a local notification instantly (for simulated feedback triggers)

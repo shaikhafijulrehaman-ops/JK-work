@@ -25,18 +25,28 @@ export default function Auth() {
 
   const [msg, setMsg] = useState(null);
   const [localErr, setLocalErr] = useState(null);
+  const [partnerStatus, setPartnerStatus] = useState(null); // PENDING, UNDER_REVIEW, REJECTED
 
   // Handles Email Sign In
   const handleSignIn = async (e) => {
     e.preventDefault();
     setLocalErr(null);
+    setPartnerStatus(null);
     const res = await login(email, password);
     if (res.success) {
       if (res.user.role === 'ADMIN') navigate('/admin');
       else if (res.user.role === 'WORKER') navigate('/worker/dashboard');
       else navigate('/services');
     } else {
-      setLocalErr(res.error);
+      if (res.approvalStatus) {
+        setPartnerStatus({
+          status: res.approvalStatus,
+          message: res.error,
+          name: res.workerName || 'Partner'
+        });
+      } else {
+        setLocalErr(res.error);
+      }
     }
   };
 
@@ -162,6 +172,19 @@ export default function Auth() {
                   </label>
                 </div>
               </div>
+
+              {partnerStatus && (
+                <div className="bg-amber-50 border border-amber-200 text-slate-700 p-4 rounded-xl text-left space-y-2 mb-4 animate-fade-in">
+                  <div className="flex justify-between items-center">
+                    <span className="font-poppins font-bold text-xs text-slate-800">Hello, {partnerStatus.name}</span>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${partnerStatus.status === 'PENDING' ? 'bg-amber-100 text-amber-800' : partnerStatus.status === 'UNDER_REVIEW' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>
+                      {partnerStatus.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-normal font-medium">{partnerStatus.message}</p>
+                  <p className="text-[9px] text-slate-400 font-medium">JK Enterprises manual approval is required before logging into the partner console.</p>
+                </div>
+              )}
 
               {localErr && <div className="text-red-500 text-[10px] font-semibold mb-2">{localErr}</div>}
 
@@ -456,6 +479,19 @@ export default function Auth() {
                           </div>
                         </div>
 
+                        {partnerStatus && (
+                          <div className="bg-amber-50 border border-amber-200 text-slate-700 p-4 rounded-xl text-left space-y-2 mb-4 animate-fade-in">
+                            <div className="flex justify-between items-center">
+                              <span className="font-poppins font-bold text-xs text-slate-800">Hello, {partnerStatus.name}</span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${partnerStatus.status === 'PENDING' ? 'bg-amber-100 text-amber-800' : partnerStatus.status === 'UNDER_REVIEW' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>
+                                {partnerStatus.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 leading-normal font-medium">{partnerStatus.message}</p>
+                            <p className="text-[9px] text-slate-400 font-medium">JK Enterprises manual approval is required before logging into the partner console.</p>
+                          </div>
+                        )}
+
                         {localErr && <div className="text-red-500 text-xs font-semibold text-center mb-4">{localErr}</div>}
 
                         <div className="flex items-center justify-between px-1 mb-6 text-xs font-bold text-slate-700">
@@ -551,7 +587,7 @@ export default function Auth() {
                   transition={{ type: 'spring', stiffness: 80, damping: 14 }}
                   className="w-full"
                 >
-                  <div className="h-[400px]">
+                  <div className="min-h-[460px] flex flex-col justify-between scrollbar-none">
                     <AuthSignupFlow onCancel={() => { setIsActive(false); setLocalErr(null); }} />
                   </div>
                 </motion.div>

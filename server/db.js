@@ -18,7 +18,10 @@ const sandbox = {
   bookingItems: [],
   reviews: [],
   notifications: [],
-  auditLogs: []
+  auditLogs: [],
+  waitlist: [],
+  addresses: [],
+  customers: []
 };
 
 // Seeding standard sandbox brochure data immediately on load
@@ -81,11 +84,51 @@ async function seedSandbox() {
 
   // Workers
   const workersSeed = [
-    { id: 'w-1', email: 'ramesh@jkenterprises.com', name: 'Ramesh Kumar', phone: '7766554433', rating: 4.8, commissionRate: 0.75, skills: ['Full House Deep Cleaning', 'Bathroom Deep Cleaning', 'Full Kitchen Cleaning', 'Dust Cleaning', 'Pest Control'] },
-    { id: 'w-2', email: 'vijay@jkenterprises.com', name: 'Vijay Kumar', phone: '8877665544', rating: 4.9, commissionRate: 0.70, skills: ['Electrician Service'] },
-    { id: 'w-3', email: 'anitha@jkenterprises.com', name: 'Anitha Reddy', phone: '9988776655', rating: 4.7, commissionRate: 0.80, skills: ['Baby Care', 'Cooking Service'] },
-    { id: 'w-4', email: 'suresh@jkenterprises.com', name: 'Suresh Prasad', phone: '6655443322', rating: 4.6, commissionRate: 0.70, skills: ['House Shifting'] },
-    { id: 'w-5', email: 'sharma@jkenterprises.com', name: 'Rakesh Sharma', phone: '5544332211', rating: 4.8, commissionRate: 0.75, skills: ['House Painting', 'Security Provider'] }
+    { 
+      id: 'w-1', 
+      email: 'ramesh@jkenterprises.com', 
+      name: 'Ramesh Kumar', 
+      phone: '7766554433', 
+      rating: 4.8, 
+      commissionRate: 0.75, 
+      skills: ['Full House Deep Cleaning', 'Bathroom Deep Cleaning', 'Full Kitchen Cleaning', 'Dust Cleaning', 'Pest Control'],
+      approvalStatus: 'APPROVED',
+      experienceYears: 5,
+      address: 'Anchepalya, Bengaluru',
+      bankDetails: JSON.stringify({ holderName: 'Ramesh Kumar', bankName: 'HDFC Bank', accountNumber: '501002938475', ifsc: 'HDFC0000140', upi: 'ramesh@upi' }),
+      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150', selfie: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150' }),
+      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+    },
+    { 
+      id: 'w-2', 
+      email: 'vijay@jkenterprises.com', 
+      name: 'Vijay Kumar', 
+      phone: '8877665544', 
+      rating: 4.9, 
+      commissionRate: 0.70, 
+      skills: ['Electrician Service'],
+      approvalStatus: 'APPROVED',
+      experienceYears: 4,
+      address: 'Peenya Industrial Area, Bengaluru',
+      bankDetails: JSON.stringify({ holderName: 'Vijay Kumar', bankName: 'ICICI Bank', accountNumber: '000401928374', ifsc: 'ICIC0000004', upi: 'vijay@upi' }),
+      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', selfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' }),
+      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+    },
+    { 
+      id: 'w-3', 
+      email: 'anitha@jkenterprises.com', 
+      name: 'Anitha Reddy', 
+      phone: '9988776655', 
+      rating: 4.7, 
+      commissionRate: 0.80, 
+      skills: ['Baby Care', 'Cooking Service'],
+      approvalStatus: 'APPROVED',
+      experienceYears: 6,
+      address: 'Nagasandra, Bengaluru',
+      bankDetails: JSON.stringify({ holderName: 'Anitha Reddy', bankName: 'State Bank of India', accountNumber: '20491827364', ifsc: 'SBIN0003040', upi: 'anitha@upi' }),
+      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', selfie: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' }),
+      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+    }
   ];
 
   for (const w of workersSeed) {
@@ -106,10 +149,17 @@ async function seedSandbox() {
       id: w.id,
       userId: userId,
       status: 'AVAILABLE',
-      rating: w.rating,
+      approvalStatus: w.approvalStatus || 'APPROVED',
+      aadhaar: w.aadhaar || null,
+      experienceYears: w.experienceYears || null,
+      profilePhoto: w.profilePhoto || null,
+      address: w.address || null,
+      bankDetails: w.bankDetails || null,
+      rating: w.rating || 5.0,
       totalJobs: 0,
-      commissionRate: w.commissionRate,
-      createdAt: new Date()
+      commissionRate: w.commissionRate || 0.70,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
 
     for (const skillName of w.skills) {
@@ -187,6 +237,31 @@ const db = {
 
   // --- USER CONTROLLER MOCK API ---
   user: {
+    findFirst: async (args = {}) => {
+      if (db.isSandbox()) {
+        if (!args.where) return sandbox.users[0] || null;
+        const match = sandbox.users.find(u => {
+          if (args.where.role && u.role !== args.where.role) return false;
+          if (args.where.email && u.email !== args.where.email) return false;
+          if (args.where.phone && u.phone !== args.where.phone) return false;
+          return true;
+        });
+        return match || null;
+      }
+      return await prisma.user.findFirst(args);
+    },
+    findMany: async (args = {}) => {
+      if (db.isSandbox()) {
+        let list = sandbox.users;
+        if (args && args.where) {
+          if (args.where.role) {
+            list = list.filter(u => u.role === args.where.role);
+          }
+        }
+        return list;
+      }
+      return await prisma.user.findMany(args);
+    },
     findUnique: async (args) => {
       if (db.isSandbox()) {
         if (args.where.email) {
@@ -292,6 +367,23 @@ const db = {
 
   // --- SERVICE CATALOG MOCK API ---
   service: {
+    findFirst: async (args = {}) => {
+      if (db.isSandbox()) {
+        if (!args.where) return sandbox.services[0] || null;
+        const match = sandbox.services.find(s => {
+          if (args.where.name) {
+            if (args.where.name.contains) {
+              const queryStr = args.where.name.contains.toLowerCase();
+              return s.name.toLowerCase().includes(queryStr);
+            }
+            return s.name.toLowerCase() === args.where.name.toLowerCase();
+          }
+          return true;
+        });
+        return match || null;
+      }
+      return await prisma.service.findFirst(args);
+    },
     findMany: async (args = {}) => {
       if (db.isSandbox()) {
         return sandbox.services;
@@ -344,11 +436,18 @@ const db = {
   worker: {
     findMany: async (args = {}) => {
       if (db.isSandbox()) {
-        return sandbox.workers.map(w => {
+        let list = sandbox.workers;
+        if (args && args.where && args.where.approvalStatus) {
+          list = list.filter(w => w.approvalStatus === args.where.approvalStatus);
+        }
+        return list.map(w => {
           const user = sandbox.users.find(u => u.id === w.userId);
           const skills = sandbox.workerSkills
             .filter(ws => ws.workerId === w.id)
-            .map(ws => sandbox.services.find(s => s.id === ws.serviceId));
+            .map(ws => {
+              const serviceObj = sandbox.services.find(s => s.id === ws.serviceId);
+              return { id: ws.id, workerId: ws.workerId, serviceId: ws.serviceId, service: serviceObj };
+            });
           return {
             ...w,
             user,
@@ -365,7 +464,10 @@ const db = {
           w.user = sandbox.users.find(u => u.id === w.userId);
           w.skills = sandbox.workerSkills
             .filter(ws => ws.workerId === w.id)
-            .map(ws => sandbox.services.find(s => s.id === ws.serviceId));
+            .map(ws => {
+              const serviceObj = sandbox.services.find(s => s.id === ws.serviceId);
+              return { id: ws.id, workerId: ws.workerId, serviceId: ws.serviceId, service: serviceObj };
+            });
         }
         return w || null;
       }
@@ -648,7 +750,171 @@ const db = {
       }
       return await prisma.auditLog.findMany(args);
     }
+  },
+
+  // --- WAITLIST MOCK API ---
+  waitlist: {
+    create: async (args) => {
+      if (db.isSandbox()) {
+        const entry = {
+          id: `waitlist-${Date.now()}`,
+          createdAt: new Date(),
+          ...args.data
+        };
+        sandbox.waitlist.push(entry);
+        return entry;
+      }
+      return await prisma.waitlist.create(args);
+    },
+    findMany: async (args = {}) => {
+      if (db.isSandbox()) {
+        return sandbox.waitlist;
+      }
+      return await prisma.waitlist.findMany(args);
+    }
+  },
+
+  // --- ADDRESS MOCK API ---
+  address: {
+    create: async (args) => {
+      if (db.isSandbox()) {
+        const newAddress = {
+          id: `address-${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          isDefault: false,
+          ...args.data
+        };
+        // If this is set to default, unset others first
+        if (newAddress.isDefault) {
+          sandbox.addresses.forEach(addr => {
+            if (addr.userId === newAddress.userId) {
+              addr.isDefault = false;
+            }
+          });
+        }
+        sandbox.addresses.push(newAddress);
+        return newAddress;
+      }
+      return await prisma.address.create(args);
+    },
+    findMany: async (args) => {
+      if (db.isSandbox()) {
+        let results = sandbox.addresses;
+        if (args && args.where) {
+          if (args.where.userId) {
+            results = results.filter(addr => addr.userId === args.where.userId);
+          }
+          if (args.where.isDefault !== undefined) {
+            results = results.filter(addr => addr.isDefault === args.where.isDefault);
+          }
+        }
+        return results;
+      }
+      return await prisma.address.findMany(args);
+    },
+    findUnique: async (args) => {
+      if (db.isSandbox()) {
+        return sandbox.addresses.find(addr => addr.id === args.where.id) || null;
+      }
+      return await prisma.address.findUnique(args);
+    },
+    update: async (args) => {
+      if (db.isSandbox()) {
+        const idx = sandbox.addresses.findIndex(addr => addr.id === args.where.id);
+        if (idx !== -1) {
+          const updated = { ...sandbox.addresses[idx], ...args.data, updatedAt: new Date() };
+          if (updated.isDefault) {
+            sandbox.addresses.forEach(addr => {
+              if (addr.userId === updated.userId && addr.id !== updated.id) {
+                addr.isDefault = false;
+              }
+            });
+          }
+          sandbox.addresses[idx] = updated;
+          return updated;
+        }
+        throw new Error('Address not found in Sandbox');
+      }
+      return await prisma.address.update(args);
+    },
+    updateMany: async (args) => {
+      if (db.isSandbox()) {
+        let count = 0;
+        sandbox.addresses.forEach(addr => {
+          let match = true;
+          if (args.where) {
+            if (args.where.userId && addr.userId !== args.where.userId) match = false;
+            if (args.where.id && addr.id !== args.where.id) match = false;
+          }
+          if (match) {
+            Object.assign(addr, args.data);
+            count++;
+          }
+        });
+        return { count };
+      }
+      return await prisma.address.updateMany(args);
+    },
+    delete: async (args) => {
+      if (db.isSandbox()) {
+        const idx = sandbox.addresses.findIndex(addr => addr.id === args.where.id);
+        if (idx !== -1) {
+          return sandbox.addresses.splice(idx, 1)[0];
+        }
+        return null;
+      }
+      return await prisma.address.delete(args);
+    }
+  },
+  customer: {
+    create: async (args) => {
+      if (db.isSandbox()) {
+        const newCust = {
+          id: args.data.id || `cust-${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...args.data
+        };
+        sandbox.customers.push(newCust);
+        return newCust;
+      }
+      return await prisma.customer.create(args);
+    },
+    findUnique: async (args) => {
+      console.log('--- BEFORE findUnique Call ---');
+      console.log('Prisma Instance:', prisma ? 'Initialized' : 'Undefined');
+      console.log('Model Name: Customer');
+      console.log('Query Parameters:', JSON.stringify(args, null, 2));
+      console.log('------------------------------');
+
+      if (db.isSandbox()) {
+        if (args.where.email) {
+          return sandbox.customers.find(c => c.email === args.where.email) || null;
+        }
+        if (args.where.id) {
+          return sandbox.customers.find(c => c.id === args.where.id) || null;
+        }
+        if (args.where.phone) {
+          return sandbox.customers.find(c => c.phone === args.where.phone) || null;
+        }
+        return null;
+      }
+      return await prisma.customer.findUnique(args);
+    },
+    update: async (args) => {
+      if (db.isSandbox()) {
+        const idx = sandbox.customers.findIndex(c => c.id === args.where.id);
+        if (idx !== -1) {
+          sandbox.customers[idx] = { ...sandbox.customers[idx], ...args.data, updatedAt: new Date() };
+          return sandbox.customers[idx];
+        }
+        throw new Error('Customer not found in Sandbox');
+      }
+      return await prisma.customer.update(args);
+    }
   }
 };
 
 module.exports = db;
+

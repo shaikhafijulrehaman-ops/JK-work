@@ -127,24 +127,67 @@ export default function WorkerPortal() {
   }, [chatMessages, isTyping]);
 
   // Block unverified workers from entering dashboard
-  if (user?.approvalStatus === 'PENDING' || user?.workerProfile?.approvalStatus === 'PENDING') {
+  const approvalStatus = user?.approvalStatus || user?.workerProfile?.approvalStatus || 'APPROVED';
+
+  if (approvalStatus !== 'APPROVED') {
+    let title = "Verification Pending";
+    let message = "Your application is currently under review.";
+    let submessage = "Our verification team will review your application. You will receive approval notification after successful verification.";
+    let iconColor = "text-amber-400";
+    let badgeBg = "bg-amber-500/10 border-amber-500/20";
+    
+    if (approvalStatus === 'UNDER_REVIEW') {
+      title = "Under Active Review";
+      message = "Your application is currently under review.";
+      submessage = "We are currently checking your credentials and service area coverage. Please hold tight.";
+      iconColor = "text-cyan-400";
+      badgeBg = "bg-cyan-500/10 border-cyan-500/20";
+    } else if (approvalStatus === 'REJECTED') {
+      title = "Application Rejected";
+      message = "Your application was not approved. Please contact support.";
+      submessage = "Unfortunately, your application did not meet our verification standards. Please contact support for details.";
+      iconColor = "text-red-400";
+      badgeBg = "bg-red-500/10 border-red-500/20";
+    }
+
     return (
-      <div className="bg-slate-900 min-h-screen font-inter flex items-center justify-center p-4">
-        <div className="bg-slate-800 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl border border-slate-700/50 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-teal-400 to-cyan-500"></div>
-          <div className="w-20 h-20 bg-teal-500/10 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-teal-500/20">
-            <Clock className="w-10 h-10 text-teal-400 animate-pulse" />
+      <div className="bg-slate-950 min-h-screen font-inter flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Decorative Gradients */}
+        <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-brand/5 rounded-full blur-3xl -z-10 animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl -z-10"></div>
+        
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-navy to-brand"></div>
+          
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border ${badgeBg}`}>
+            <Clock className={`w-10 h-10 ${iconColor} animate-pulse`} />
           </div>
-          <h2 className="font-poppins font-extrabold text-2xl text-white mb-2">Verification Pending</h2>
-          <p className="text-xs text-slate-400 mb-8 leading-relaxed">
-            Your Service Partner application is currently under review by our Quality Control & Compliance Team. We are verifying your Aadhaar Details and Trade Certifications. You will be notified immediately upon approval.
+          
+          <h2 className="font-poppins font-black text-2xl text-white mb-3 tracking-tight">{title}</h2>
+          <p className="text-sm text-slate-200 font-bold leading-normal mb-3">
+            {message}
           </p>
-          <button 
-            onClick={() => navigate('/')}
-            className="inline-block w-full bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-poppins font-bold text-xs px-8 py-3.5 rounded-xl uppercase tracking-wider hover:opacity-90 transition-all shadow-lg shadow-teal-500/20"
-          >
-            Return to Homepage
-          </button>
+          <p className="text-xs text-slate-400 mb-8 leading-relaxed">
+            {submessage}
+          </p>
+          
+          <div className="flex gap-3">
+            <button 
+              onClick={() => navigate('/')}
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all"
+            >
+              Go to Homepage
+            </button>
+            <button 
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+              className="flex-1 bg-brand hover:bg-brand-dark text-white font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider hover:opacity-90 transition-all shadow-lg shadow-brand/20"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -498,7 +541,49 @@ export default function WorkerPortal() {
             {/* MAIN OPERATIONAL GRID MENUS */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               
-              {/* Active Bookings Card */}
+              {/* 1. Dashboard */}
+              <div 
+                onClick={() => setCurrentView('menu')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-teal-400 to-cyan-500"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-teal-500/10 text-teal-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <span className="bg-teal-500/20 text-teal-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-teal-500/30">
+                    Live
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">Dashboard</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Overview & duty status</p>
+                </div>
+              </div>
+
+              {/* 2. New Orders */}
+              <div 
+                onClick={() => setCurrentView('booking_requests')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-teal-500 to-emerald-500"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-teal-500/10 text-teal-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  {mockRequests.length > 0 && (
+                    <span className="bg-teal-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full animate-bounce">
+                      {mockRequests.length} New
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">New Orders</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Accept or reject list</p>
+                </div>
+              </div>
+
+              {/* 3. Assigned Jobs */}
               <div 
                 onClick={() => setCurrentView('active_bookings')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
@@ -509,38 +594,60 @@ export default function WorkerPortal() {
                     <Calendar className="w-5 h-5" />
                   </div>
                   {activeJobs.length > 0 && (
-                    <span className="bg-blue-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full animate-bounce">
+                    <span className="bg-blue-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full">
                       {activeJobs.length} Job
                     </span>
                   )}
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Active Bookings</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Ongoing assigned bookings</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Assigned Jobs</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Pending assigned bookings</p>
                 </div>
               </div>
 
-              {/* Booking Requests Card */}
+              {/* 4. Active Jobs */}
               <div 
-                onClick={() => setCurrentView('booking_requests')}
+                onClick={() => setCurrentView('active_bookings')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
               >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-teal-500 to-emerald-500"></div>
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 to-indigo-500"></div>
                 <div className="flex justify-between items-center mb-6">
-                  <div className="p-2.5 bg-teal-500/10 text-teal-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <Activity className="w-5 h-5" />
+                  <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <Truck className="w-5 h-5" />
                   </div>
-                  <span className="bg-teal-500/20 text-teal-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-teal-500/30">
-                    {mockRequests.length > 0 ? `${mockRequests.length} New` : 'Scanner'}
+                  {activeJobs.filter(j => j.status === 'IN_PROGRESS').length > 0 && (
+                    <span className="bg-sky-500 text-white font-bold text-[9px] px-2 py-0.5 rounded-full animate-pulse">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">Active Jobs</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Ongoing jobs in progress</p>
+                </div>
+              </div>
+
+              {/* 5. Completed Jobs */}
+              <div 
+                onClick={() => setCurrentView('completed_services')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-purple-500/10 text-purple-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                  <span className="bg-purple-500/20 text-purple-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-purple-500/30">
+                    {completedJobs.length} Settled
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Booking Requests</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Accept & reject list</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Completed Jobs</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">History & work ledger</p>
                 </div>
               </div>
 
-              {/* Earnings Card */}
+              {/* 6. Earnings */}
               <div 
                 onClick={() => setCurrentView('earnings')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
@@ -551,36 +658,16 @@ export default function WorkerPortal() {
                     <DollarSign className="w-5 h-5" />
                   </div>
                   <span className="bg-cyan-500/20 text-cyan-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-cyan-500/30">
-                    Analytics
+                    INR
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">My Earnings</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Income & charts</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Earnings</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Profit share analytics</p>
                 </div>
               </div>
 
-              {/* Completed Services Card */}
-              <div 
-                onClick={() => setCurrentView('completed_services')}
-                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-indigo-500"></div>
-                <div className="flex justify-between items-center mb-6">
-                  <div className="p-2.5 bg-purple-500/10 text-purple-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <CheckCircle className="w-5 h-5" />
-                  </div>
-                  <span className="bg-purple-500/20 text-purple-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-purple-500/30">
-                    {completedJobs.length} Done
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Completed Services</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">History & work ledger</p>
-                </div>
-              </div>
-
-              {/* Wallet Card */}
+              {/* 7. Wallet */}
               <div 
                 onClick={() => setCurrentView('wallet_payouts')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
@@ -590,17 +677,37 @@ export default function WorkerPortal() {
                   <div className="p-2.5 bg-orange-500/10 text-orange-400 rounded-xl group-hover:scale-110 transition-transform">
                     <CreditCard className="w-5 h-5" />
                   </div>
-                  <span className="bg-orange-500/20 text-orange-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-orange-500/30">
-                    Settlements
+                  <span className="bg-orange-500/20 text-orange-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-orange-500/30 font-poppins">
+                    ₹{walletBalance.toFixed(0)}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Wallet & Payouts</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Instant Bank Transfer</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Wallet</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Ready to cashout funds</p>
                 </div>
               </div>
 
-              {/* Performance Ratings Card */}
+              {/* 8. Payout History */}
+              <div 
+                onClick={() => setCurrentView('wallet_payouts')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-rose-600"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-red-500/10 text-red-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <ArrowUpRight className="w-5 h-5" />
+                  </div>
+                  <span className="bg-red-500/20 text-red-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-red-500/30">
+                    History
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">Payout History</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Bank transfer logs</p>
+                </div>
+              </div>
+
+              {/* 9. Ratings & Reviews */}
               <div 
                 onClick={() => setCurrentView('performance_ratings')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
@@ -615,52 +722,52 @@ export default function WorkerPortal() {
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Performance</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Review feedback metrics</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Ratings & Reviews</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Customer feedback metrics</p>
                 </div>
               </div>
 
-              {/* Work Schedule Card */}
-              <div 
-                onClick={() => setCurrentView('work_schedule')}
-                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 to-blue-500"></div>
-                <div className="flex justify-between items-center mb-6">
-                  <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <span className="bg-sky-500/20 text-sky-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-sky-500/30">
-                    {schedule.days.length} Days
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Work Schedule</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Shift timing configuration</p>
-                </div>
-              </div>
-
-              {/* Availability Settings Card */}
+              {/* 10. Availability */}
               <div 
                 onClick={() => setCurrentView('availability_settings')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
               >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-slate-500 to-slate-400"></div>
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
                 <div className="flex justify-between items-center mb-6">
-                  <div className="p-2.5 bg-slate-500/10 text-slate-300 rounded-xl group-hover:scale-110 transition-transform">
-                    <Sliders className="w-5 h-5" />
+                  <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <Clock className="w-5 h-5" />
                   </div>
-                  <span className="bg-slate-500/20 text-slate-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-slate-500/30">
-                    {availability.radius}km
+                  <span className="bg-emerald-500/20 text-emerald-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    Slots
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Availability Specs</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Auto-accept & range settings</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Availability</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Weekly shifts & coverage</p>
                 </div>
               </div>
 
-              {/* Uploaded Documents Card */}
+              {/* 11. Profile */}
+              <div 
+                onClick={() => setCurrentView('account_settings')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-blue-600"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl group-hover:scale-110 transition-transform">
+                    <UserIcon className="w-5 h-5" />
+                  </div>
+                  <span className="bg-indigo-500/20 text-indigo-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-indigo-500/30">
+                    ID
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">Profile</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Personal registry specs</p>
+                </div>
+              </div>
+
+              {/* 12. Documents */}
               <div 
                 onClick={() => setCurrentView('uploaded_documents')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
@@ -676,27 +783,47 @@ export default function WorkerPortal() {
                 </div>
                 <div>
                   <h3 className="font-poppins font-black text-xs text-white">Documents</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">Aadhaar card credentials</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Aadhaar & photos audit</p>
                 </div>
               </div>
 
-              {/* Support Center Card */}
+              {/* 13. Support */}
               <div 
                 onClick={() => setCurrentView('support_center')}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
               >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 to-fuchsia-500"></div>
                 <div className="flex justify-between items-center mb-6">
-                  <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl group-hover:scale-110 transition-transform">
+                  <div className="p-2.5 bg-violet-500/10 text-violet-400 rounded-xl group-hover:scale-110 transition-transform">
                     <HelpCircle className="w-5 h-5" />
                   </div>
-                  <span className="bg-indigo-500/20 text-indigo-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-indigo-500/30">
-                    AI Chat
+                  <span className="bg-violet-500/20 text-violet-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-violet-500/30">
+                    24/7 Chat
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-poppins font-black text-xs text-white">Support Center</h3>
-                  <p className="text-[9px] text-slate-400 mt-1">AI assistance simulator</p>
+                  <h3 className="font-poppins font-black text-xs text-white">Support</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Help desk assistant</p>
+                </div>
+              </div>
+
+              {/* 14. Settings */}
+              <div 
+                onClick={() => setCurrentView('account_settings')}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between group shadow-lg relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-slate-500 to-slate-400"></div>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="p-2.5 bg-slate-500/10 text-slate-300 rounded-xl group-hover:scale-110 transition-transform">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <span className="bg-slate-500/20 text-slate-300 font-bold text-[9px] px-2 py-0.5 rounded-full border border-slate-500/30">
+                    System
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-poppins font-black text-xs text-white">Settings</h3>
+                  <p className="text-[9px] text-slate-400 mt-1">Preferences & parameters</p>
                 </div>
               </div>
 
