@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
@@ -10,15 +10,46 @@ import {
   ShoppingBag,
   Info,
   CheckCircle,
-  X
+  X,
+  Brush,
+  Activity,
+  Wrench,
+  ChefHat,
+  Truck,
+  Paintbrush
 } from 'lucide-react';
-import { catalog } from '../store/catalog';
+import { catalog as staticCatalog } from '../store/catalog';
 
 export default function ServicesPage() {
   const { addItem, items } = useCartStore();
   const { isAuthenticated } = useAuthStore();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const [catalog, setCatalog] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/services');
+        const data = await res.json();
+        if (data.success) {
+          // Filter only active services
+          const activeServices = data.services.filter(s => s.isActive !== false);
+          setCatalog(activeServices);
+        } else {
+          setCatalog(staticCatalog);
+        }
+      } catch (err) {
+        console.warn('Backend services offline. Falling back to static catalog...', err);
+        setCatalog(staticCatalog);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchServices();
+  }, []);
 
   // Selected Category filter
   const initialCategory = searchParams.get('category') || '';
@@ -42,13 +73,13 @@ export default function ServicesPage() {
   });
 
   const uniqueCategories = [
-    { id: '', name: 'All Services', imgUrl: null, icon: Sparkles },
-    { id: 'Cleaning', name: 'Cleaning & Pest', imgUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop' },
-    { id: 'Care', name: 'Baby Care & Safety', imgUrl: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=120&auto=format&fit=crop' },
-    { id: 'Technical', name: 'Repairs & Technical', imgUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=120&auto=format&fit=crop' },
-    { id: 'Cooking', name: 'Cooking & Chef', imgUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=120&auto=format&fit=crop' },
-    { id: 'Shifting', name: 'Relocation Shifting', imgUrl: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=120&auto=format&fit=crop' },
-    { id: 'Painting', name: 'House Painting', imgUrl: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=120&auto=format&fit=crop' }
+    { id: '', name: 'All Services', icon: Sparkles },
+    { id: 'Cleaning', name: 'Cleaning & Pest', icon: Brush },
+    { id: 'Care', name: 'Baby Care & Safety', icon: Activity },
+    { id: 'Technical', name: 'Repairs & Technical', icon: Wrench },
+    { id: 'Cooking', name: 'Cooking & Chef', icon: ChefHat },
+    { id: 'Shifting', name: 'Relocation Shifting', icon: Truck },
+    { id: 'Painting', name: 'House Painting', icon: Paintbrush }
   ];
 
   const getVariantPrice = (service) => {
@@ -85,6 +116,7 @@ export default function ServicesPage() {
         {/* Cohesive Premium Category Chips Bar (replacing cartoonish buttons) */}
         <div className="flex overflow-x-auto flex-nowrap sm:flex-wrap gap-2 mb-8 pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 scrollbar-hide">
           {uniqueCategories.map((cat, idx) => {
+            const Icon = cat.icon || Sparkles;
             return (
               <button
                 key={idx}
@@ -95,13 +127,7 @@ export default function ServicesPage() {
                     : 'bg-white text-slate-600 border-slate-200/60 hover:bg-slate-50'
                 }`}
               >
-                {cat.imgUrl ? (
-                  <div className="w-5 h-5 rounded-full overflow-hidden border border-slate-200 ring-2 ring-slate-100 flex-shrink-0">
-                    <img src={cat.imgUrl} className="w-full h-full object-cover" alt={cat.name} />
-                  </div>
-                ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-royal-gold fill-current" />
-                )}
+                <Icon className={`w-3.5 h-3.5 ${categoryFilter === cat.id ? 'text-white' : 'text-brand'}`} />
                 <span>{cat.name}</span>
               </button>
             );
@@ -110,7 +136,12 @@ export default function ServicesPage() {
 
         {/* Grid List with elegant card design & subtle shadows */}
         <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="col-span-full text-center py-20 text-slate-400 font-medium">
+              <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              <span>Fetching premium home services...</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="col-span-full text-center py-20 text-slate-400 font-medium">
               No matching services found in our catalog. Try searching another package.
             </div>
@@ -123,12 +154,25 @@ export default function ServicesPage() {
                 >
                   <div>
                     {/* Image banner with gradient overlay - responsive height for clean mobile high-density grids */}
-                    <div className="h-16 sm:h-32 md:h-48 w-full relative overflow-hidden bg-slate-100">
-                      <img 
-                        src={s.imageUrl} 
-                        alt={s.name}
-                        className="w-full h-full object-cover transform group-hover:scale-103 transition-transform duration-500"
-                      />
+                    <div className="h-16 sm:h-32 md:h-48 w-full relative overflow-hidden bg-slate-100 flex items-center justify-center">
+                      {s.imageUrl ? (
+                        <img 
+                          src={s.imageUrl} 
+                          alt={s.name}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            const fallback = e.target.parentNode.querySelector('.image-fallback');
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                          className="w-full h-full object-cover transform group-hover:scale-103 transition-transform duration-500"
+                        />
+                      ) : null}
+                      <div 
+                        className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[10px] sm:text-xs font-semibold text-slate-400"
+                        style={{ display: s.imageUrl ? 'none' : 'flex' }}
+                      >
+                        Image Not Available
+                      </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
                       
                       {s.packageText && (
@@ -202,7 +246,12 @@ export default function ServicesPage() {
 
                         <button 
                           onClick={() => {
-                            navigate(`/book?serviceId=${s.id}${s.name === 'House Painting' ? `&variant=${paintingVariant}` : ''}`);
+                            if (!isAuthenticated) {
+                              const { setShowLoginModal } = useAuthStore.getState();
+                              setShowLoginModal(true);
+                            } else {
+                              navigate(`/book?serviceId=${s.id}${s.name === 'House Painting' ? `&variant=${paintingVariant}` : ''}`);
+                            }
                           }}
                           className="bg-brand hover:bg-brand-dark text-white font-poppins font-black text-[7px] sm:text-xs px-1 py-1 sm:px-5 sm:py-2.5 rounded-lg shadow-md shadow-brand/10 transition-all uppercase tracking-wider flex items-center justify-center space-x-0.5 sm:space-x-1"
                         >

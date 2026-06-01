@@ -19,7 +19,13 @@ export const useNotificationStore = create((set, get) => ({
   fetchNotifications: async () => {
     set({ loading: true });
     try {
-      const res = await fetch(`${API_URL}/notifications`, { method: 'GET' });
+      const res = await fetch(`${API_URL}/notifications`, { 
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        credentials: 'include'
+      });
       const data = await res.json();
       if (data.success) {
         set({ notifications: data.notifications, loading: false });
@@ -48,7 +54,13 @@ export const useNotificationStore = create((set, get) => ({
   // Mark single as read
   markAsRead: async (id) => {
     try {
-      await fetch(`${API_URL}/notifications/${id}/read`, { method: 'PUT' });
+      await fetch(`${API_URL}/notifications/${id}/read`, { 
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        credentials: 'include'
+      });
     } catch (e) {}
     const updated = get().notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
     set({ notifications: updated });

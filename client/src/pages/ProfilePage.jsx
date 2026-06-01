@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ChevronLeft, User, Phone, Mail, MapPin, Compass,
   Sparkles, CheckCircle2, AlertCircle, PhoneCall, Home, Shield,
-  Settings, HelpCircle, Bell, FileText, ArrowRight, LogOut, Camera
+  Settings, HelpCircle, Bell, FileText, ArrowRight, LogOut, Camera, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -314,25 +314,24 @@ export default function ProfilePage() {
       {/* Edit Details Glassmorphic dialog modal */}
       <AnimatePresence>
         {showEditModal && (
-          <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 20, opacity: 0 }}
-              className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xl max-w-md w-full text-left"
+              className="bg-white rounded-2xl p-6 border border-slate-100 shadow-xl max-w-[450px] w-full text-left relative overflow-hidden"
             >
-              <div className="flex justify-between items-center mb-5 pb-2 border-b">
+              <div className="flex justify-between items-center mb-5 pb-2 border-b border-slate-100 relative pr-6">
                 <div className="flex items-center space-x-2">
-                  <Sparkles className="w-5 h-5 text-brand" />
-                  <h3 className="font-poppins font-extrabold text-base text-slate-900">
+                  <h3 className="font-poppins font-bold text-base text-slate-850 tracking-tight leading-none">
                     Complete Profile Information
                   </h3>
                 </div>
                 <button 
                   onClick={() => setShowEditModal(false)}
-                  className="w-7 h-7 rounded-full hover:bg-slate-100 border text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-semibold animate-transition"
+                  className="absolute -top-1 -right-1 p-1 rounded-full hover:bg-slate-50 text-slate-400 hover:text-slate-655 transition-colors"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -407,18 +406,18 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                <div className="flex space-x-3 pt-3 border-t">
+                <div className="flex space-x-3 pt-3 border-t border-slate-100">
                   <button 
                     type="button" 
                     onClick={() => setShowEditModal(false)}
-                    className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-600 font-poppins font-black text-xs rounded-xl uppercase tracking-wider"
+                    className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-500 font-poppins font-bold text-xs rounded-xl uppercase tracking-wider transition-colors"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit" 
                     disabled={loading}
-                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl uppercase tracking-widest shadow-md animate-transition"
+                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-bold text-xs py-3 rounded-xl uppercase tracking-widest shadow-sm transition-all"
                   >
                     {loading ? 'Saving...' : 'Save details'}
                   </button>

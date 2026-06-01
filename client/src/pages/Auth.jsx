@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Mail, Lock, User, Phone, CheckCircle, PhoneCall, Key } from 'lucide-react';
 import AuthSignupFlow from '../components/auth/AuthSignupFlow';
@@ -8,8 +8,18 @@ import AuthSignupFlow from '../components/auth/AuthSignupFlow';
 export default function Auth() {
   const { login, register, sendOtp, verifyOtp, error, loading } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [isActive, setIsActive] = useState(false); // Controls sliding card trigger
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    if (mode === 'signup') {
+      setIsActive(true);
+    } else {
+      setIsActive(false);
+    }
+  }, [searchParams]);
   const [useOtp, setUseOtp] = useState(false); // Toggle email vs OTP login
   const [otpSent, setOtpSent] = useState(false);
 

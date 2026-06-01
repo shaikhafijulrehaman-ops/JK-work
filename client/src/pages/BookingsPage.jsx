@@ -81,8 +81,8 @@ export default function BookingsPage() {
 
   const getTimelineSteps = (status) => {
     return [
-      { name: 'Pending', active: true, done: ['ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'Assigned', active: ['ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
+      { name: 'Pending', active: true, done: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
+      { name: 'Assigned', active: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
       { name: 'On The Way', active: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['IN_PROGRESS', 'COMPLETED'].includes(status) },
       { name: 'In Progress', active: ['IN_PROGRESS', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
       { name: 'Completed', active: status === 'COMPLETED', done: status === 'COMPLETED' }
@@ -98,7 +98,7 @@ export default function BookingsPage() {
   // Filter bookings based on selected status tabs
   const filteredBookings = bookings.filter(b => {
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'ACTIVE') return ['PENDING', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS'].includes(b.status);
+    if (activeTab === 'ACTIVE') return ['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS'].includes(b.status);
     if (activeTab === 'COMPLETED') return b.status === 'COMPLETED';
     if (activeTab === 'CANCELLED') return b.status === 'CANCELLED';
     return true;
@@ -195,7 +195,8 @@ export default function BookingsPage() {
                       </span>
                       <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md leading-none ${
                         b.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                        b.status === 'PENDING' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-brand/10 text-brand'
+                        ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(b.status) ? 'bg-amber-100 text-amber-700 font-bold' :
+                        b.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
                       }`}>
                         {b.status.replace(/_/g, ' ')}
                       </span>
@@ -237,7 +238,8 @@ export default function BookingsPage() {
                     
                     <span className={`text-[10px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full ${
                       selectedBooking.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                      selectedBooking.status === 'PENDING' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-brand/10 text-brand'
+                      ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status) ? 'bg-amber-100 text-amber-700 font-bold' :
+                      selectedBooking.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
                     }`}>
                       {selectedBooking.status.replace(/_/g, ' ')}
                     </span>
@@ -307,21 +309,21 @@ export default function BookingsPage() {
                     <div className="flex flex-wrap gap-2 select-none">
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'ON_THE_WAY')}
-                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status)}
                         className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors"
                       >
                         Depart On The Way
                       </button>
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'IN_PROGRESS')}
-                        disabled={['PENDING', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
                         className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors"
                       >
                         Start Service Call
                       </button>
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'COMPLETED')}
-                        disabled={['PENDING', 'ASSIGNED', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={selectedBooking.status !== 'IN_PROGRESS'}
                         className="bg-brand text-white hover:bg-brand-dark text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-all"
                       >
                         Complete Invoice
@@ -419,22 +421,27 @@ export default function BookingsPage() {
 
                   {/* Assigned Worker Profile component */}
                   {selectedBooking.workerId && (() => {
-                    const firstItem = selectedBooking.items && selectedBooking.items[0];
-                    const category = firstItem ? firstItem.service.category : 'Cleaning';
-                    const workerAvatars = {
-                      'Care': 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=120&auto=format&fit=crop',
-                      'Cleaning': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
-                      'Shifting': 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=120&auto=format&fit=crop',
-                      'Cooking': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=120&auto=format&fit=crop',
-                      'Painting': 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=120&auto=format&fit=crop',
-                      'Technical': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=120&auto=format&fit=crop'
-                    };
-                    const avatarUrl = workerAvatars[category] || workerAvatars['Cleaning'];
+                    let avatarUrl = null;
+                    if (selectedBooking.worker && selectedBooking.worker.profilePhoto) {
+                      try {
+                        const parsed = JSON.parse(selectedBooking.worker.profilePhoto);
+                        avatarUrl = parsed.profile || parsed.selfie || null;
+                      } catch (e) {
+                        avatarUrl = selectedBooking.worker.profilePhoto;
+                      }
+                    }
+                    if (avatarUrl && (avatarUrl.includes('unsplash.com') || avatarUrl.includes('sample') || avatarUrl.includes('profile.jpg') || avatarUrl.includes('selfie.jpg'))) {
+                      avatarUrl = null;
+                    }
                     return (
                       <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between text-xs text-left">
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0">
-                            <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
+                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400 font-bold text-[8px] text-center leading-none p-1">
+                            {avatarUrl ? (
+                              <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
+                            ) : (
+                              <span>Image Not Available</span>
+                            )}
                           </div>
                           <div>
                             <span className="font-extrabold text-slate-800 block">Assigned Service Professional</span>

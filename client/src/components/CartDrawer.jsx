@@ -53,8 +53,8 @@ export default function CartDrawer({ isOpen, onClose }) {
 
   const handleBooking = async () => {
     if (!isAuthenticated) {
-      navigate('/auth');
-      onClose();
+      const { setShowLoginModal } = useAuthStore.getState();
+      setShowLoginModal(true);
       return;
     }
 
@@ -256,24 +256,24 @@ export default function CartDrawer({ isOpen, onClose }) {
 
         {/* ==================== SECURE CHECKOUT PAYMENTS MODAL ==================== */}
         {showCheckout && checkoutBooking && (
-          <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in text-slate-800">
-            <div className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 border border-slate-100 flex flex-col items-center text-center animate-scale-up space-y-6">
+          <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in text-slate-800">
+            <div className="bg-white w-full max-w-[450px] rounded-2xl shadow-xl border border-slate-100 p-6 flex flex-col items-center text-center space-y-6 relative overflow-hidden animate-scale-up">
               
-              <div className="w-16 h-16 rounded-full bg-brand/15 border border-brand/20 text-brand flex items-center justify-center animate-bounce">
-                <CheckCircle className="w-9 h-9 fill-current text-brand" />
+              <div className="w-12 h-12 rounded-full bg-cyan-50 border border-cyan-100 text-brand flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-brand" />
               </div>
 
-              <div className="space-y-1">
-                <h3 className="font-poppins font-black text-base text-slate-800">Booking Confirmed!</h3>
+              <div className="space-y-2 pt-2">
+                <h3 className="font-poppins font-bold text-lg text-slate-850 tracking-tight leading-none">Booking Confirmed!</h3>
                 <p className="text-xs text-slate-400 font-semibold font-poppins">Reference ID: #{checkoutBooking.id.substring(0, 8).toUpperCase()}</p>
               </div>
 
               {/* Pay After Service Badge */}
-              <div className="w-full bg-cyan-50 border border-cyan-100 rounded-xl p-3 flex items-center space-x-2 text-cyan-800 text-left">
+              <div className="w-full bg-cyan-50/50 border border-cyan-100 rounded-xl p-3 flex items-center space-x-2 text-cyan-800 text-left">
                 <ShieldCheck className="w-5 h-5 text-cyan-600 fill-cyan-100 flex-shrink-0" />
                 <div className="leading-none">
-                  <span className="font-poppins font-black text-xs uppercase tracking-wide block">Pay After Service Active</span>
-                  <span className="text-[9.5px] font-semibold text-cyan-600 mt-0.5 block">Zero prepayment required</span>
+                  <span className="font-poppins font-extrabold text-xs uppercase tracking-wide block">Pay After Service Active</span>
+                  <span className="text-[9.5px] font-semibold text-cyan-650 mt-0.5 block">Zero prepayment required</span>
                 </div>
               </div>
 
@@ -292,9 +292,9 @@ export default function CartDrawer({ isOpen, onClose }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Payment Mode:</span>
-                  <span className="font-extrabold text-cyan-600 font-bold uppercase">Cash on Delivery / COD</span>
+                  <span className="font-extrabold text-cyan-600 uppercase">Cash on Delivery / COD</span>
                 </div>
-                <div className="flex justify-between border-t border-slate-200/50 pt-2 font-poppins font-black text-slate-800">
+                <div className="flex justify-between border-t border-slate-250/50 pt-2 font-poppins font-black text-slate-800">
                   <span>Total Amount Due:</span>
                   <span>Rs. {checkoutBooking.finalPrice.toLocaleString()}</span>
                 </div>
@@ -307,7 +307,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                     onClose();
                     navigate('/dashboard');
                   }}
-                  className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3 rounded-lg uppercase tracking-wider shadow-sm transition-all"
+                  className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-bold text-xs py-3 rounded-xl transition-all"
                 >
                   Track Booking (Dashboard)
                 </button>
@@ -315,7 +315,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                   href={`https://wa.me/918431588235?text=Hello%20JK%20Enterprises%2C%20I%20want%20to%20query%20my%20booking%20Ref%20%23${checkoutBooking.id.substring(0, 8).toUpperCase()}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-cyan-50 border border-cyan-200 text-cyan-700 hover:bg-cyan-100 font-poppins font-black text-xs py-3 rounded-lg uppercase tracking-wider text-center block transition-all"
+                  className="w-full bg-white hover:bg-slate-50 text-slate-700 font-poppins font-bold text-xs py-3 rounded-xl border border-slate-200 text-center block transition-all"
                 >
                   WhatsApp Support Chat
                 </a>
@@ -324,7 +324,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                     setShowCheckout(false);
                     onClose();
                   }}
-                  className="w-full bg-transparent hover:bg-slate-50 border border-slate-200 text-slate-600 font-poppins font-bold text-xs py-3 rounded-lg uppercase tracking-wider transition-all"
+                  className="w-full bg-transparent text-slate-450 hover:text-slate-650 font-poppins font-bold text-xs py-2 transition-all"
                 >
                   Close
                 </button>

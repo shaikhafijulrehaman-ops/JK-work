@@ -1,23 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useNotificationStore } from '../../store/notificationStore';
+import { getCache, setCache, invalidateCache, clearCache } from '../../utils/cache';
+import { fetchWithTimeout } from '../../utils/api';
+import { CardSkeleton, TableSkeleton, AnalyticsSkeleton } from '../../components/Skeletons';
 import { 
   TrendingUp, ShoppingBag, Users, Percent, ShieldAlert, 
   Calendar, Layers, ArrowRight, Database, Search, FileText, 
   Check, X, Eye, Phone, Mail, AlertCircle, MapPin, 
   CreditCard, CheckCircle, XCircle, Settings, Award, 
   ShieldCheck, BarChart3, Landmark, Grid, HelpCircle, 
-  ArrowUpRight, Download, Maximize2, LogOut, Plus, Sparkles
+  ArrowUpRight, Download, Maximize2, LogOut, Plus, Sparkles,
+  ArrowDownRight, Edit, Bell, Trash2
 } from 'lucide-react';
+
+const AdminAnalyticsTab = React.lazy(() => import('./AdminAnalyticsTab'));
+const AdminPaymentsTab = React.lazy(() => import('./AdminPaymentsTab'));
+const AdminWorkersTab = React.lazy(() => import('./AdminWorkersTab'));
 
 export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const navigate = useNavigate();
   const { logout } = useAuthStore();
-  const { addNotification } = useNotificationStore();
+  const { addNotification, notifications, fetchNotifications, markAsRead } = useNotificationStore();
 
-  // Selected view: dashboard, bookings, partner-approvals, partners, customers, payments, services, analytics, settings
+  // Selected view: dashboard, bookings, partner-approvals, partners, customers, payments, services, analytics, settings, coupons
   const [activeTab, setActiveTab] = useState(defaultTab);
   
   // Database States
@@ -25,12 +33,19 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [workers, setWorkers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [services, setServices] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tabLoading, setTabLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Sub-tabs for Audit Center
+  const [auditSubTab, setAuditSubTab] = useState('feed'); // feed, logins, bookings, partners, payments
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+
 
   // Selected Entity for Drawers / Modals
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -67,7 +82,122 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [newServiceDesc, setNewServiceDesc] = useState('');
   const [newServiceDuration, setNewServiceDuration] = useState('');
   const [newServicePackage, setNewServicePackage] = useState('');
+  const [newServiceIsActive, setNewServiceIsActive] = useState(true);
   const [addingService, setAddingService] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState(null);
+
+  // Coupon form states
+  const [coupons, setCoupons] = useState([]);
+  const [couponForm, setCouponForm] = useState({
+    id: null,
+    code: '',
+    discountType: 'PERCENTAGE',
+    discountValue: '',
+    minOrderValue: '0',
+    maxDiscount: '',
+    usageLimit: '',
+    expiresAt: '',
+    isActive: true
+  });
+  const [savingCoupon, setSavingCoupon] = useState(false);
+
+  // Notifications bell & seen tracking states
+  const [showNotifications, setShowNotifications] = useState(false);
+  const seenNotificationIds = React.useRef(new Set());
+
+  // Dynamic audit logs helper functions & computations
+  const getPartnerLastLogin = (workerUserId) => {
+    const matchedLog = auditLogs.find(log => log.action === 'USER_LOGIN' && log.userId === workerUserId);
+    return matchedLog ? new Date(matchedLog.createdAt).toLocaleString() : 'N/A';
+  };
+
+  const liveActivityFeed = useMemo(() => {
+    const feed = [];
+
+    // 1. Registrations
+    customers.forEach(c => {
+      feed.push({
+        id: `reg-${c.id}`,
+        text: `Customer ${c.name} registered`,
+        timestamp: new Date(c.createdAt),
+        type: 'REGISTRATION',
+        color: 'text-indigo-600 bg-indigo-50 border-indigo-100'
+      });
+    });
+
+    // 2. Logins
+    auditLogs.forEach(log => {
+      if (log.action === 'USER_LOGIN') {
+        const details = log.details ? JSON.parse(log.details) : {};
+        feed.push({
+          id: `login-${log.id}`,
+          text: `${log.user?.name || details.email || 'User'} logged in`,
+          timestamp: new Date(log.createdAt),
+          type: 'LOGIN',
+          color: 'text-emerald-600 bg-emerald-50 border-emerald-100'
+        });
+      }
+    });
+
+    // 3. Bookings
+    bookings.forEach(b => {
+      feed.push({
+        id: `book-create-${b.id}`,
+        text: `Booking #${b.id.substring(0, 8).toUpperCase()} created for Rs. ${b.finalPrice}`,
+        timestamp: new Date(b.createdAt),
+        type: 'BOOKING_CREATE',
+        color: 'text-cyan-600 bg-cyan-50 border-cyan-100'
+      });
+
+      // 4. Assignments
+      if (b.workerId && b.worker?.user?.name) {
+        feed.push({
+          id: `book-assign-${b.id}`,
+          text: `Booking #${b.id.substring(0, 8).toUpperCase()} assigned to Partner ${b.worker.user.name}`,
+          timestamp: new Date(b.updatedAt || b.createdAt),
+          type: 'BOOKING_ASSIGN',
+          color: 'text-amber-600 bg-amber-50 border-amber-100'
+        });
+      }
+
+      // 5. Payments
+      if (b.paymentStatus === 'PAID') {
+        feed.push({
+          id: `pay-recv-${b.id}`,
+          text: `Payment received ₹${b.finalPrice} via ${b.paymentMethod || 'UPI'}`,
+          timestamp: new Date(b.updatedAt || b.createdAt),
+          type: 'PAYMENT',
+          color: 'text-teal-600 bg-teal-50 border-teal-100'
+        });
+      }
+
+      // 6. Coupons
+      if (b.couponCode) {
+        feed.push({
+          id: `coupon-${b.id}`,
+          text: `Coupon ${b.couponCode} applied to Booking #${b.id.substring(0, 8).toUpperCase()}`,
+          timestamp: new Date(b.createdAt),
+          type: 'COUPON',
+          color: 'text-rose-600 bg-rose-50 border-rose-100'
+        });
+      }
+    });
+
+    // 7. Partner Approvals
+    workers.forEach(w => {
+      if (w.approvalStatus === 'APPROVED') {
+        feed.push({
+          id: `worker-app-${w.id}`,
+          text: `Partner ${w.user?.name || 'Worker'} approved`,
+          timestamp: new Date(w.updatedAt || w.createdAt),
+          type: 'PARTNER_APPROVAL',
+          color: 'text-purple-600 bg-purple-50 border-purple-100'
+        });
+      }
+    });
+
+    return feed.sort((a, b) => b.timestamp - a.timestamp);
+  }, [bookings, workers, customers, auditLogs]);
 
   // Logout handler
   const handleLogout = async () => {
@@ -76,7 +206,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     navigate('/auth');
   };
 
-  // Add Service handler
+  // Add/Edit Service handler
   const handleAddService = async (e) => {
     e.preventDefault();
     if (!newServiceName || !newServiceCategory || !newServicePrice || !newServiceDesc) {
@@ -85,25 +215,38 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     }
 
     setAddingService(true);
+    const body = {
+      name: newServiceName,
+      category: newServiceCategory,
+      price: parseFloat(newServicePrice),
+      description: newServiceDesc,
+      durationText: newServiceDuration,
+      packageText: newServicePackage,
+      imageUrl: newServiceImage,
+      isActive: newServiceIsActive
+    };
+
     try {
-      const res = await fetch('http://localhost:5000/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: newServiceName,
-          category: newServiceCategory,
-          price: parseFloat(newServicePrice),
-          description: newServiceDesc,
-          durationText: newServiceDuration,
-          packageText: newServicePackage,
-          imageUrl: newServiceImage
-        })
-      });
+      let res;
+      if (editingServiceId) {
+        res = await fetch(`http://localhost:5000/api/services/${editingServiceId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        });
+      } else {
+        res = await fetch('http://localhost:5000/api/services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        });
+      }
 
       const data = await res.json();
       if (data.success) {
-        addNotification('Service Created', `Service "${newServiceName}" successfully added to catalog.`);
+        addNotification(editingServiceId ? 'Service Updated' : 'Service Created', `Service "${newServiceName}" successfully saved.`);
         // Reset form
         setNewServiceName('');
         setNewServiceCategory('');
@@ -112,24 +255,26 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         setNewServiceDesc('');
         setNewServiceDuration('');
         setNewServicePackage('');
+        setNewServiceIsActive(true);
+        setEditingServiceId(null);
         fetchAllData();
       } else {
-        addNotification('Creation Failed', data.message || 'Failed to create service.');
+        addNotification('Operation Failed', data.message || 'Failed to save service.');
       }
     } catch (err) {
-      console.warn('Backend server offline. Simulating service creation locally...', err);
-      const fakeService = {
-        id: `s-${Date.now()}`,
-        name: newServiceName,
-        category: newServiceCategory,
-        price: parseFloat(newServicePrice),
-        description: newServiceDesc,
-        durationText: newServiceDuration,
-        packageText: newServicePackage,
-        imageUrl: newServiceImage || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=600&auto=format&fit=crop'
-      };
-      setServices(prev => [...prev, fakeService]);
-      addNotification('Service Created', `Service "${newServiceName}" created locally (Sandbox mode).`);
+      console.warn('Backend server offline. Simulating service save locally...', err);
+      if (editingServiceId) {
+        setServices(prev => prev.map(s => s.id === editingServiceId ? { ...s, ...body } : s));
+        addNotification('Service Updated', `Service "${newServiceName}" updated locally (Sandbox mode).`);
+      } else {
+        const fakeService = {
+          id: `s-${Date.now()}`,
+          ...body,
+          imageUrl: newServiceImage || ''
+        };
+        setServices(prev => [...prev, fakeService]);
+        addNotification('Service Created', `Service "${newServiceName}" created locally (Sandbox mode).`);
+      }
       
       setNewServiceName('');
       setNewServiceCategory('');
@@ -138,210 +283,199 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       setNewServiceDesc('');
       setNewServiceDuration('');
       setNewServicePackage('');
+      setNewServiceIsActive(true);
+      setEditingServiceId(null);
     } finally {
       setAddingService(false);
     }
   };
 
-  // Fetch all real database data
-  const fetchAllData = async () => {
-    setLoading(true);
-    setError(null);
+  // Delete Service handler
+  const handleDeleteService = async (serviceId) => {
+    if (!window.confirm("Are you sure you want to delete this service?")) {
+      return;
+    }
     try {
-      const res = await fetch('http://localhost:5000/api/admin/dashboard-data', {
+      const res = await fetch(`http://localhost:5000/api/services/${serviceId}`, {
+        method: 'DELETE',
         credentials: 'include'
       });
-      
-      if (res.status === 401) {
-        console.warn('Backend returned 401 Unauthorized. Using high-fidelity local Sandbox fallback.');
-        loadSandboxData();
-        return;
-      }
-
       const data = await res.json();
-      
       if (data.success) {
-        setBookings(data.bookings || []);
-        setWorkers(data.workers || []);
-        setCustomers(data.customers || []);
-        setServices(data.services || []);
-        
-        console.log("Partner Approval Center Fetch Result");
-        console.log("Full Database Response (Workers):", data.workers);
-        
-        // Seen tracking for real-time notifications
-        const fetchedWorkers = data.workers || [];
-        const isInitial = seenWorkerIds.current.size === 0;
-        fetchedWorkers.forEach(w => {
-          if (['PENDING', 'UNDER_REVIEW'].includes(w.approvalStatus)) {
-            if (!seenWorkerIds.current.has(w.id)) {
-              if (!isInitial) {
-                showAdminToast('🔔 New Partner Application Received', `Pending Approval Count +1`);
-                addNotification('🔔 New Partner Application Received', 'Pending Approval Count +1');
-              }
-              seenWorkerIds.current.add(w.id);
-            }
-          } else {
-            seenWorkerIds.current.add(w.id);
-          }
-        });
+        addNotification('Service Deleted', 'Service successfully deleted from catalog.');
+        fetchAllData();
       } else {
-        console.warn('Backend returned success=false. Loading Sandbox database.');
-        loadSandboxData();
+        addNotification('Deletion Failed', data.message || 'Failed to delete service.');
       }
     } catch (err) {
-      console.warn('Backend server connection offline. Loading Sandbox database metrics...', err);
-      loadSandboxData();
-    } finally {
-      setLoading(false);
+      console.warn('Backend server offline. Simulating service delete locally...', err);
+      setServices(prev => prev.filter(s => s.id !== serviceId));
+      addNotification('Service Deleted', 'Service deleted locally (Sandbox mode).');
     }
   };
 
-  const loadSandboxData = () => {
-    // In-memory seeds matching live postgres schemas (completely clean of mock files/images for verification previews)
-    const mockServices = [
-      { 
-        id: 's-1', 
-        name: 'Baby Care', 
-        category: 'Care', 
-        price: 799,
-        durationText: '6 Hours',
-        packageText: 'Daily Needs',
-        description: 'Experienced and certified baby care professionals for daily home needs.',
-        imageUrl: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-2', 
-        name: 'Full House Deep Cleaning', 
-        category: 'Cleaning', 
-        price: 3499,
-        durationText: '5 Hours',
-        packageText: 'Deep Hygiene',
-        description: 'Complete deep cleaning of all rooms, bathrooms, kitchen, and balcony.',
-        imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-3', 
-        name: 'Bathroom Deep Cleaning', 
-        category: 'Cleaning', 
-        price: 749,
-        durationText: '1.5 Hours',
-        packageText: 'Premium Sanitation',
-        description: 'Intense scrubbing, stain removal, and sanitization of toilet and tiles.',
-        imageUrl: 'https://images.unsplash.com/photo-1620626011761-996317b69766?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-4', 
-        name: 'Full Kitchen Cleaning', 
-        category: 'Cleaning', 
-        price: 499,
-        durationText: '2 Hours',
-        packageText: 'Fresh Kitchen',
-        description: 'Deep degreasing of chimney, tiles, cabinets, slab, and kitchen sink.',
-        imageUrl: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-5', 
-        name: 'Dust Cleaning', 
-        category: 'Cleaning', 
-        price: 149,
-        durationText: '1 Hour',
-        packageText: 'Quick Dusting',
-        description: 'Quick dusting and dry vacuuming of accessible areas.',
-        imageUrl: 'https://images.unsplash.com/photo-1528740561666-bd2479fa0202?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-6', 
-        name: 'House Shifting', 
-        category: 'Shifting', 
-        price: 3499,
-        durationText: '1 Day',
-        packageText: '2BHK Package',
-        description: 'Professional packing, loading, moving, and unloading services for 2BHK.',
-        imageUrl: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-7', 
-        name: 'Cooking Service', 
-        category: 'Cooking', 
-        price: 149,
-        durationText: '1 Hour',
-        packageText: 'Meal Prep',
-        description: 'Hygienic and healthy home-cooked meal preparation (veg/non-veg).',
-        imageUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-8', 
-        name: 'House Painting', 
-        category: 'Painting', 
-        price: 20099,
-        durationText: '2-3 Days',
-        packageText: 'All Materials Included',
-        description: 'Premium interior wall painting with material and labor warranty.',
-        imageUrl: 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-9', 
-        name: 'Electrician Service', 
-        category: 'Technical', 
-        price: 499,
-        durationText: '1 Hour',
-        packageText: 'Essential Repairs',
-        description: 'Repairing of switchboards, wiring issues, appliances, and fan installations.',
-        imageUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-10', 
-        name: 'Security Provider', 
-        category: 'Care', 
-        price: 899,
-        durationText: '8 Hours',
-        packageText: 'Safe Protection',
-        description: 'Vigilant and background-verified security guards for corporate/residential properties.',
-        imageUrl: 'https://images.unsplash.com/photo-1557597774-9d273605dfa9?q=80&w=300&auto=format&fit=crop'
-      },
-      { 
-        id: 's-11', 
-        name: 'Pest Control', 
-        category: 'Cleaning', 
-        price: 2599,
-        durationText: '2 Hours',
-        packageText: '2BHK Package',
-        description: 'Odourless gel and spray treatment for cockroaches, ants, and bedbugs.',
-        imageUrl: 'https://images.unsplash.com/photo-1587324438673-56c507c57116?q=80&w=300&auto=format&fit=crop'
+  // Create or Update Coupon handler
+  const handleSaveCoupon = async (e) => {
+    e.preventDefault();
+    if (!couponForm.code || !couponForm.discountType || !couponForm.discountValue) {
+      addNotification('Validation Error', 'Please supply Code, Discount Type and Value.');
+      return;
+    }
+    
+    setSavingCoupon(true);
+    const body = {
+      code: couponForm.code,
+      discountType: couponForm.discountType,
+      discountValue: parseFloat(couponForm.discountValue),
+      minOrderValue: parseFloat(couponForm.minOrderValue || '0'),
+      maxDiscount: couponForm.maxDiscount ? parseFloat(couponForm.maxDiscount) : null,
+      usageLimit: couponForm.usageLimit ? parseInt(couponForm.usageLimit) : null,
+      expiresAt: couponForm.expiresAt ? new Date(couponForm.expiresAt).toISOString() : null,
+      isActive: couponForm.isActive
+    };
+
+    try {
+      let res;
+      if (couponForm.id) {
+        res = await fetch(`http://localhost:5000/api/admin/coupons/${couponForm.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        });
+      } else {
+        res = await fetch('http://localhost:5000/api/admin/coupons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        });
       }
+      const data = await res.json();
+      if (data.success) {
+        addNotification(couponForm.id ? 'Coupon Updated' : 'Coupon Created', `Coupon "${couponForm.code}" successfully saved.`);
+        setCouponForm({
+          id: null,
+          code: '',
+          discountType: 'PERCENTAGE',
+          discountValue: '',
+          minOrderValue: '0',
+          maxDiscount: '',
+          usageLimit: '',
+          expiresAt: '',
+          isActive: true
+        });
+        fetchAllData();
+      } else {
+        addNotification('Save Failed', data.message || 'Failed to save coupon.');
+      }
+    } catch (err) {
+      console.warn('Backend server offline. Simulating coupon save locally...', err);
+      const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
+      if (couponForm.id) {
+        const idx = localCoupons.findIndex(c => c.id === couponForm.id);
+        const updatedCoupon = { ...body, id: couponForm.id, usedCount: 0 };
+        if (idx > -1) {
+          localCoupons[idx] = updatedCoupon;
+        } else {
+          localCoupons.push(updatedCoupon);
+        }
+        addNotification('Coupon Updated', `Coupon "${couponForm.code}" updated locally (Sandbox mode).`);
+      } else {
+        const newId = `cp-${Date.now()}`;
+        const newCoupon = { ...body, id: newId, usedCount: 0 };
+        localCoupons.push(newCoupon);
+        addNotification('Coupon Created', `Coupon "${couponForm.code}" created locally (Sandbox mode).`);
+      }
+      localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
+      
+      setCouponForm({
+        id: null,
+        code: '',
+        discountType: 'PERCENTAGE',
+        discountValue: '',
+        minOrderValue: '0',
+        maxDiscount: '',
+        usageLimit: '',
+        expiresAt: '',
+        isActive: true
+      });
+      setTimeout(() => fetchAllData(), 100);
+    } finally {
+      setSavingCoupon(false);
+    }
+  };
+
+  // Delete Coupon handler
+  const handleDeleteCoupon = async (id, code) => {
+    if (!confirm(`Are you sure you want to delete coupon ${code}?`)) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/coupons/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        addNotification('Coupon Deleted', `Coupon ${code} has been deleted.`);
+        fetchAllData();
+      }
+    } catch (err) {
+      const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
+      const updated = localCoupons.filter(c => c.id !== id);
+      localStorage.setItem('jk_sandbox_coupons', JSON.stringify(updated));
+      setCoupons(prev => prev.filter(c => c.id !== id));
+      addNotification('Coupon Deleted', `Coupon ${code} deleted locally (Sandbox mode).`);
+    }
+  };
+
+  // Toggle Coupon Status
+  const handleToggleCouponStatus = async (id, code, currentStatus) => {
+    const nextStatus = !currentStatus;
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/coupons/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isActive: nextStatus })
+      });
+      if (res.ok) {
+        addNotification(nextStatus ? 'Coupon Enabled' : 'Coupon Disabled', `Coupon ${code} status updated.`);
+        fetchAllData();
+      }
+    } catch (err) {
+      const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
+      const idx = localCoupons.findIndex(c => c.id === id);
+      if (idx > -1) {
+        localCoupons[idx].isActive = nextStatus;
+        localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
+      } else {
+        const seedCoupon = coupons.find(c => c.id === id);
+        if (seedCoupon) {
+          localCoupons.push({ ...seedCoupon, isActive: nextStatus });
+          localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
+        }
+      }
+      setCoupons(prev => prev.map(c => c.id === id ? { ...c, isActive: nextStatus } : c));
+      addNotification(nextStatus ? 'Coupon Enabled' : 'Coupon Disabled', `Coupon ${code} status updated locally (Sandbox mode).`);
+    }
+  };
+
+  // Load Sandbox fallback per tab
+  const loadSandboxTab = (tab) => {
+    const mockServices = [
+      { id: 's-1', name: 'Baby Care', category: 'Care', price: 799, durationText: '6 Hours', packageText: 'Daily Needs', description: 'Experienced baby care professionals.', imageUrl: '/services/babycare.jpg' },
+      { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499, durationText: '', packageText: 'Deep Hygiene', description: 'Complete deep cleaning.', imageUrl: '/services/housecleaning.jpg' },
+      { id: 's-3', name: 'Bathroom Deep Cleaning', category: 'Cleaning', price: 749, durationText: '', packageText: 'Premium Sanitation', description: 'Deep sanitation.', imageUrl: '/services/bathroom-cleaning.jpg' },
+      { id: 's-4', name: 'Full Kitchen Cleaning', category: 'Cleaning', price: 499, durationText: '', packageText: 'Fresh Kitchen', description: 'Deep degreasing.', imageUrl: '/services/kitchen-cleaning.jpg' },
+      { id: 's-5', name: 'Dust Cleaning', category: 'Cleaning', price: 149, durationText: '1 Hour', packageText: 'Quick Dusting', description: 'Dust removal.', imageUrl: '/services/dust-cleaning.jpg' },
+      { id: 's-6', name: 'House Shifting', category: 'Shifting', price: 3499, durationText: '', packageText: '2BHK Package', description: 'Professional packing and moving.', imageUrl: '/services/house-shifting.jpg' },
+      { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149, durationText: '1 Hour', packageText: 'Meal Prep', description: 'Hygienic home-cooked meals.', imageUrl: '/services/cooking-service.jpg' },
+      { id: 's-8', name: 'House Painting', category: 'Painting', price: 20099, durationText: '', packageText: 'All Materials Included', description: 'Wall painting.', imageUrl: '/services/house-painting.jpg' },
+      { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499, durationText: '1 Hour', packageText: 'Essential Repairs', description: 'Electrical repairs.', imageUrl: '/services/electrician.jpg' },
+      { id: 's-10', name: 'Security Provider', category: 'Care', price: 899, durationText: '8 Hours', packageText: 'Safe Protection', description: 'Vigilant security guards.', imageUrl: '/services/security-provider-v2.jpg' },
+      { id: 's-11', name: 'Pest Control', category: 'Cleaning', price: 2599, durationText: '', packageText: '2BHK Package', description: 'Pest control treatment.', imageUrl: '/services/pest-control-v2.jpg' }
     ];
 
-    const mockWorkers = [
-      {
-        id: 'w-1',
-        approvalStatus: 'APPROVED',
-        experienceYears: 5,
-        address: 'Anchepalya, Tumkur Road',
-        createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-        rating: 4.8,
-        user: { name: 'Ramesh Kumar', phone: '7766554433', email: 'ramesh@jkenterprises.com', pincode: '560073' },
-        skills: [{ service: mockServices[1] }, { service: mockServices[2] }],
-        aadhaar: null, // Strictly null to show 'No document uploaded'
-        profilePhoto: null,
-        bankDetails: JSON.stringify({ holderName: 'Ramesh Kumar', bankName: 'HDFC Bank', accountNumber: '501002938475', ifsc: 'HDFC0000140', upi: 'ramesh@upi' }),
-        availability: 'Full Time'
-      },
-      {
-        id: 'w-2',
-        approvalStatus: 'APPROVED',
-        experienceYears: 4,
-        address: 'Peenya Industrial Area',
-        createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-        rating: 4.9,
-        user: { name: 'Vijay Kumar', phone: '8877665544', email: 'vijay@jkenterprises.com', pincode: '560058' },
-        skills: [{ service: mockServices[8] }],
-        aadhaar: null,
-        profilePhoto: null,
-        bankDetails: JSON.stringify({ holderName: 'Vijay Kumar', bankName: 'ICICI Bank', accountNumber: '000401928374', ifsc: 'ICIC0000004', upi: 'vijay@upi' }),
-        availability: 'Part Time'
-      }
-    ];
+    const mockWorkers = [];
 
     const mockCustomers = [
       { id: 'c-1', name: 'Aravind Swamy', email: 'customer@gmail.com', phone: '9876543210', pincode: '560073', serviceArea: 'Anchepalya', createdAt: new Date(Date.now() - 10 * 86400000).toISOString() },
@@ -354,7 +488,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         status: 'ASSIGNED',
         scheduledAt: new Date(Date.now() + 86400000).toISOString(),
         timeSlot: '10:00 AM - 11:00 AM',
-        address: 'Flat 402, Block A, Prestige Jindal City, Anchepalya, Bengaluru',
+        address: 'Prestige Jindal City, Anchepalya, Bengaluru',
         phone: '9876543210',
         totalPrice: 499.0,
         discountApplied: 0.0,
@@ -363,7 +497,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         paymentMethod: 'UPI',
         createdAt: new Date().toISOString(),
         user: mockCustomers[0],
-        worker: mockWorkers[1],
+        worker: { id: 'w-approved-2', approvalStatus: 'APPROVED', experienceYears: 4, address: 'Peenya Industrial Area', rating: 4.9, user: { name: 'Vijay Kumar', phone: '8877665544', email: 'vijay@jkenterprises.com' } },
         items: [{ service: mockServices[8], quantity: 1, price: 499.0 }]
       },
       {
@@ -380,64 +514,231 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         paymentMethod: 'CASH',
         createdAt: new Date(Date.now() - 86400000).toISOString(),
         user: mockCustomers[1],
-        worker: mockWorkers[0],
+        worker: { id: 'w-approved-1', approvalStatus: 'APPROVED', experienceYears: 5, address: 'Anchepalya, Tumkur Road', rating: 4.8, user: { name: 'Ramesh Kumar', phone: '7766554433', email: 'ramesh@jkenterprises.com' } },
         items: [{ service: mockServices[2], quantity: 1, price: 749.0 }]
       }
     ];
 
-    // Merge in local storage registrations for sandbox preview integrity
-    const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-    const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-    
-    const mergedWorkers = [...mockWorkers];
-    localWorkers.forEach(lw => {
-      if (!mergedWorkers.some(mw => mw.id === lw.id || mw.userId === lw.userId || mw.user?.phone === lw.user?.phone)) {
-        mergedWorkers.push(lw);
-      }
-    });
+    const mockCoupons = [
+      { id: 'cp-1', code: 'WELCOME50', discountType: 'FLAT', discountValue: 50.0, minOrderValue: 200.0, maxDiscount: 50.0, usageLimit: 100, perUserLimit: 1, usedCount: 0, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(), isActive: true },
+      { id: 'cp-2', code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, minOrderValue: 150.0, maxDiscount: 100.0, usageLimit: 500, perUserLimit: 1, usedCount: 0, expiresAt: new Date(Date.now() + 15 * 86400000).toISOString(), isActive: true }
+    ];
 
-    const mergedCustomers = [...mockCustomers];
-    localUsers.forEach(lu => {
-      if (lu.role === 'USER' && !mergedCustomers.some(mc => mc.id === lu.id || mc.phone === lu.phone)) {
-        mergedCustomers.push(lu);
-      }
-    });
-
-    setServices(mockServices);
-    setWorkers(mergedWorkers);
-    setCustomers(mergedCustomers);
-    setBookings(mockBookings);
-
-    console.log("Partner Approval Center Fetch Result");
-    console.log("Full Database Response (Workers - Sandbox):", mergedWorkers);
-
-    // Seen tracking for real-time notifications (Sandbox)
-    const isInitial = seenWorkerIds.current.size === 0;
-    mergedWorkers.forEach(w => {
-      if (['PENDING', 'UNDER_REVIEW'].includes(w.approvalStatus)) {
-        if (!seenWorkerIds.current.has(w.id)) {
-          if (!isInitial) {
-            showAdminToast('🔔 New Partner Application Received', `Pending Approval Count +1`);
-            addNotification('🔔 New Partner Application Received', 'Pending Approval Count +1');
-          }
-          seenWorkerIds.current.add(w.id);
+    if (tab === 'dashboard') {
+      const stats = {
+        todayCount: 1,
+        pendingCount: 0,
+        completedCount: 1,
+        cancelledCount: 0,
+        activePartnersCount: 2,
+        pendingApprovalsCount: 0,
+        todayRev: 0,
+        monthRev: 1248.0,
+        activeCouponsCount: 2,
+        totalCouponsCount: 2
+      };
+      setAnalytics(stats);
+      setWorkers(mockWorkers);
+    } else if (tab === 'bookings') {
+      setBookings(mockBookings);
+    } else if (tab === 'customers') {
+      setCustomers(mockCustomers);
+    } else if (tab === 'services') {
+      setServices(mockServices);
+    } else if (tab === 'coupons') {
+      setCoupons(mockCoupons);
+    } else if (tab === 'audit-logs') {
+      setBookings(mockBookings);
+      setWorkers(mockWorkers);
+      setCustomers(mockCustomers);
+      setServices(mockServices);
+      setCoupons(mockCoupons);
+      
+      const seedLogs = [
+        {
+          id: 'al-seed-1',
+          userId: 'user-cust',
+          action: 'USER_LOGIN',
+          details: JSON.stringify({ email: 'customer@gmail.com', role: 'USER' }),
+          ipAddress: '127.0.0.1',
+          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+          user: { id: 'user-cust', name: 'Aravind Swamy', email: 'customer@gmail.com', phone: '9876543210', role: 'USER' }
+        },
+        {
+          id: 'al-seed-2',
+          userId: 'user-worker-w-2',
+          action: 'USER_LOGIN',
+          details: JSON.stringify({ email: 'vijay@jkenterprises.com', role: 'WORKER' }),
+          ipAddress: '127.0.0.1',
+          createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+          user: { id: 'user-worker-w-2', name: 'Vijay Kumar', email: 'vijay@jkenterprises.com', phone: '8877665544', role: 'WORKER' }
+        },
+        {
+          id: 'al-seed-3',
+          userId: 'user-admin',
+          action: 'USER_LOGIN',
+          details: JSON.stringify({ email: 'admin@jkenterprises.com', role: 'ADMIN' }),
+          ipAddress: '127.0.0.1',
+          createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+          user: { id: 'user-admin', name: 'JK Admin', email: 'admin@jkenterprises.com', phone: '8431588235', role: 'ADMIN' }
         }
-      } else {
-        seenWorkerIds.current.add(w.id);
+      ];
+      setAuditLogs(seedLogs);
+    }
+  };
+
+  // Fetch page specific data
+  const fetchTabSpecificData = async (tab, forceRefetch = false) => {
+    // If it's one of the extracted tabs, they handle their own data loading
+    if (['analytics', 'payments', 'partner-approvals', 'partners'].includes(tab)) {
+      setTabLoading(false);
+      setLoading(false);
+      return;
+    }
+
+    const cached = getCache(`tab_${tab}`);
+    if (cached && !forceRefetch) {
+      if (tab === 'dashboard') {
+        setAnalytics(cached.analytics);
+        setWorkers(cached.workers);
+      } else if (tab === 'bookings') {
+        setBookings(cached);
+      } else if (tab === 'customers') {
+        setCustomers(cached);
+      } else if (tab === 'services') {
+        setServices(cached);
+      } else if (tab === 'coupons') {
+        setCoupons(cached);
+      } else if (tab === 'audit-logs') {
+        setBookings(cached.bookings);
+        setWorkers(cached.workers);
+        setCustomers(cached.customers);
+        setServices(cached.services);
+        setCoupons(cached.coupons);
+        setAuditLogs(cached.auditLogs);
       }
+      setTabLoading(false);
+      setLoading(false);
+      return;
+    }
+
+    setTabLoading(true);
+    setError(null);
+
+    try {
+      if (tab === 'dashboard') {
+        const [analyticsRes, workersRes] = await Promise.all([
+          fetchWithTimeout('http://localhost:5000/api/admin/analytics', { credentials: 'include' }),
+          fetchWithTimeout('http://localhost:5000/api/admin/workers?status=PENDING', { credentials: 'include' })
+        ]);
+        
+        const analyticsData = await analyticsRes.json();
+        const workersData = await workersRes.json();
+
+        if (analyticsData.success && workersData.success) {
+          const stats = analyticsData.analytics;
+          const pendingList = workersData.workers || [];
+          setAnalytics(stats);
+          setWorkers(pendingList);
+          setCache(`tab_dashboard`, { analytics: stats, workers: pendingList });
+        } else {
+          throw new Error('Failed to retrieve dashboard analytics');
+        }
+      } else if (tab === 'bookings') {
+        const res = await fetchWithTimeout('http://localhost:5000/api/admin/bookings', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setBookings(data.bookings || []);
+          setCache(`tab_bookings`, data.bookings || []);
+        } else {
+          throw new Error('Failed to retrieve bookings.');
+        }
+      } else if (tab === 'customers') {
+        const res = await fetchWithTimeout('http://localhost:5000/api/admin/customers', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setCustomers(data.customers || []);
+          setCache(`tab_customers`, data.customers || []);
+        } else {
+          throw new Error('Failed to retrieve customers.');
+        }
+      } else if (tab === 'services') {
+        const res = await fetchWithTimeout('http://localhost:5000/api/admin/services', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setServices(data.services || []);
+          setCache(`tab_services`, data.services || []);
+        } else {
+          throw new Error('Failed to retrieve services.');
+        }
+      } else if (tab === 'coupons') {
+        const res = await fetchWithTimeout('http://localhost:5000/api/admin/coupons', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setCoupons(data.coupons || []);
+          setCache(`tab_coupons`, data.coupons || []);
+        } else {
+          throw new Error('Failed to retrieve coupons.');
+        }
+      } else if (tab === 'audit-logs') {
+        const res = await fetchWithTimeout('http://localhost:5000/api/admin/dashboard-data', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setBookings(data.bookings || []);
+          setWorkers(data.workers || []);
+          setCustomers(data.customers || []);
+          setServices(data.services || []);
+          setCoupons(data.coupons || []);
+          setAuditLogs(data.auditLogs || []);
+          setCache(`tab_audit-logs`, {
+            bookings: data.bookings || [],
+            workers: data.workers || [],
+            customers: data.customers || [],
+            services: data.services || [],
+            coupons: data.coupons || [],
+            auditLogs: data.auditLogs || []
+          });
+        } else {
+          throw new Error('Failed to retrieve unified dashboard data.');
+        }
+      }
+    } catch (err) {
+      console.warn('Backend server offline. Simulating local Sandbox metrics...', err);
+      loadSandboxTab(tab);
+      setError(err.message || 'Unable to connect to service registry.');
+    } finally {
+      setTabLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const fetchAllData = () => {
+    // Invalidate the cache for all tabs to ensure sync grabs latest data everywhere
+    ['dashboard', 'audit-logs', 'bookings', 'customers', 'services', 'coupons', 'analytics', 'payments', 'partner-approvals', 'partners'].forEach(tab => {
+      invalidateCache(`tab_${tab}`);
     });
+    fetchTabSpecificData(activeTab, true);
   };
 
   useEffect(() => {
-    fetchAllData();
-    
-    // Automatically poll live data every 10 seconds to show registrations instantly without refresh
-    const pollInterval = setInterval(() => {
-      fetchAllData();
-    }, 10000);
-    
-    return () => clearInterval(pollInterval);
+    fetchTabSpecificData(activeTab);
   }, [activeTab]);
+
+
+  // watch notifications for real-time toasts
+  useEffect(() => {
+    if (!notifications || notifications.length === 0) return;
+    const isInitial = seenNotificationIds.current.size === 0;
+    
+    notifications.forEach(n => {
+      if (!seenNotificationIds.current.has(n.id)) {
+        seenNotificationIds.current.add(n.id);
+        if (!isInitial && !n.isRead) {
+          showAdminToast(n.title, n.message);
+        }
+      }
+    });
+  }, [notifications]);
 
   // Actions
   const handleApprovePartner = async (id) => {
@@ -573,6 +874,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     
     const activePartners = workers.filter(w => w.approvalStatus === 'APPROVED');
     const pendingApprovals = workers.filter(w => w.approvalStatus === 'PENDING');
+    
+    const activeCoupons = coupons.filter(c => c.isActive);
 
     const todayRevenue = bookings
       .filter(b => b.status === 'COMPLETED' && new Date(b.createdAt).toDateString() === today)
@@ -590,7 +893,9 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       activePartnersCount: activePartners.length,
       pendingApprovalsCount: pendingApprovals.length,
       todayRev: todayRevenue,
-      monthRev: monthRevenue
+      monthRev: monthRevenue,
+      activeCouponsCount: activeCoupons.length,
+      totalCouponsCount: coupons.length
     };
   };
 
@@ -607,63 +912,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const pendingWorkers = workers.filter(w => ['PENDING', 'UNDER_REVIEW'].includes(w.approvalStatus));
 
-  // Partner Performance calculation
-  const getPartnerPerformance = () => {
-    const today = new Date().toDateString();
-    const getWeekRange = () => {
-      const now = new Date();
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    };
-    const getMonthRange = () => {
-      const now = new Date();
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    };
 
-    return workers.map(w => {
-      const wBookings = bookings.filter(b => b.workerId === w.id && b.status === 'COMPLETED');
-      const jobsToday = wBookings.filter(b => new Date(b.createdAt).toDateString() === today).length;
-      const jobsWeek = wBookings.filter(b => new Date(b.createdAt) >= getWeekRange()).length;
-      const jobsMonth = wBookings.filter(b => new Date(b.createdAt) >= getMonthRange()).length;
-      
-      const earnings = wBookings.reduce((sum, b) => sum + (b.finalPrice * 0.7), 0);
-      const cat = w.skills && w.skills[0] ? w.skills[0].service?.name : 'General Helper';
-
-      return {
-        ...w,
-        category: cat,
-        jobsToday,
-        jobsWeek,
-        jobsMonth,
-        earnings
-      };
-    }).sort((a, b) => b.jobsMonth - a.jobsMonth || b.rating - a.rating);
-  };
-
-  // Payments Summary
-  const getPaymentDetails = () => {
-    const today = new Date().toDateString();
-    const oneWeekAgo = new Date(Date.now() - 7 * 86400000);
-    const oneMonthAgo = new Date(Date.now() - 30 * 86400000);
-
-    const completedPaid = bookings.filter(b => b.status === 'COMPLETED');
-    const todayRev = completedPaid.filter(b => new Date(b.createdAt).toDateString() === today).reduce((sum, b) => sum + b.finalPrice, 0);
-    const weekRev = completedPaid.filter(b => new Date(b.createdAt) >= oneWeekAgo).reduce((sum, b) => sum + b.finalPrice, 0);
-    const monthRev = completedPaid.filter(b => new Date(b.createdAt) >= oneMonthAgo).reduce((sum, b) => sum + b.finalPrice, 0);
-
-    return {
-      todayRev, weekRev, monthRev,
-      paymentList: bookings.map(b => ({
-        id: b.id,
-        amount: b.finalPrice,
-        partnerShare: b.status === 'COMPLETED' ? b.finalPrice * 0.7 : 0,
-        platformShare: b.status === 'COMPLETED' ? b.finalPrice * 0.3 : 0,
-        status: b.paymentStatus || 'PENDING',
-        createdAt: b.createdAt
-      }))
-    };
-  };
-
-  const payments = getPaymentDetails();
 
   // Service Analytics
   const getServiceAnalytics = () => {
@@ -690,34 +939,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const serviceAnalytics = getServiceAnalytics();
 
-  // Area Analytics
-  const getAreaAnalytics = () => {
-    const areas = [
-      { name: 'Anchepalya', pincodes: ['560073'] },
-      { name: 'Nagasandra', pincodes: ['560074'] },
-      { name: 'Bagalagunte', pincodes: ['560075'] },
-      { name: 'Peenya', pincodes: ['560058'] },
-      { name: 'Peenya Industrial Area', pincodes: ['560059'] },
-      { name: 'Madavara', pincodes: ['562123'] },
-      { name: 'Chikkabidarakallu', pincodes: ['560076'] },
-      { name: 'Doddabidarakallu', pincodes: ['560077'] }
-    ];
 
-    return areas.map(area => {
-      const areaBookings = bookings.filter(b => b.address?.toLowerCase().includes(area.name.toLowerCase()));
-      const revenue = areaBookings.filter(b => b.status === 'COMPLETED').reduce((sum, b) => sum + b.finalPrice, 0);
-      const activePartners = workers.filter(w => w.approvalStatus === 'APPROVED' && w.address?.toLowerCase().includes(area.name.toLowerCase())).length;
-
-      return {
-        name: area.name,
-        bookings: areaBookings.length,
-        revenue,
-        activePartners
-      };
-    });
-  };
-
-  const areaAnalytics = getAreaAnalytics();
 
   // Customer Management Data
   const getCustomerManagement = () => {
@@ -748,16 +970,26 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     });
   };
 
+  const isDocumentUploaded = (url) => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    if (url.startsWith('http') && url.includes('supabase.co')) {
+      return true;
+    }
+    return !lower.includes('unsplash.com') && 
+           !lower.includes('sample') && 
+           url !== 'profile.jpg' && 
+           url !== 'selfie.jpg' && 
+           url !== 'profile' && 
+           url !== 'selfie' && 
+           url !== 'aadhaar_front' && 
+           url !== 'aadhaar_back' && 
+           url !== 'aadhaar';
+  };
+
   // Render Premium Document Previewer Guard (Prevents ALL fake/mock placeholder files)
   const renderDocumentPreview = (title, base64Data) => {
-    // Strict Guard: check if empty, contains local developer names, or unsplash URLs
-    const isUploaded = base64Data && 
-                       !base64Data.startsWith('http') && 
-                       !base64Data.includes('sample') && 
-                       !base64Data.includes('profile.jpg') && 
-                       !base64Data.includes('selfie.jpg') && 
-                       !base64Data.includes('aadhaar_front') && 
-                       !base64Data.includes('aadhaar_back');
+    const isUploaded = isDocumentUploaded(base64Data);
 
     return (
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
@@ -772,7 +1004,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
             </span>
           ) : (
             <span className="bg-amber-50 text-amber-700 font-extrabold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              No document uploaded
+              Image Not Available
             </span>
           )}
         </div>
@@ -806,7 +1038,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           </div>
         ) : (
           <div className="h-24 bg-slate-100 rounded-xl flex items-center justify-center border border-dashed border-slate-200">
-            <span className="text-xs text-slate-400 font-medium">No document uploaded</span>
+            <span className="text-xs text-slate-400 font-medium">Image Not Available</span>
           </div>
         )}
       </div>
@@ -832,12 +1064,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           <nav className="px-3 space-y-1">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: Grid },
+              { id: 'audit-logs', label: 'Audit Center', icon: ShieldCheck },
               { id: 'bookings', label: 'Bookings', icon: Calendar },
               { id: 'partner-approvals', label: 'Partner Approvals', icon: ShieldCheck, badge: pendingWorkers.length },
               { id: 'partners', label: 'Partners', icon: Users },
               { id: 'customers', label: 'Customers', icon: Award },
               { id: 'payments', label: 'Payments', icon: Landmark },
               { id: 'services', label: 'Services', icon: Layers },
+              { id: 'coupons', label: 'Coupons', icon: Percent },
               { id: 'analytics', label: 'Analytics', icon: BarChart3 },
               { id: 'settings', label: 'Settings', icon: Settings }
             ].map(item => {
@@ -904,6 +1138,76 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Notifications Bell Dropdown */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 text-slate-500 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-sm flex items-center justify-center cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+                {notifications && notifications.filter(n => !n.isRead).length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-bounce shadow">
+                    {notifications.filter(n => !n.isRead).length}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-40 overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                        <span className="font-bold text-xs text-slate-800">Notifications ({notifications.filter(n => !n.isRead).length} unread)</span>
+                        {notifications.filter(n => !n.isRead).length > 0 && (
+                          <button 
+                            onClick={() => {
+                              notifications.forEach(n => {
+                                if (!n.isRead) markAsRead(n.id);
+                              });
+                            }}
+                            className="text-[10px] text-brand hover:underline font-bold"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                        {notifications && notifications.length > 0 ? (
+                          notifications.map(n => (
+                            <div key={n.id} className={`p-4 text-left transition-colors ${n.isRead ? 'bg-white' : 'bg-slate-50/70'}`}>
+                              <div className="flex justify-between items-start">
+                                <h4 className={`text-xs font-bold ${n.isRead ? 'text-slate-700' : 'text-slate-900'}`}>{n.title}</h4>
+                                {!n.isRead && (
+                                  <button 
+                                    onClick={() => markAsRead(n.id)}
+                                    className="text-[9px] text-brand font-bold hover:underline"
+                                  >
+                                    Mark read
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">{n.message}</p>
+                              <span className="text-[8px] text-slate-400 mt-1.5 block">{new Date(n.createdAt).toLocaleTimeString()}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-8 text-center text-xs text-slate-400 font-medium">
+                            No notifications yet
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+
             <button 
               onClick={fetchAllData} 
               className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase px-4 py-2 rounded-xl tracking-wider transition-all shadow-sm shadow-brand/10"
@@ -922,19 +1226,31 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
         {/* Content body */}
         <div className="p-8 flex-1">
-          {loading ? (
-            <div className="h-full flex items-center justify-center flex-col py-32 space-y-3">
-              <div className="w-10 h-10 border-4 border-slate-200 border-t-brand rounded-full animate-spin"></div>
-              <p className="text-xs text-slate-400 font-medium">Syncing data from live Neon Postgres...</p>
-            </div>
+          {tabLoading ? (
+            activeTab === 'dashboard' || activeTab === 'analytics' ? (
+              <AnalyticsSkeleton />
+            ) : activeTab === 'payments' ? (
+              <TableSkeleton cols={6} rows={5} />
+            ) : activeTab === 'partner-approvals' || activeTab === 'partners' ? (
+              <TableSkeleton cols={7} rows={6} />
+            ) : (
+              <TableSkeleton cols={5} rows={5} />
+            )
           ) : error ? (
-            <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-center space-y-3 my-12 max-w-md mx-auto">
+            <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-center space-y-3 my-12 max-w-md mx-auto animate-fade-up">
               <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
-              <h3 className="font-bold text-sm text-slate-800">Failed to connect to Database</h3>
+              <h3 className="font-bold text-sm text-slate-800">Unable to load data</h3>
               <p className="text-xs text-slate-500">{error}</p>
+              <button 
+                onClick={() => fetchTabSpecificData(activeTab, true)} 
+                className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase px-4 py-2 rounded-xl transition-all shadow-md shadow-brand/10 mt-2"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <AnimatePresence mode="wait">
+
               <motion.div
                 key={activeTab}
                 initial={{ opacity: 0, y: 10 }}
@@ -1021,6 +1337,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                         <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><ShieldAlert className="w-5 h-5" /></div>
                       </div>
 
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('coupons')}>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Active Coupons</span>
+                          <span className="font-poppins font-black text-xl text-brand mt-1 block">{stats.activeCouponsCount} / {stats.totalCouponsCount}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><Percent className="w-5 h-5" /></div>
+                      </div>
+
                     </div>
 
                     {/* Operational Quick list */}
@@ -1083,7 +1407,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             </div>
                           ))}
                           {workers.filter(w => w.approvalStatus === 'PENDING').length === 0 && (
-                            <p className="text-xs text-slate-400 text-center py-8">No Service Partner Applications Yet</p>
+                            <p className="text-xs text-slate-400 text-center py-8">No Partner Applications Available</p>
                           )}
                         </div>
                       </div>
@@ -1092,77 +1416,279 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   </div>
                 )}
 
-                {/* ==================== TAB 2: PARTNER APPROVAL CENTER ==================== */}
-                {activeTab === 'partner-approvals' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="font-poppins font-black text-2xl text-slate-800">Partner Approval Center</h2>
-                      <p className="text-xs text-slate-400 mt-1">Audit and verify incoming service professional applications</p>
+                {/* ==================== TAB 1.5: SYSTEM AUDIT CENTER LEDGER ==================== */}
+                {activeTab === 'audit-logs' && (
+                  <div className="space-y-6 animate-fade-in text-slate-800">
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-4 gap-4">
+                      <div>
+                        <h2 className="font-poppins font-black text-2xl text-slate-850 flex items-center space-x-2">
+                          <ShieldCheck className="w-6 h-6 text-brand" />
+                          <span>Admin Audit Center</span>
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-1">Real-time ledger audit log of all database events and business metrics</p>
+                      </div>
+                      
+                      {/* Refresh Button */}
+                      <button 
+                        onClick={fetchAllData}
+                        className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center space-x-1.5 self-end"
+                      >
+                        <TrendingUp className="w-3.5 h-3.5 text-brand" />
+                        <span>Force Sync DB</span>
+                      </button>
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
-                            <tr>
-                              <th className="p-4">Partner Name</th>
-                              <th className="p-4">Mobile</th>
-                              <th className="p-4">Service Category</th>
-                              <th className="p-4">Experience</th>
-                              <th className="p-4">Area</th>
-                              <th className="p-4">Submitted Date</th>
-                              <th className="p-4">Status</th>
-                              <th className="p-4 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                            {pendingWorkers.map(w => (
-                              <tr key={w.id} className="hover:bg-slate-50/50">
-                                <td className="p-4 font-bold text-slate-850">{w.user?.name}</td>
-                                <td className="p-4 font-mono">{w.user?.phone}</td>
-                                <td className="p-4">
-                                  <span className="bg-brand/10 text-brand px-2 py-0.5 rounded text-[10px] font-bold">
-                                    {w.skills?.[0]?.service?.name || 'Helper'}
-                                  </span>
-                                </td>
-                                <td className="p-4">{w.experienceYears} Years</td>
-                                <td className="p-4 text-slate-500">{w.address?.split(',')?.[0] || 'Bengaluru'}</td>
-                                <td className="p-4 text-slate-500">{new Date(w.createdAt || Date.now()).toLocaleDateString()}</td>
-                                <td className="p-4">
-                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                    w.approvalStatus === 'UNDER_REVIEW' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                                  }`}>
-                                    {w.approvalStatus}
-                                  </span>
-                                </td>
-                                <td className="p-4 text-right space-x-2 shrink-0">
-                                  <button 
-                                    onClick={() => { setSelectedWorker(w); openVerificationDrawer(w); }}
-                                    className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg transition-all inline-flex items-center space-x-1 shadow-sm"
-                                  >
-                                    <Eye className="w-3 h-3 text-slate-400" />
-                                    <span>View Application</span>
-                                  </button>
-                                  <a 
-                                    href={`tel:${w.user?.phone}`}
-                                    className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg transition-all inline-flex items-center space-x-1 shadow-sm"
-                                  >
-                                    <Phone className="w-3 h-3 text-slate-400" />
-                                    <span>Call</span>
-                                  </a>
-                                </td>
-                              </tr>
-                            ))}
-                            {pendingWorkers.length === 0 && (
-                              <tr>
-                                <td colSpan="8" className="p-8 text-center text-slate-400 font-medium">No Service Partner Applications Yet</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
+                    {/* Operational Sub-Tabs Bar */}
+                    <div className="flex overflow-x-auto flex-nowrap gap-2 pb-2 border-b border-slate-100 scrollbar-hide">
+                      {[
+                        { id: 'feed', label: '🔔 Live Activity Feed' },
+                        { id: 'logins', label: '📋 Recent Logins' },
+                        { id: 'bookings', label: '📦 Booking Activity' },
+                        { id: 'partners', label: '🧑🔧 Partner Activity' },
+                        { id: 'payments', label: '💰 Payment Activity' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setAuditSubTab(tab.id)}
+                          className={`px-4 py-2.5 rounded-xl font-poppins font-bold text-xs transition-all flex-shrink-0 ${
+                            auditSubTab === tab.id
+                              ? 'bg-brand text-white shadow-md shadow-brand/10'
+                              : 'bg-white text-slate-600 hover:bg-slate-100/60 border border-slate-200/50'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
                     </div>
+
+                    {/* Tab Contents */}
+                    {tabLoading ? (
+                      <TableSkeleton cols={6} rows={6} />
+                    ) : (
+                      <div className="space-y-4">
+                        {/* 1. Live Activity Feed */}
+                        {auditSubTab === 'feed' && (
+                          <div className="bg-white border border-slate-150 rounded-2xl p-6 shadow-sm space-y-4">
+                            <h3 className="font-poppins font-extrabold text-sm text-slate-800 flex items-center space-x-2 border-b border-slate-100 pb-3">
+                              <span className="w-2.5 h-2.5 rounded-full bg-brand animate-pulse"></span>
+                              <span>Real-Time Business Activity Ledger Feed</span>
+                            </h3>
+
+                            <div className="relative border-l border-slate-200 pl-6 space-y-6 ml-3 py-2">
+                              {liveActivityFeed.map((item, idx) => (
+                                <div key={item.id || idx} className="relative group">
+                                  {/* Timeline dot */}
+                                  <span className="absolute -left-[31px] top-1 w-3.5 h-3.5 rounded-full border border-white bg-slate-200 flex items-center justify-center text-[8px] group-hover:scale-110 transition-transform shadow-xs">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                  </span>
+
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                                    <div className="flex items-center space-x-2.5">
+                                      <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${item.color}`}>
+                                        {item.type.replace('_', ' ')}
+                                      </span>
+                                      <span className="text-xs font-bold text-slate-700 font-poppins">{item.text}</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                      {item.timestamp.toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              {liveActivityFeed.length === 0 && (
+                                <p className="text-xs text-slate-400 text-center py-10 font-poppins">No real activity events found in database ledger.</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Recent Logins */}
+                        {auditSubTab === 'logins' && (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="p-4">User Name</th>
+                                    <th className="p-4">Mobile</th>
+                                    <th className="p-4">Email</th>
+                                    <th className="p-4">Role</th>
+                                    <th className="p-4">Login Time</th>
+                                    <th className="p-4">IP Address</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                  {auditLogs.filter(log => log.action === 'USER_LOGIN').map(log => {
+                                    const details = log.details ? JSON.parse(log.details) : {};
+                                    return (
+                                      <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="p-4 font-bold text-slate-800">{log.user?.name || 'JK Seed User'}</td>
+                                        <td className="p-4 font-mono">{log.user?.phone || 'N/A'}</td>
+                                        <td className="p-4 font-mono text-slate-500">{log.user?.email || details.email || 'N/A'}</td>
+                                        <td className="p-4">
+                                          <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                            log.user?.role === 'ADMIN' ? 'bg-red-50 text-red-700' : log.user?.role === 'WORKER' ? 'bg-amber-50 text-amber-700' : 'bg-cyan-50 text-cyan-700'
+                                          }`}>
+                                            {log.user?.role || details.role || 'USER'}
+                                          </span>
+                                        </td>
+                                        <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                                        <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {auditLogs.filter(log => log.action === 'USER_LOGIN').length === 0 && (
+                                    <tr>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real login records available.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 3. Booking Activity */}
+                        {auditSubTab === 'bookings' && (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="p-4">Booking ID</th>
+                                    <th className="p-4">Customer Name</th>
+                                    <th className="p-4">Service</th>
+                                    <th className="p-4">Amount</th>
+                                    <th className="p-4">Area</th>
+                                    <th className="p-4">Time</th>
+                                    <th className="p-4">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                  {bookings.map(b => (
+                                    <tr key={b.id} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-mono font-bold text-brand">{b.id.substring(0,8).toUpperCase()}</td>
+                                      <td className="p-4 font-bold text-slate-800">{b.user?.name || 'Customer'}</td>
+                                      <td className="p-4 font-bold text-slate-700">{b.items?.[0]?.service?.name || 'General Service'}</td>
+                                      <td className="p-4 font-bold text-slate-800">Rs. {b.finalPrice}</td>
+                                      <td className="p-4 text-slate-500">{b.address?.split('|')?.[0]?.split(',')?.[1] || 'Anchepalya'}</td>
+                                      <td className="p-4 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
+                                      <td className="p-4">
+                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                          b.status === 'COMPLETED' ? 'bg-emerald-55 bg-emerald-50 text-emerald-700' : b.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-705 text-amber-700'
+                                        }`}>
+                                          {b.status.replace(/_/g, ' ')}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {bookings.length === 0 && (
+                                    <tr>
+                                      <td colSpan="7" className="text-center py-10 text-slate-405 font-poppins">No real booking activities recorded.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 4. Partner Activity */}
+                        {auditSubTab === 'partners' && (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="p-4">Partner Name</th>
+                                    <th className="p-4">Category Skills</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4">Approval Date</th>
+                                    <th className="p-4">Last Login</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                  {workers.map(w => (
+                                    <tr key={w.id} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-bold text-slate-800">{w.user?.name || 'Service Partner'}</td>
+                                      <td className="p-4 text-slate-600">
+                                        {w.skills?.map(s => s.service?.name).join(', ') || w.skills?.[0]?.service?.name || 'Relocation & Technical Support'}
+                                      </td>
+                                      <td className="p-4">
+                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                          w.approvalStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : w.approvalStatus === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                                        }`}>
+                                          {w.approvalStatus}
+                                        </span>
+                                      </td>
+                                      <td className="p-4 text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</td>
+                                      <td className="p-4 text-slate-500 font-semibold">{getPartnerLastLogin(w.userId)}</td>
+                                    </tr>
+                                  ))}
+                                  {workers.length === 0 && (
+                                    <tr>
+                                      <td colSpan="5" className="text-center py-10 text-slate-405 font-poppins">No real service partners registered.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 5. Payment Activity */}
+                        {auditSubTab === 'payments' && (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="p-4">Payment ID</th>
+                                    <th className="p-4">Customer</th>
+                                    <th className="p-4">Amount</th>
+                                    <th className="p-4">Payment Method</th>
+                                    <th className="p-4">Payment Status</th>
+                                    <th className="p-4">Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                  {bookings.map(b => (
+                                    <tr key={b.id} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-mono font-bold text-slate-500">{b.paymentId || `PAY-${b.id.substring(0,8).toUpperCase()}`}</td>
+                                      <td className="p-4 font-bold text-slate-800">{b.user?.name || 'Customer'}</td>
+                                      <td className="p-4 font-bold text-slate-800">Rs. {b.finalPrice}</td>
+                                      <td className="p-4 font-mono uppercase font-bold text-slate-500">{b.paymentMethod || 'CASH'}</td>
+                                      <td className="p-4">
+                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                          b.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                                        }`}>
+                                          {b.paymentStatus || 'UNPAID'}
+                                        </span>
+                                      </td>
+                                      <td className="p-4 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                  {bookings.length === 0 && (
+                                    <tr>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real payment records found.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {/* ==================== TAB 2: PARTNER APPROVAL CENTER / PERFORMANCE ==================== */}
+                {(activeTab === 'partner-approvals' || activeTab === 'partners') && (
+                  <React.Suspense fallback={<TableSkeleton cols={7} rows={6} />}>
+                    <AdminWorkersTab activeTab={activeTab} />
+                  </React.Suspense>
                 )}
 
                 {/* ==================== TAB 3: BOOKINGS MANAGEMENT ==================== */}
@@ -1295,55 +1821,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                       </div>
                     </div>
                   </div>
-                )}
-
-                {/* ==================== TAB 4: PARTNER PERFORMANCE ==================== */}
-                {activeTab === 'partners' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="font-poppins font-black text-2xl text-slate-800">Partner Performance</h2>
-                      <p className="text-xs text-slate-400 mt-1">Review approved worker performance, completed jobs, and earnings</p>
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
-                            <tr>
-                              <th className="p-4">Partner Name</th>
-                              <th className="p-4">Service Category</th>
-                              <th className="p-4">Area</th>
-                              <th className="p-4">Jobs Today</th>
-                              <th className="p-4">Jobs This Week</th>
-                              <th className="p-4">Jobs This Month</th>
-                              <th className="p-4">Average Rating</th>
-                              <th className="p-4 text-right">Total Earnings (70%)</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                            {getPartnerPerformance().map(w => (
-                              <tr key={w.id} className="hover:bg-slate-50/50">
-                                <td className="p-4 font-bold text-slate-800">{w.user?.name}</td>
-                                <td className="p-4 font-mono">{w.category}</td>
-                                <td className="p-4 text-slate-500">{w.address?.split(',')?.[0] || 'Anchepalya'}</td>
-                                <td className="p-4 text-slate-700 font-bold">{w.jobsToday}</td>
-                                <td className="p-4 text-slate-700 font-bold">{w.jobsWeek}</td>
-                                <td className="p-4 text-brand font-black">{w.jobsMonth}</td>
-                                <td className="p-4 font-extrabold text-amber-500">{w.rating} ★</td>
-                                <td className="p-4 text-right text-emerald-600 font-extrabold">Rs. {w.earnings.toLocaleString()}</td>
-                              </tr>
-                            ))}
-                            {workers.length === 0 && (
-                              <tr>
-                                <td colSpan="8" className="p-8 text-center text-slate-400 font-medium">No partner profiles yet</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    )}
 
                 {/* ==================== TAB 5: CUSTOMER MANAGEMENT ==================== */}
                 {activeTab === 'customers' && (
@@ -1400,82 +1878,9 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
                 {/* ==================== TAB 6: PAYMENT MANAGEMENT ==================== */}
                 {activeTab === 'payments' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="font-poppins font-black text-2xl text-slate-800">Payment Ledger</h2>
-                      <p className="text-xs text-slate-400 mt-1">Audit all billing flows, platform commission splits, and payouts</p>
-                    </div>
-
-                    {/* Revenue totals cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Today's Revenue</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {payments.todayRev.toLocaleString()}</span>
-                        </div>
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
-                      </div>
-
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Weekly Revenue</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {payments.weekRev.toLocaleString()}</span>
-                        </div>
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
-                      </div>
-
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Monthly Revenue</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {payments.monthRev.toLocaleString()}</span>
-                        </div>
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
-                      </div>
-                    </div>
-
-                    {/* Booking payments table */}
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden mt-6 shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
-                            <tr>
-                              <th className="p-4">Booking Ref</th>
-                              <th className="p-4">Date</th>
-                              <th className="p-4">Booking Amount</th>
-                              <th className="p-4">Partner Share (70%)</th>
-                              <th className="p-4">Platform Share (30%)</th>
-                              <th className="p-4 text-right">Payment Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                            {payments.paymentList.map(pay => (
-                              <tr key={pay.id} className="hover:bg-slate-50/50">
-                                <td className="p-4 font-mono font-bold text-brand">{pay.id.substring(0,8)}</td>
-                                <td className="p-4 text-slate-500">{new Date(pay.createdAt).toLocaleDateString()}</td>
-                                <td className="p-4 font-bold text-slate-800">Rs. {pay.amount}</td>
-                                <td className="p-4 text-emerald-600 font-bold">Rs. {pay.partnerShare}</td>
-                                <td className="p-4 text-brand font-bold">Rs. {pay.platformShare}</td>
-                                <td className="p-4 text-right">
-                                  <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                                    pay.status === 'PAID' ? 'bg-emerald-50 text-emerald-700' :
-                                    pay.status === 'FAILED' ? 'bg-rose-50 text-rose-700' :
-                                    'bg-amber-50 text-amber-700'
-                                  }`}>
-                                    {pay.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                            {payments.paymentList.length === 0 && (
-                              <tr>
-                                <td colSpan="6" className="p-8 text-center text-slate-400 font-medium">No payments recorded yet</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
+                  <React.Suspense fallback={<TableSkeleton cols={6} rows={5} />}>
+                    <AdminPaymentsTab />
+                  </React.Suspense>
                 )}
 
                 {/* ==================== TAB 7: SERVICES ANALYTICS ==================== */}
@@ -1492,8 +1897,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                       {/* Left Column: Add New Service Form (1/3 width on large screens) */}
                       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4 h-fit">
                         <h3 className="font-poppins font-bold text-sm text-slate-800 flex items-center space-x-2">
-                          <span className="w-2.5 h-2.5 bg-brand rounded-full"></span>
-                          <span>Add New Service</span>
+                          <span className={`w-2.5 h-2.5 rounded-full ${editingServiceId ? 'bg-amber-500 animate-pulse' : 'bg-brand'}`}></span>
+                          <span>{editingServiceId ? 'Edit Service Details' : 'Add New Service'}</span>
                         </h3>
                         
                         <form onSubmit={handleAddService} className="space-y-4">
@@ -1567,15 +1972,103 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Image URL *</label>
-                            <input 
-                              type="url" 
-                              placeholder="e.g. https://images.unsplash.com/..."
-                              value={newServiceImage}
-                              onChange={(e) => setNewServiceImage(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Status *</label>
+                            <select
+                              value={newServiceIsActive ? "true" : "false"}
+                              onChange={(e) => setNewServiceIsActive(e.target.value === "true")}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-500 focus:outline-none focus:border-brand focus:bg-white"
                               required
-                            />
+                            >
+                              <option value="true">Active / Enabled</option>
+                              <option value="false">Disabled / Inactive</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-2 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Service Image Control</label>
+                            
+                            {/* Preview current image or fallback text */}
+                            <div className="h-32 bg-white rounded-lg border border-slate-200 overflow-hidden flex items-center justify-center relative shadow-inner">
+                              {newServiceImage ? (
+                                <img src={newServiceImage} alt="Preview" className="w-full h-full object-contain" />
+                              ) : (
+                                <span className="text-xs text-slate-400 font-semibold">Image Not Available</span>
+                              )}
+                            </div>
+
+                            {/* Dropdown to assign one of the Google Drive images */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">Select Drive Image (Priority 1)</label>
+                              <select 
+                                value={newServiceImage.startsWith('/services/') ? newServiceImage : ''}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    setNewServiceImage(e.target.value);
+                                  }
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs text-slate-750 focus:outline-none"
+                              >
+                                <option value="">-- Custom / Uploaded / None --</option>
+                                <option value="/services/babycare.jpg">Baby Care (babycare.jpg)</option>
+                                <option value="/services/housecleaning.jpg">Home Cleaning (housecleaning.jpg)</option>
+                                <option value="/services/bathroom-cleaning.jpg">Bathroom Cleaning (bathroom-cleaning.jpg)</option>
+                                <option value="/services/kitchen-cleaning.jpg">Kitchen Cleaning (kitchen-cleaning.jpg)</option>
+                                <option value="/services/dust-cleaning.jpg">Dust Cleaning (dust-cleaning.jpg)</option>
+                                <option value="/services/house-shifting.jpg">House Shifting (house-shifting.jpg)</option>
+                                <option value="/services/cooking-service.jpg">Cooking Service (cooking-service.jpg)</option>
+                                <option value="/services/house-painting.jpg">House Painting (house-painting.jpg)</option>
+                                <option value="/services/electrician.jpg">Electrician (electrician.jpg)</option>
+                                <option value="/services/security-provider-v2.jpg">Security Provider (security-provider-v2.jpg)</option>
+                                <option value="/services/pest-control-v2.jpg">Pest Control (pest-control-v2.jpg)</option>
+                              </select>
+                            </div>
+
+                            {/* File Upload (Admin Uploaded - Priority 2) */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Upload New (Priority 2)</label>
+                                <label className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-center py-1.5 px-3 rounded-lg text-xs cursor-pointer block border-dashed transition-all">
+                                  <span>Choose File</span>
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="hidden" 
+                                    onChange={(e) => {
+                                      const file = e.target.files[0];
+                                      if (file) {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => {
+                                          setNewServiceImage(reader.result);
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
+
+                              <div className="flex flex-col justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setNewServiceImage('')}
+                                  className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs py-1.5 rounded-lg border border-rose-200 transition-all text-center"
+                                >
+                                  Delete Image
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Input for raw image path or custom URL */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">Image Path / URL / Base64</label>
+                              <input 
+                                type="text"
+                                placeholder="No image assigned"
+                                value={newServiceImage}
+                                onChange={(e) => setNewServiceImage(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs text-slate-750 font-mono focus:outline-none"
+                              />
+                            </div>
                           </div>
 
                           <div className="space-y-1.5">
@@ -1596,8 +2089,28 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer"
                           >
                             <Plus className="w-4 h-4" />
-                            <span>{addingService ? 'Creating Service...' : 'Create Service'}</span>
+                            <span>{addingService ? 'Saving...' : editingServiceId ? 'Save Changes' : 'Create Service'}</span>
                           </button>
+
+                          {editingServiceId && (
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setEditingServiceId(null);
+                                setNewServiceName('');
+                                setNewServiceCategory('');
+                                setNewServicePrice('');
+                                setNewServiceImage('');
+                                setNewServiceDesc('');
+                                setNewServiceDuration('');
+                                setNewServicePackage('');
+                                setNewServiceIsActive(true);
+                              }}
+                              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all flex items-center justify-center cursor-pointer mt-2"
+                            >
+                              Cancel Edit
+                            </button>
+                          )}
                         </form>
                       </div>
 
@@ -1625,6 +2138,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                   <th className="p-4">Price</th>
                                   <th className="p-4">Duration & Package</th>
                                   <th className="p-4 text-center">Bookings Info</th>
+                                  <th className="p-4 text-right">Actions & Status</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
@@ -1634,15 +2148,25 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                   return (
                                     <tr key={srv.id} className="hover:bg-slate-50/50">
                                       <td className="p-4">
-                                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
-                                          <img 
-                                            src={srv.imageUrl || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=300&auto=format&fit=crop'} 
-                                            alt={srv.name} 
-                                            className="w-full h-full object-cover" 
-                                            onError={(e) => {
-                                              e.target.src = 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=600&auto=format&fit=crop';
-                                            }}
-                                          />
+                                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center relative">
+                                          {srv.imageUrl ? (
+                                            <img 
+                                              src={srv.imageUrl} 
+                                              alt={srv.name} 
+                                              className="w-full h-full object-cover" 
+                                              onError={(e) => {
+                                                e.target.style.display = 'none';
+                                                const fallback = e.target.parentNode.querySelector('.image-fallback');
+                                                if (fallback) fallback.style.display = 'flex';
+                                              }}
+                                            />
+                                          ) : null}
+                                          <div 
+                                            className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[6px] font-bold text-slate-400 text-center leading-none p-0.5"
+                                            style={{ display: srv.imageUrl ? 'none' : 'flex' }}
+                                          >
+                                            Image Not Available
+                                          </div>
                                         </div>
                                       </td>
                                       <td className="p-4 max-w-[200px]">
@@ -1665,6 +2189,48 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                         <div className="font-black text-brand text-xs">{analytic.count} Bookings</div>
                                         <div className="text-[9px] text-emerald-600 font-extrabold mt-0.5">Rs. {analytic.revenue.toLocaleString()}</div>
                                       </td>
+                                      
+                                      <td className="p-4 text-right space-y-2">
+                                        <div className="flex justify-end items-center space-x-1.5 mb-1">
+                                          {srv.isActive ? (
+                                            <span className="bg-emerald-50 text-emerald-700 font-extrabold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                              Enabled
+                                            </span>
+                                          ) : (
+                                            <span className="bg-slate-100 text-slate-400 font-extrabold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                              Disabled
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="flex justify-end items-center gap-1.5">
+                                          <button 
+                                            onClick={() => {
+                                              setEditingServiceId(srv.id);
+                                              setNewServiceName(srv.name);
+                                              setNewServiceCategory(srv.category);
+                                              setNewServicePrice(srv.price);
+                                              setNewServiceImage(srv.imageUrl);
+                                              setNewServiceDesc(srv.description);
+                                              setNewServiceDuration(srv.durationText || '');
+                                              setNewServicePackage(srv.packageText || '');
+                                              setNewServiceIsActive(srv.isActive !== false);
+                                            }}
+                                            title="Edit Service"
+                                            className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded shadow-sm hover:text-brand cursor-pointer flex items-center justify-center transition-colors font-bold"
+                                          >
+                                            <Edit className="w-3.5 h-3.5" />
+                                          </button>
+
+                                          <button 
+                                            onClick={() => handleDeleteService(srv.id)}
+                                            title="Delete Service"
+                                            className="p-1.5 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 rounded shadow-sm cursor-pointer flex items-center justify-center transition-colors font-bold"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -1682,39 +2248,260 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   </div>
                 )}
 
-                {/* ==================== TAB 8: AREA ANALYTICS ==================== */}
-                {activeTab === 'analytics' && (
+                {/* ==================== TAB 7.5: COUPONS MANAGEMENT ==================== */}
+                {activeTab === 'coupons' && (
                   <div className="space-y-6">
-                    <div>
-                      <h2 className="font-poppins font-black text-2xl text-slate-800">Area Analytics</h2>
-                      <p className="text-xs text-slate-400 mt-1">Analyze geographical service bookings density and local partner availability</p>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h2 className="font-poppins font-black text-2xl text-slate-800">Coupons & Promotions</h2>
+                        <p className="text-xs text-slate-400 mt-1">Configure and manage customer promotional checkout discounts</p>
+                      </div>
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
-                            <tr>
-                              <th className="p-4">Geographical Zone</th>
-                              <th className="p-4">Total Bookings</th>
-                              <th className="p-4">Active Partners Residing</th>
-                              <th className="p-4 text-right">Completed Revenue</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                            {areaAnalytics.map(area => (
-                              <tr key={area.name} className="hover:bg-slate-50/50">
-                                <td className="p-4 font-bold text-slate-800">{area.name}</td>
-                                <td className="p-4 text-brand font-black">{area.bookings}</td>
-                                <td className="p-4 font-bold text-slate-650">{area.activePartners} Professionals</td>
-                                <td className="p-4 text-right text-emerald-600 font-extrabold">Rs. {area.revenue.toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Left Column: Create/Edit Coupon Form */}
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4 h-fit">
+                        <h3 className="font-poppins font-bold text-sm text-slate-800 flex items-center space-x-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${couponForm.id ? 'bg-amber-500 animate-pulse' : 'bg-brand'}`}></span>
+                          <span>{couponForm.id ? `Edit Coupon: ${couponForm.code}` : 'Create Coupon'}</span>
+                        </h3>
+                        
+                        <form onSubmit={handleSaveCoupon} className="space-y-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Coupon Code *</label>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. WELCOME50"
+                              value={couponForm.code}
+                              onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value })}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                              required
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Discount Type *</label>
+                              <select
+                                value={couponForm.discountType}
+                                onChange={(e) => setCouponForm({ ...couponForm, discountType: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-500 focus:outline-none focus:border-brand focus:bg-white"
+                                required
+                              >
+                                <option value="PERCENTAGE">Percentage (%)</option>
+                                <option value="FLAT">Flat (₹)</option>
+                              </select>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Value *</label>
+                              <input 
+                                type="number" 
+                                placeholder="e.g. 50"
+                                value={couponForm.discountValue}
+                                onChange={(e) => setCouponForm({ ...couponForm, discountValue: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                                required
+                                min="0"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Min Order Value (₹)</label>
+                              <input 
+                                type="number" 
+                                placeholder="e.g. 200"
+                                value={couponForm.minOrderValue}
+                                onChange={(e) => setCouponForm({ ...couponForm, minOrderValue: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                                min="0"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Max Discount (₹)</label>
+                              <input 
+                                type="number" 
+                                placeholder="e.g. 100"
+                                value={couponForm.maxDiscount || ''}
+                                onChange={(e) => setCouponForm({ ...couponForm, maxDiscount: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-850 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                                min="0"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Usage Limit (Total)</label>
+                              <input 
+                                type="number" 
+                                placeholder="e.g. 100"
+                                value={couponForm.usageLimit || ''}
+                                onChange={(e) => setCouponForm({ ...couponForm, usageLimit: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                                min="0"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Expiry Date</label>
+                              <input 
+                                type="date" 
+                                value={couponForm.expiresAt ? couponForm.expiresAt.substring(0, 10) : ''}
+                                onChange={(e) => setCouponForm({ ...couponForm, expiresAt: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-850 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          <button 
+                            type="submit" 
+                            disabled={savingCoupon}
+                            className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>{savingCoupon ? 'Saving...' : couponForm.id ? 'Save Coupon' : 'Create Coupon'}</span>
+                          </button>
+
+                          {couponForm.id && (
+                            <button 
+                              type="button" 
+                              onClick={() => setCouponForm({
+                                id: null,
+                                code: '',
+                                discountType: 'PERCENTAGE',
+                                discountValue: '',
+                                minOrderValue: '0',
+                                maxDiscount: '',
+                                usageLimit: '',
+                                expiresAt: '',
+                                isActive: true
+                              })}
+                              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all flex items-center justify-center cursor-pointer mt-2"
+                            >
+                              Cancel Edit
+                            </button>
+                          )}
+                        </form>
+                      </div>
+
+                      {/* Right Column: Coupon Table List */}
+                      <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                            <div className="flex items-center space-x-2">
+                              <Sparkles className="w-4 h-4 text-brand" />
+                              <h3 className="font-poppins font-bold text-xs text-slate-800 uppercase tracking-wider">Active Promotional Coupons</h3>
+                            </div>
+                            <span className="bg-brand/10 text-brand text-[10px] font-extrabold px-3 py-1 rounded-full">
+                              {coupons.length} Coupons
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                <tr>
+                                  <th className="p-4">Coupon Code</th>
+                                  <th className="p-4">Discount</th>
+                                  <th className="p-4">Min Spend</th>
+                                  <th className="p-4">Expiry</th>
+                                  <th className="p-4">Usage</th>
+                                  <th className="p-4 text-center">Status</th>
+                                  <th className="p-4 text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                {coupons.map(cp => (
+                                  <tr key={cp.id} className="hover:bg-slate-50/50">
+                                    <td className="p-4 font-bold text-brand text-sm tracking-wider font-mono">{cp.code}</td>
+                                    <td className="p-4 font-bold text-slate-800">
+                                      {cp.discountType === 'PERCENTAGE' ? `${cp.discountValue}%` : `₹${cp.discountValue}`}
+                                      {cp.discountType === 'PERCENTAGE' && cp.maxDiscount && (
+                                        <span className="text-[10px] text-slate-400 font-normal block">Max: ₹{cp.maxDiscount}</span>
+                                      )}
+                                    </td>
+                                    <td className="p-4 font-semibold text-slate-500">₹{cp.minOrderValue || 0}</td>
+                                    <td className="p-4 text-slate-500 text-[10px]">
+                                      {cp.expiresAt ? new Date(cp.expiresAt).toLocaleDateString() : 'Never'}
+                                    </td>
+                                    <td className="p-4 text-slate-500 font-mono text-[10px]">
+                                      {cp.usedCount || 0} / {cp.usageLimit || '∞'}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                      {cp.isActive ? (
+                                        <span className="bg-emerald-50 text-emerald-700 font-extrabold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                          Active
+                                        </span>
+                                      ) : (
+                                        <span className="bg-slate-100 text-slate-400 font-extrabold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                          Inactive
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-4 text-right space-x-1">
+                                      <button 
+                                        onClick={() => setCouponForm({
+                                          id: cp.id,
+                                          code: cp.code,
+                                          discountType: cp.discountType,
+                                          discountValue: cp.discountValue,
+                                          minOrderValue: cp.minOrderValue || '0',
+                                          maxDiscount: cp.maxDiscount || '',
+                                          usageLimit: cp.usageLimit || '',
+                                          expiresAt: cp.expiresAt || '',
+                                          isActive: cp.isActive
+                                        })}
+                                        title="Edit Coupon"
+                                        className="p-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded shadow-sm hover:text-brand inline-block cursor-pointer"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      
+                                      <button 
+                                        onClick={() => handleToggleCouponStatus(cp.id, cp.code, cp.isActive)}
+                                        title={cp.isActive ? "Disable Coupon" : "Enable Coupon"}
+                                        className={`p-1 border rounded shadow-sm transition-colors inline-block cursor-pointer ${
+                                          cp.isActive 
+                                            ? 'bg-rose-50 border-rose-100 hover:bg-rose-100 text-rose-600' 
+                                            : 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100 text-emerald-600'
+                                        }`}
+                                      >
+                                        {cp.isActive ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                                      </button>
+
+                                      <button 
+                                        onClick={() => handleDeleteCoupon(cp.id, cp.code)}
+                                        title="Delete Coupon"
+                                        className="p-1 bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-600 rounded shadow-sm inline-block cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {coupons.length === 0 && (
+                                  <tr>
+                                    <td colSpan="7" className="p-8 text-center text-slate-400 font-medium">No coupons active in database</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* ==================== TAB 8: AREA ANALYTICS ==================== */}
+                {activeTab === 'analytics' && (
+                  <React.Suspense fallback={<AnalyticsSkeleton />}>
+                    <AdminAnalyticsTab />
+                  </React.Suspense>
                 )}
 
                 {/* ==================== TAB 9: SETTINGS ==================== */}
@@ -1876,7 +2663,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Verification Documents</h4>
                   
                   {renderDocumentPreview('Selfie Scanning Photo', parseJson(selectedWorker.profilePhoto).selfie)}
-                  {renderDocumentPreview('Profile Avatar Photo', parseJson(selectedWorker.profilePhoto).profile)}
                   {renderDocumentPreview('Aadhaar Card Front Scan', parseJson(selectedWorker.aadhaar).front)}
                   {renderDocumentPreview('Aadhaar Card Back Scan', parseJson(selectedWorker.aadhaar).back)}
                 </div>
@@ -1947,26 +2733,26 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedBooking(null)}
-              className="absolute inset-0 bg-slate-900"
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
             />
             
             <motion.div 
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full relative z-10 space-y-6 shadow-2xl"
+              className="bg-white border border-slate-100 rounded-2xl p-6 max-w-[450px] w-full relative z-10 space-y-6 shadow-xl"
             >
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <h3 className="font-poppins font-black text-sm text-slate-800 flex items-center space-x-2">
+                <h3 className="font-poppins font-bold text-sm text-slate-850 flex items-center space-x-2">
                   <span>Booking details</span>
                   <span className="font-mono text-brand font-bold text-xs">#{selectedBooking.id.substring(0,8)}</span>
                 </h3>
                 <button 
                   onClick={() => setSelectedBooking(null)}
-                  className="p-1 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-700 shadow-sm"
+                  className="p-1 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-650 shadow-sm transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1974,18 +2760,18 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
               <div className="space-y-4 text-xs text-slate-650">
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase">Customer Profile</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Customer Profile</span>
                   <h4 className="font-bold text-slate-800 mt-0.5">{selectedBooking.user?.name}</h4>
                   <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedBooking.user?.phone} • {selectedBooking.user?.email}</p>
                 </div>
 
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase">Doorstep Service Address</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Doorstep Service Address</span>
                   <p className="text-slate-700 mt-0.5 leading-relaxed font-semibold">{selectedBooking.address}</p>
                 </div>
 
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase">Selected Service Items</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Selected Service Items</span>
                   <div className="bg-slate-50 border border-slate-150 rounded-xl p-3.5 mt-1 space-y-1.5 shadow-inner">
                     {selectedBooking.items?.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[10px]">
@@ -2001,14 +2787,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                 </div>
 
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase">Assigned Professional</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Assigned Professional</span>
                   {selectedBooking.worker ? (
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-1 flex justify-between items-center">
                       <div>
                         <h5 className="font-bold text-emerald-600">{selectedBooking.worker.user?.name}</h5>
                         <p className="text-[9px] text-slate-400 font-mono mt-0.5">{selectedBooking.worker.user?.phone}</p>
                       </div>
-                      <span className="bg-emerald-50 text-emerald-700 font-black text-[9px] px-2.5 py-0.5 rounded">ASSIGNED</span>
+                      <span className="bg-emerald-50 text-emerald-750 font-black text-[9px] px-2.5 py-0.5 rounded">ASSIGNED</span>
                     </div>
                   ) : (
                     <p className="text-[10px] text-slate-400 font-medium mt-1">No service partner assigned to this job.</p>
@@ -2026,26 +2812,26 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedCustomer(null)}
-              className="absolute inset-0 bg-slate-900"
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
             />
             
             <motion.div 
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="bg-white border border-slate-200 rounded-3xl p-6 max-w-lg w-full relative z-10 space-y-6 shadow-2xl"
+              className="bg-white border border-slate-100 rounded-2xl p-6 max-w-[500px] w-full relative z-10 space-y-6 shadow-xl"
             >
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="font-poppins font-black text-sm text-slate-800">Client History Profile</h3>
+                  <h3 className="font-poppins font-bold text-sm text-slate-850">Client History Profile</h3>
                   <span className="text-[9px] font-bold text-slate-400 mt-0.5 block">{selectedCustomer.name}</span>
                 </div>
                 <button 
                   onClick={() => setSelectedCustomer(null)}
-                  className="p-1 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-700 shadow-sm"
+                  className="p-1 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-650 shadow-sm transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -2054,17 +2840,17 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4 text-xs text-slate-650">
                   <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase">Phone</span>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Phone</span>
                     <span className="font-bold text-slate-800 mt-0.5 block font-mono">{selectedCustomer.phone}</span>
                   </div>
                   <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase">Email</span>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Email</span>
                     <span className="font-bold text-slate-800 mt-0.5 block">{selectedCustomer.email}</span>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase">Request Log ({selectedCustomer.bookingsCount})</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Request Log ({selectedCustomer.bookingsCount})</span>
                   
                   <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                     {bookings.filter(b => b.userId === selectedCustomer.id).map(b => (
@@ -2101,14 +2887,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
               className="bg-slate-900 text-white rounded-2xl p-4 shadow-xl border border-slate-800 flex items-start space-x-3.5"
             >
-              <span className="text-lg">🔔</span>
-              <div className="flex-1 min-w-0">
-                <h4 className="font-poppins font-black text-xs">{t.title}</h4>
+              <Bell className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 text-left">
+                <h4 className="font-poppins font-bold text-xs">{t.title}</h4>
                 <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed font-semibold">{t.message}</p>
               </div>
               <button 
                 onClick={() => setToasts(prev => prev.filter(item => item.id !== t.id))}
-                className="text-slate-500 hover:text-slate-300 transition-colors"
+                className="text-slate-500 hover:text-slate-350 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>

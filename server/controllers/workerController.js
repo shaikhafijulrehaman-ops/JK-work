@@ -178,3 +178,74 @@ exports.toggleWorkerStatus = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to toggle status.' });
   }
 };
+
+/**
+ * Worker Portal: Get matching category-specific booking requests
+ */
+exports.getCategoryRequests = async (req, res) => {
+  try {
+    const worker = await db.worker.findUnique({
+      where: { userId: req.user.id },
+      include: {
+        skills: {
+          include: {
+            service: true
+          }
+        }
+      }
+    });
+
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    // Extract all service categories and service IDs that this worker specializes in
+    const workerCategories = worker.skills.map(s => s.service.category);
+    const workerServiceIds = worker.skills.map(s => s.service.id);
+
+    // Get rejections from in-memory cache
+    const { workerRejections } = require('./bookingController');
+    const rejectedIds = workerRejections[worker.id] || [];
+
+    // Fetch all bookings with status PENDING_PARTNER_ACCEPTANCE that match
+    const bookings = await db.booking.findMany({
+      where: {
+        status: 'PENDING_PARTNER_ACCEPTANCE',
+        OR: [
+          {
+            serviceCategory: {
+              in: workerCategories
+            }
+          },
+          {
+            items: {
+              some: {
+                serviceId: {
+                  in: workerServiceIds
+                }
+              }
+            }
+          }
+        ],
+        id: {
+          notIn: rejectedIds
+        }
+      },
+      include: {
+        items: {
+          include: {
+            service: true
+          }
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      bookings
+    });
+  } catch (error) {
+    console.error('Get category requests error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve booking requests.' });
+  }
+};

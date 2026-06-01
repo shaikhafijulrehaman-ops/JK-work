@@ -9,29 +9,30 @@ import { useNotificationStore } from './store/notificationStore';
 import Navbar from './components/Navbar';
 import CartDrawer from './components/CartDrawer';
 import ProtectedRoute from './components/ProtectedRoute';
+import LoginRequiredModal from './components/LoginRequiredModal';
 
 // Pages
-import LandingPage from './pages/LandingPage';
-import ServicesPage from './pages/ServicesPage';
-import BookingPage from './pages/BookingPage';
-import Auth from './pages/Auth';
-import Dashboard from './pages/Dashboard';
-import WorkerPortal from './pages/WorkerPortal';
-import NotificationsPage from './pages/NotificationsPage';
-import AccountPage from './pages/AccountPage';
-import ManageAddresses from './pages/ManageAddresses';
-import ProfilePage from './pages/ProfilePage';
-import BookingsPage from './pages/BookingsPage';
-import SettingsPage from './pages/SettingsPage';
-import HelpPage from './pages/HelpPage';
-import PartnerRegister from './pages/PartnerRegister';
-import CustomerRegister from './pages/CustomerRegister';
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const ServicesPage = React.lazy(() => import('./pages/ServicesPage'));
+const BookingPage = React.lazy(() => import('./pages/BookingPage'));
+const Auth = React.lazy(() => import('./pages/Auth'));
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const WorkerPortal = React.lazy(() => import('./pages/WorkerPortal'));
+const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
+const AccountPage = React.lazy(() => import('./pages/AccountPage'));
+const ManageAddresses = React.lazy(() => import('./pages/ManageAddresses'));
+const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
+const BookingsPage = React.lazy(() => import('./pages/BookingsPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const HelpPage = React.lazy(() => import('./pages/HelpPage'));
+const PartnerRegister = React.lazy(() => import('./pages/PartnerRegister'));
+const CustomerRegister = React.lazy(() => import('./pages/CustomerRegister'));
 
 // Admin Pages
-import AdminOverview from './pages/admin/AdminOverview';
-import AdminBookings from './pages/admin/AdminBookings';
-import AdminWorkers from './pages/admin/AdminWorkers';
-import AdminServices from './pages/admin/AdminServices';
+const AdminOverview = React.lazy(() => import('./pages/admin/AdminOverview'));
+const AdminBookings = React.lazy(() => import('./pages/admin/AdminBookings'));
+const AdminWorkers = React.lazy(() => import('./pages/admin/AdminWorkers'));
+const AdminServices = React.lazy(() => import('./pages/admin/AdminServices'));
 
 export default function App() {
   const { checkSession, isAuthenticated, user } = useAuthStore();
@@ -63,7 +64,12 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="flex-1">
-          <Routes>
+          <React.Suspense fallback={
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          }>
+            <Routes>
             
             {/* ==================== PUBLIC PATHS ==================== */}
             <Route path="/" element={<LandingPage />} />
@@ -153,7 +159,11 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
 
           </Routes>
+          </React.Suspense>
         </main>
+
+        {/* Global Login Required Modal */}
+        <LoginRequiredModal />
 
       </div>
     </Router>

@@ -1,4 +1,10 @@
 const db = require('../db');
+const jwt = require('jsonwebtoken');
+
+// Map workerId -> Array of bookingIds that the worker has rejected
+const workerRejections = {};
+exports.workerRejections = workerRejections;
+
 
 /**
  * Create a new service booking
@@ -23,11 +29,16 @@ exports.createBooking = async (req, res) => {
     // 2. Fetch Services and calculate price
     let totalPrice = 0;
     const bookingItemsToCreate = [];
+    let firstCategory = null;
 
     for (const item of items) {
       const s = await db.service.findUnique({ where: { id: item.serviceId } });
       if (!s) {
         return res.status(404).json({ success: false, message: `Selected service reference not found.` });
+      }
+      
+      if (!firstCategory) {
+        firstCategory = s.category;
       }
       
       const itemPrice = s.price; // Capture pricing at creation time
@@ -44,16 +55,17 @@ exports.createBooking = async (req, res) => {
     // 3. Process Dynamic Coupons
     let discountApplied = 0.0;
     if (couponCode) {
-      const promo = await db.promoCode.findUnique({ where: { code: couponCode } });
-      if (promo && promo.isActive) {
-        discountApplied = parseFloat(((totalPrice * promo.discountPct) / 100).toFixed(2));
-        
-        // Increment coupon count in sandbox/DB
-        await db.promoCode.create({
-          data: { code: promo.code, discountPct: promo.discountPct, usedCount: promo.usedCount + 1 },
-          overwrite: true
-        }).catch(() => {});
+      const validation = await validateCoupon(couponCode, totalPrice, req.user.id);
+      if (!validation.success) {
+        return res.status(400).json({ success: false, message: validation.message });
       }
+      discountApplied = validation.discount;
+
+      // Increment coupon count in DB/sandbox
+      await db.promoCode.update({
+        where: { id: validation.coupon.id },
+        data: { usedCount: validation.coupon.usedCount + 1 }
+      }).catch(() => {});
     }
 
     const finalPrice = totalPrice - discountApplied;
@@ -63,7 +75,7 @@ exports.createBooking = async (req, res) => {
       data: {
         userId: req.user.id,
         serviceAreaId: serviceArea.id,
-        status: 'PENDING',
+        status: 'PENDING_PARTNER_ACCEPTANCE',
         scheduledAt: new Date(scheduledAt),
         timeSlot,
         address,
@@ -73,6 +85,8 @@ exports.createBooking = async (req, res) => {
         finalPrice,
         paymentStatus: paymentMethod === 'CASH' ? 'UNPAID' : 'UNPAID', // Webhook / Cash verifies
         paymentMethod: paymentMethod || 'UPI',
+        couponCode: couponCode ? couponCode.trim().toUpperCase() : null,
+        serviceCategory: firstCategory,
         items: {
           createMany: {
             data: bookingItemsToCreate
@@ -148,7 +162,26 @@ exports.getBookings = async (req, res) => {
  */
 exports.getBookingById = async (req, res) => {
   try {
-    const booking = await db.booking.findUnique({ where: { id: req.params.id } });
+    const booking = await db.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        items: {
+          include: {
+            service: true
+          }
+        },
+        worker: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                phone: true
+              }
+            }
+          }
+        }
+      }
+    });
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking record not found.' });
@@ -168,6 +201,117 @@ exports.getBookingById = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to retrieve booking detail.' });
+  }
+};
+
+/**
+ * Helper to validate coupon logic
+ */
+const validateCoupon = async (couponCode, subtotal, userId) => {
+  if (!couponCode) {
+    return { success: false, message: 'Coupon code is required.' };
+  }
+
+  const uppercaseCode = couponCode.trim().toUpperCase();
+  const promo = await db.promoCode.findUnique({ where: { code: uppercaseCode } });
+  if (!promo) {
+    return { success: false, message: 'Invalid or expired promotional code.' };
+  }
+
+  if (!promo.isActive) {
+    return { success: false, message: 'This promotional code is currently disabled.' };
+  }
+
+  if (promo.expiresAt && new Date() > new Date(promo.expiresAt)) {
+    return { success: false, message: 'This promotional code has expired.' };
+  }
+
+  if (promo.minOrderValue && subtotal < promo.minOrderValue) {
+    return { success: false, message: `Minimum order value of Rs. ${promo.minOrderValue.toLocaleString()} is required for this coupon.` };
+  }
+
+  if (promo.usageLimit !== null && promo.usedCount >= promo.usageLimit) {
+    return { success: false, message: 'This promotional code limit has been reached.' };
+  }
+
+  if (userId) {
+    const userUsageCount = await db.booking.findMany({
+      where: {
+        userId,
+        couponCode: promo.code
+      }
+    }).then(list => list.length).catch(() => 0);
+
+    if (userUsageCount >= promo.perUserLimit) {
+      return { success: false, message: `You have reached the usage limit for this coupon (${promo.perUserLimit} times per user).` };
+    }
+  }
+
+  let discount = 0.0;
+  if (promo.discountType === 'FLAT') {
+    discount = promo.discountValue;
+  } else if (promo.discountType === 'PERCENTAGE') {
+    discount = (subtotal * promo.discountValue) / 100;
+    if (promo.maxDiscount !== null && discount > promo.maxDiscount) {
+      discount = promo.maxDiscount;
+    }
+  }
+  discount = parseFloat(discount.toFixed(2));
+
+  return {
+    success: true,
+    message: 'Coupon applied successfully!',
+    coupon: promo,
+    discount
+  };
+};
+
+/**
+ * Validate coupon code API endpoint
+ */
+exports.validateCouponCode = async (req, res) => {
+  try {
+    const { code, subtotal } = req.body;
+    let userId = null;
+
+    if (req.cookies && req.cookies.accessToken) {
+      try {
+        const decoded = jwt.verify(req.cookies.accessToken, process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026');
+        userId = decoded.userId;
+      } catch (e) {}
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026');
+        userId = decoded.userId;
+      } catch (e) {}
+    }
+
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Coupon code is required.' });
+    }
+
+    const validation = await validateCoupon(code, parseFloat(subtotal || 0), userId);
+    if (!validation.success) {
+      return res.status(200).json({ success: false, message: validation.message });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Coupon applied successfully!',
+      discount: validation.discount,
+      coupon: {
+        id: validation.coupon.id,
+        code: validation.coupon.code,
+        discountType: validation.coupon.discountType,
+        discountValue: validation.coupon.discountValue,
+        minOrderValue: validation.coupon.minOrderValue,
+        maxDiscount: validation.coupon.maxDiscount
+      }
+    });
+  } catch (error) {
+    console.error('Validate coupon error:', error);
+    res.status(500).json({ success: false, message: 'Failed to validate coupon code.' });
   }
 };
 
@@ -238,5 +382,106 @@ exports.assignWorker = async (req, res) => {
   } catch (error) {
     console.error('Assign worker error:', error);
     res.status(500).json({ success: false, message: 'Failed to assign worker.' });
+  }
+};
+
+/**
+ * Worker accepts booking
+ */
+exports.acceptBookingByPartner = async (req, res) => {
+  try {
+    const worker = await db.worker.findUnique({
+      where: { userId: req.user.id },
+      include: { user: true }
+    });
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    const booking = await db.booking.findUnique({ where: { id: req.params.id } });
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    if (booking.status !== 'PENDING_PARTNER_ACCEPTANCE') {
+      return res.status(400).json({ success: false, message: 'This booking has already been accepted or is no longer available.' });
+    }
+
+    // Update booking status to PARTNER_ACCEPTED and link worker
+    const updatedBooking = await db.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: 'PARTNER_ACCEPTED',
+        workerId: worker.id,
+        acceptedAt: new Date()
+      },
+      include: {
+        worker: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                phone: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Update worker status to ON_JOB
+    await db.worker.update({
+      where: { id: worker.id },
+      data: { status: 'ON_JOB' }
+    }).catch(() => {});
+
+    // Send notifications to Customer and Partner
+    await db.notification.create({
+      data: {
+        userId: booking.userId,
+        type: 'WORKER_ASSIGNMENT',
+        title: 'Partner Assigned!',
+        message: `${worker.user.name} has accepted your booking and is preparing to arrive!`
+      }
+    }).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking accepted successfully.',
+      booking: updatedBooking
+    });
+  } catch (error) {
+    console.error('Accept booking error:', error);
+    res.status(500).json({ success: false, message: 'Server error while accepting booking.' });
+  }
+};
+
+/**
+ * Worker rejects booking
+ */
+exports.rejectBookingByPartner = async (req, res) => {
+  try {
+    const worker = await db.worker.findUnique({ where: { userId: req.user.id } });
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker profile not found.' });
+    }
+
+    const bookingId = req.params.id;
+
+    // Track the rejection in our in-memory cache
+    if (!workerRejections[worker.id]) {
+      workerRejections[worker.id] = [];
+    }
+    if (!workerRejections[worker.id].includes(bookingId)) {
+      workerRejections[worker.id].push(bookingId);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking request rejected and passed along.'
+    });
+  } catch (error) {
+    console.error('Reject booking error:', error);
+    res.status(500).json({ success: false, message: 'Server error while rejecting booking.' });
   }
 };

@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, MapPin, Plus, Trash2, Edit3, CheckCircle, 
-  Home, Briefcase, Tag, AlertCircle, Sparkles, Check
+  Home, Briefcase, Tag, AlertCircle, Sparkles, Check, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -304,38 +304,38 @@ export default function ManageAddresses() {
       {/* Add / Edit Glassmorphic Dialog Modal */}
       <AnimatePresence>
         {showModal && (
-          <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 20, opacity: 0 }}
-              className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xl max-w-md w-full text-left"
+              className="bg-white rounded-2xl p-6 border border-slate-100 shadow-xl max-w-[450px] w-full text-left relative overflow-hidden"
             >
-              <div className="flex justify-between items-center mb-5 pb-2 border-b">
-                <h3 className="font-poppins font-extrabold text-base text-slate-900">
-                  {editingAddress ? '✏️ Edit Saved Address' : '📍 Add Saved Address'}
+              <div className="flex justify-between items-center mb-5 pb-2 border-b border-slate-100 relative pr-6">
+                <h3 className="font-poppins font-bold text-base text-slate-850 tracking-tight leading-none">
+                  {editingAddress ? 'Edit Saved Address' : 'Add Saved Address'}
                 </h3>
                 <button 
                   onClick={() => setShowModal(false)}
-                  className="w-7 h-7 rounded-full hover:bg-slate-100 border text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-semibold"
+                  className="absolute -top-1 -right-1 p-1 rounded-full hover:bg-slate-50 text-slate-400 hover:text-slate-650 transition-colors"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Tag type selectors */}
                 <div>
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 block">Address Tag Label</label>
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 block font-poppins">Address Tag Label</label>
                   <div className="flex space-x-3 select-none">
                     {['Home', 'Work', 'Other'].map(type => (
                       <button 
                         key={type}
                         type="button"
                         onClick={() => setTagType(type)}
-                        className={`flex-1 py-2.5 rounded-xl border font-poppins font-extrabold text-[10.5px] transition-all flex items-center justify-center space-x-1.5 ${
+                        className={`flex-1 py-2.5 rounded-xl border font-poppins font-bold text-[10.5px] transition-all flex items-center justify-center space-x-1.5 ${
                           tagType === type 
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
                             : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100/50'
                         }`}
                       >
@@ -397,10 +397,10 @@ export default function ManageAddresses() {
 
                 {/* Default checkbox */}
                 {(!editingAddress || !editingAddress.isDefault) && (
-                  <label className="flex items-center space-x-2.5 py-1 px-1 cursor-pointer select-none text-xs font-bold text-slate-600">
+                  <label className="flex items-center space-x-2.5 py-1 px-1 cursor-pointer select-none text-xs font-bold text-slate-655">
                     <input 
                       type="checkbox" 
-                      className="rounded border-slate-300 text-brand focus:ring-brand w-4 h-4" 
+                      className="rounded border-slate-350 text-brand focus:ring-brand w-4 h-4" 
                       checked={isDefault}
                       onChange={e => setIsDefault(e.target.checked)}
                     />
@@ -409,24 +409,24 @@ export default function ManageAddresses() {
                 )}
 
                 {errorMsg && (
-                  <div className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 p-2 rounded-xl flex items-center space-x-1.5">
+                  <div className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 p-2 rounded-xl flex items-center space-x-1.5 font-poppins">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                     <span>{errorMsg}</span>
                   </div>
                 )}
 
-                <div className="flex space-x-3 pt-3 border-t">
+                <div className="flex space-x-3 pt-3 border-t border-slate-100">
                   <button 
                     type="button" 
                     onClick={() => setShowModal(false)}
-                    className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-600 font-poppins font-black text-xs rounded-xl uppercase tracking-wider"
+                    className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-500 font-poppins font-bold text-xs rounded-xl uppercase tracking-wider transition-colors"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit" 
                     disabled={isSubmitting}
-                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3 rounded-xl uppercase tracking-widest shadow-md"
+                    className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-bold text-xs py-3 rounded-xl uppercase tracking-widest shadow-sm transition-all"
                   >
                     {isSubmitting ? 'Saving Address...' : editingAddress ? 'Save Changes' : 'Add Address'}
                   </button>

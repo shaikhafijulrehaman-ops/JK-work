@@ -43,7 +43,7 @@ exports.getServiceById = async (req, res) => {
  */
 exports.createService = async (req, res) => {
   try {
-    const { name, category, description, price, durationText, packageText, imageUrl } = req.body;
+    const { name, category, description, price, durationText, packageText, imageUrl, isActive } = req.body;
 
     if (!name || !category || !price || !description) {
       return res.status(400).json({ success: false, message: 'Please supply service name, category, pricing, and description.' });
@@ -57,7 +57,8 @@ exports.createService = async (req, res) => {
         price: parseFloat(price),
         durationText: durationText || '',
         packageText: packageText || '',
-        imageUrl: imageUrl || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=600&auto=format&fit=crop'
+        imageUrl: imageUrl || '',
+        isActive: isActive !== undefined ? !!isActive : true
       }
     });
 
@@ -87,7 +88,7 @@ exports.createService = async (req, res) => {
  */
 exports.updateService = async (req, res) => {
   try {
-    const { price, description, durationText, packageText, imageUrl } = req.body;
+    const { name, category, price, description, durationText, packageText, imageUrl, isActive } = req.body;
 
     const existing = await db.service.findUnique({ where: { id: req.params.id } });
     if (!existing) {
@@ -97,11 +98,14 @@ exports.updateService = async (req, res) => {
     const updated = await db.service.update({
       where: { id: req.params.id },
       data: {
-        price: price ? parseFloat(price) : existing.price,
+        name: name || existing.name,
+        category: category || existing.category,
+        price: price !== undefined ? parseFloat(price) : existing.price,
         description: description || existing.description,
         durationText: durationText !== undefined ? durationText : existing.durationText,
         packageText: packageText !== undefined ? packageText : existing.packageText,
-        imageUrl: imageUrl || existing.imageUrl
+        imageUrl: imageUrl || existing.imageUrl,
+        isActive: isActive !== undefined ? !!isActive : existing.isActive
       }
     });
 
@@ -114,6 +118,39 @@ exports.updateService = async (req, res) => {
         ipAddress: req.ip
       }
     }).catch(() => {});
+
+    // Notify ONLY Service Partners related to that category
+    try {
+      const workers = await db.worker.findMany({
+        where: {
+          skills: {
+            some: {
+              service: {
+                category: updated.category
+              }
+            }
+          }
+        },
+        include: {
+          user: true
+        }
+      });
+
+      for (const w of workers) {
+        if (w.user && w.user.role === 'WORKER') {
+          await db.notification.create({
+            data: {
+              userId: w.user.id,
+              type: 'ADMIN_UPDATE',
+              title: '🔧 Service Catalog Updated',
+              message: `The service "${updated.name}" in category "${updated.category}" has been updated.`
+            }
+          }).catch((err) => console.error('Failed to notify worker user:', w.user.id, err));
+        }
+      }
+    } catch (notificationError) {
+      console.error('Failed to notify category partners of service update:', notificationError);
+    }
 
     res.status(200).json({
       success: true,

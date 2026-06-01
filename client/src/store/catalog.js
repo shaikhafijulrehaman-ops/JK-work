@@ -10,7 +10,7 @@ export const catalog = [
     desc: 'Professional baby care support at home by trained and verified caregivers. Safe, responsible, and caring service for infants and children with trusted assistance for daily needs.', 
     details: ['Safe, caring support for daily needs', 'Feeding, diapers, interactive playtime', 'Double-vetted professional caregivers', 'Flexible 6-hour slot shifts'],
     workerName: 'Prabha M.',
-    workerAvatar: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Certified Nanny'
   },
   { 
@@ -24,7 +24,7 @@ export const catalog = [
     desc: 'Complete deep cleaning service for the entire home including living room, bedrooms, kitchen, and bathroom. Professional equipment used for premium hygiene and spotless results.', 
     details: ['Sanitation of bathrooms, sink, tiles', 'Deep vacuuming of sofa, carpets, beds', 'Floor scrubbing and dust extraction', 'Hygienic eco-friendly solutions'],
     workerName: 'Shweta K.',
-    workerAvatar: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Lead Sanitation Pro'
   },
   { 
@@ -38,7 +38,7 @@ export const catalog = [
     desc: 'Deep sanitation and premium cleaning including tiles, fittings, mirrors, sinks, and floor cleaning with hygienic professional solutions for complete bathroom hygiene.', 
     details: ['Complete stain and scale removal', 'Sanitizing of toilet seat & flush bowl', 'Mirrors, taps, and exhaust deep wash', 'Disinfection of floor tiles and drains'],
     workerName: 'Deepak S.',
-    workerAvatar: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Sanitation Expert'
   },
   { 
@@ -52,7 +52,7 @@ export const catalog = [
     desc: 'Complete kitchen cleaning including slabs, shelves, sink area, stove cleaning, and hygienic surface treatment for a fresh and organized cooking space.', 
     details: ['Stove, burners, and grid degreasing', 'Exterior cabinet and counter scrub', 'Stainless steel sink scale clearing', 'Exhaust fan and chimney surface wipe'],
     workerName: 'Nisha R.',
-    workerAvatar: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Kitchen Hygiene Pro'
   },
   { 
@@ -66,7 +66,7 @@ export const catalog = [
     desc: 'Quick and effective dust removal for furniture, electronics, shelves, windows, and home interiors to maintain a consistently fresh and clean environment.', 
     details: ['Dry and wet wiping of home furniture', 'Dusting of television, speakers, consoles', 'Wiping of window glass panes', 'Complete floor sweeping and dry mopping'],
     workerName: 'Anjali P.',
-    workerAvatar: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Dust Extraction Pro'
   },
   { 
@@ -80,7 +80,7 @@ export const catalog = [
     desc: 'Professional packing and shifting service for safe home relocation with trained staff, careful handling of furniture, appliances, and all household items.', 
     details: ['Multi-layer bubble wrap & heavy box packing', 'Safe loading and unloading in transport', 'Careful transit of sofas, beds, appliances', 'Dismantling and reassembly support'],
     workerName: 'Rajesh Crew',
-    workerAvatar: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Elite Movers'
   },
   { 
@@ -94,7 +94,7 @@ export const catalog = [
     desc: 'Professional home cooking support with hygienic preparation, kitchen assistance, and fresh meal service by trained and experienced home service professionals.', 
     details: ['Hygienic fresh meal preparation', 'North & South Indian menu options', 'Pre-cooking vegetable chopping support', 'Kitchen space cleanup after prep'],
     workerName: 'Ramesh H.',
-    workerAvatar: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Certified Executive Chef'
   },
   { 
@@ -108,7 +108,7 @@ export const catalog = [
     desc: 'Premium house painting service for interiors and exteriors with all materials included. Smooth finish, quality workmanship, and professional painters for beautiful lasting results.', 
     details: ['Wall sanding and wall putty application', 'Double coat premium plastic emulsion', '2BHK: Rs. 20,099 \| 3BHK: Rs. 23,499 options', 'Masking tape security protection for furniture'],
     workerName: 'Vikram S.',
-    workerAvatar: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Elite Wall Stylist'
   },
   { 
@@ -122,7 +122,7 @@ export const catalog = [
     desc: 'Professional electrician support for repairs, installations, switchboards, wiring, fan fitting, lighting solutions, and all essential home electrical services.', 
     details: ['Switchboard, socket, and wiring repairs', 'Ceiling fan & light fitting installs', 'Circuit breaker checks and diagnostics', 'Strict compliance with electric safety code'],
     workerName: 'Kiran R.',
-    workerAvatar: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Certified Wireman'
   },
   { 
@@ -136,7 +136,7 @@ export const catalog = [
     desc: 'Trained and verified security personnel for homes, apartments, offices, and events. Reliable protection with professional discipline and complete safety assurance.', 
     details: ['Double-vetted background checks', 'Uniformed guard on alert for 8 hours', 'Visitor registry gate tracking', 'Security patrols around parameters'],
     workerName: 'Dharma J.',
-    workerAvatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Police-Vetted Guard'
   },
   { 
@@ -150,7 +150,7 @@ export const catalog = [
     desc: 'Professional pest control treatment for cockroaches, insects, termites, and unwanted pests using safe and effective solutions for a clean and hygienic home.', 
     details: ['Odorless gel and spray injections', 'Cockroach, ant, and spider control', 'Drain pipe spray sanitation', 'Safe, eco-friendly, and odorless sprays'],
     workerName: 'Praveen L.',
-    workerAvatar: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?q=80&w=120&auto=format&fit=crop',
+    workerAvatar: null,
     workerRole: 'Chemical Safety Pro'
   }
 ];

@@ -30,6 +30,8 @@ enum WorkerStatus {
 
 enum BookingStatus {
   PENDING
+  PENDING_PARTNER_ACCEPTANCE
+  PARTNER_ACCEPTED
   ASSIGNED
   ON_THE_WAY
   IN_PROGRESS
@@ -128,6 +130,7 @@ model Service {
   durationText String         @default("") // e.g. "6 Hours", "1 Hour"
   packageText  String         @default("") // e.g. "2BHK Package"
   imageUrl     String
+  isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -175,12 +178,19 @@ model WorkerSkill {
 }
 
 model PromoCode {
-  id          String    @id @default(uuid())
-  code        String    @unique // e.g. "9MINUTES", "WELCOME10"
-  discountPct Float     
-  isActive    Boolean   @default(true)
-  usedCount   Int       @default(0)
-  expiresAt   DateTime?
+  id              String       @id @default(uuid())
+  code            String       @unique // e.g. "9MINUTES", "WELCOME10"
+  discountType    String       @default("PERCENTAGE") // "FLAT" or "PERCENTAGE"
+  discountValue   Float
+  minOrderValue   Float        @default(0.0)
+  maxDiscount     Float?       // Max cap for percentage discount
+  usageLimit      Int?         // Total uses allowed across all users
+  perUserLimit    Int          @default(1) // Limit per user
+  expiresAt       DateTime?
+  isActive        Boolean      @default(true)
+  usedCount       Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 }
 
 model Booking {
@@ -199,6 +209,9 @@ model Booking {
   paymentStatus PaymentStatus @default(UNPAID)
   paymentMethod PaymentMethod @default(UPI)
   paymentId     String?       // transaction ID from Razorpay webhook
+  couponCode    String?
+  serviceCategory String?
+  acceptedAt    DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -208,6 +221,9 @@ model Booking {
   serviceArea   ServiceArea   @relation(fields: [serviceAreaId], references: [id])
   items         BookingItem[]
   review        Review?
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model BookingItem {

@@ -7,7 +7,7 @@ const signTokens = (userId, email, role) => {
   const accessToken = jwt.sign(
     { userId, email, role },
     process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026',
-    { expiresIn: '15m' }
+    { expiresIn: '7d' }
   );
 
   const refreshToken = jwt.sign(
@@ -40,7 +40,7 @@ const sendTokenResponse = (user, statusCode, res) => {
   }).catch(e => console.warn('Prisma session creation log:', e.message));
 
   // Send access and refresh token inside secure HttpOnly cookies
-  res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 }); // 15 mins
+  res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7 days
   res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7 days
 
   // Log user audit log
@@ -230,10 +230,30 @@ exports.registerPartner = async (req, res) => {
     console.log("Approval Request Created");
     console.log("Full Database Response:", JSON.stringify(worker, null, 2));
 
+    // Live Database Admin Onboarding Notification
+    const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' } });
+    if (adminUser) {
+      await db.notification.create({
+        data: {
+          userId: adminUser.id,
+          type: 'ADMIN_UPDATE',
+          title: '🔔 New Partner Application',
+          message: `New partner application received from ${user.name} for ${category || 'brochure category'}.`
+        }
+      }).catch(() => {});
+    }
+
     // Map skill
     if (category) {
+      // Normalization helper for fuzzy categories
+      let queryCategory = category;
+      if (queryCategory === 'Full House Cleaning') queryCategory = 'Full House Deep Cleaning';
+      else if (queryCategory === 'Bathroom Cleaning') queryCategory = 'Bathroom Deep Cleaning';
+      else if (queryCategory === 'Kitchen Cleaning') queryCategory = 'Full Kitchen Cleaning';
+      else if (queryCategory === 'Electrician') queryCategory = 'Electrician Service';
+
       let skillService = await db.service.findFirst({
-        where: { name: { contains: category, mode: 'insensitive' } }
+        where: { name: { contains: queryCategory, mode: 'insensitive' } }
       });
       if (!skillService) {
         skillService = await db.service.findFirst();
@@ -297,21 +317,10 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // BLOCK WORKER LOGIN IF NOT APPROVED
+    // Allow all service partners to log in so the client portal can render role-isolated status screens (Pending, Review, Rejected)
     if (user.role === 'WORKER' && user.workerProfile) {
-      const status = user.workerProfile.approvalStatus;
-      if (status !== 'APPROVED') {
-        let msg = 'Your application is currently under review.';
-        if (status === 'REJECTED') {
-          msg = 'Your application was not approved. Please contact support.';
-        }
-        return res.status(403).json({
-          success: false,
-          message: msg,
-          approvalStatus: status,
-          workerName: user.name
-        });
-      }
+      // Just log status for debug
+      console.log(`Service Partner "${user.name}" logging in with status: ${user.workerProfile.approvalStatus}`);
     }
 
     sendTokenResponse(user, 200, res);
@@ -365,7 +374,7 @@ exports.refresh = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 15 * 60 * 1000 // 15 mins
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     const userResponse = { ...user };
@@ -537,6 +546,38 @@ exports.syncSupabase = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email is required for syncing.' });
     }
 
+    // Check if user already exists in User table to avoid foreign key violations
+    let user = await db.user.findUnique({ where: { email } });
+    if (!user) {
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = bcrypt.hashSync(Math.random().toString(36), 10);
+      
+      // Avoid phone constraint violations by checking existence
+      let userPhone = phone || '0000000000';
+      if (phone) {
+        const existingPhoneUser = await db.user.findUnique({ where: { phone } });
+        if (existingPhoneUser) {
+          userPhone = `${phone}_${Date.now()}`;
+        }
+      }
+
+      user = await db.user.create({
+        data: {
+          id: id || undefined,
+          email,
+          password: hashedPassword,
+          name: name || 'User',
+          phone: userPhone,
+          role: 'USER',
+          pincode: pincode || null,
+          serviceArea: serviceArea || null
+        }
+      });
+      console.log('USER INSERT RESPONSE: User created successfully in db.user', user);
+    } else {
+      console.log('USER INSERT RESPONSE: User already exists in db.user', user);
+    }
+
     // Check if customer already exists
     console.log('--- BEFORE findUnique Call ---');
     console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
@@ -549,7 +590,7 @@ exports.syncSupabase = async (req, res) => {
       // Create customer if not exists
       customer = await db.customer.create({
         data: {
-          id: id || undefined,
+          id: id || user.id || undefined,
           email,
           name: name || 'User',
           phone: phone || '0000000000',
@@ -562,9 +603,38 @@ exports.syncSupabase = async (req, res) => {
       console.log('CUSTOMER INSERT RESPONSE: Customer already exists', customer);
     }
 
+    const { accessToken, refreshToken } = signTokens(customer.id, customer.email, 'USER');
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
+
+    await db.session.create({
+      data: {
+        userId: customer.id,
+        refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      }
+    }).catch(e => console.warn('Prisma session creation log:', e.message));
+
+    res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    await db.auditLog.create({
+      data: {
+        userId: customer.id,
+        action: 'USER_LOGIN',
+        details: JSON.stringify({ email: customer.email, role: 'USER' }),
+        ipAddress: req.ip
+      }
+    }).catch(e => {});
+
     res.status(200).json({
       success: true,
       user: { ...customer, role: 'USER' },
+      token: accessToken,
       message: 'Supabase sync successful.'
     });
   } catch (error) {

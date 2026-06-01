@@ -79,24 +79,59 @@ export const useCartStore = create((set, get) => ({
 
   // Validate promotional coupon codes
   applyCoupon: async (code) => {
-    if (code.toUpperCase() === '9MINUTES') {
-      set({ couponCode: code.toUpperCase(), discountPct: 15.0, activeCoupon: '9MINUTES' });
-      return { success: true, message: 'Promo code applied! 15% discount deducted.' };
+    if (!code) return { success: false, message: 'Please enter a coupon code.' };
+    try {
+      const subtotal = get().items.reduce((sum, item) => sum + item.price * item.quantity, 0.0);
+      const res = await fetch('http://localhost:5000/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, subtotal })
+      });
+      const data = await res.json();
+      if (data.success) {
+        set({ couponCode: code.toUpperCase(), activeCoupon: data.coupon });
+        return { success: true, message: 'Coupon applied successfully!' };
+      } else {
+        set({ couponCode: '', activeCoupon: null });
+        return { success: false, message: data.message || 'Invalid or expired promotional code.' };
+      }
+    } catch (e) {
+      console.warn('Coupon validation offline fallback...', e);
+      if (code.toUpperCase() === '9MINUTES') {
+        const mockCoupon = { code: '9MINUTES', discountType: 'PERCENTAGE', discountValue: 15.0, minOrderValue: 0, maxDiscount: 200 };
+        set({ couponCode: '9MINUTES', activeCoupon: mockCoupon });
+        return { success: true, message: 'Coupon applied successfully!' };
+      }
+      if (code.toUpperCase() === 'WELCOME10') {
+        const mockCoupon = { code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, minOrderValue: 0, maxDiscount: 100 };
+        set({ couponCode: 'WELCOME10', activeCoupon: mockCoupon });
+        return { success: true, message: 'Coupon applied successfully!' };
+      }
+      return { success: false, message: 'Invalid or expired promotional code.' };
     }
-    if (code.toUpperCase() === 'WELCOME10') {
-      set({ couponCode: code.toUpperCase(), discountPct: 10.0, activeCoupon: 'WELCOME10' });
-      return { success: true, message: 'Promo code applied! 10% discount deducted.' };
-    }
-    return { success: false, message: 'Invalid or expired promotional code.' };
   },
 
   // Calculate pricing summaries
   getSummary: () => {
     const items = get().items;
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0.0);
-    const discount = (subtotal * get().discountPct) / 100;
+    const activeCoupon = get().activeCoupon;
+    
+    let discount = 0.0;
+    if (activeCoupon && subtotal >= (activeCoupon.minOrderValue || 0)) {
+      if (activeCoupon.discountType === 'FLAT') {
+        discount = activeCoupon.discountValue;
+      } else if (activeCoupon.discountType === 'PERCENTAGE') {
+        discount = (subtotal * activeCoupon.discountValue) / 100;
+        if (activeCoupon.maxDiscount !== null && activeCoupon.maxDiscount !== undefined && discount > activeCoupon.maxDiscount) {
+          discount = activeCoupon.maxDiscount;
+        }
+      }
+    }
+    
+    discount = parseFloat(discount.toFixed(2));
     const platformFee = subtotal > 0 ? 49.0 : 0.0;
-    const total = subtotal - discount + platformFee;
+    const total = Math.max(0, subtotal - discount + platformFee);
 
     return {
       subtotal,

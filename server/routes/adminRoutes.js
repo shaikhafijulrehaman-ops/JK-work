@@ -21,4 +21,17 @@ router.get('/analytics', protect, restrictTo('ADMIN'), adminController.getAnalyt
 // Get full dashboard data
 router.get('/dashboard-data', protect, restrictTo('ADMIN'), adminController.getDashboardData);
 
+// Coupon CRUD Management
+router.get('/coupons', protect, restrictTo('ADMIN'), adminController.getCoupons);
+router.post('/coupons', protect, restrictTo('ADMIN'), adminController.createCoupon);
+router.put('/coupons/:id', protect, restrictTo('ADMIN'), adminController.updateCoupon);
+router.delete('/coupons/:id', protect, restrictTo('ADMIN'), adminController.deleteCoupon);
+
+// Resource-specific admin query lists
+router.get('/bookings', protect, restrictTo('ADMIN'), adminController.getBookings);
+router.get('/customers', protect, restrictTo('ADMIN'), adminController.getCustomers);
+router.get('/services', protect, restrictTo('ADMIN'), adminController.getServices);
+router.get('/payments', protect, restrictTo('ADMIN'), adminController.getPayments);
+
 module.exports = router;
+

@@ -42,17 +42,23 @@ router.post('/services', protect, restrictTo('ADMIN'), serviceCtrl.createService
 router.put('/services/:id', protect, restrictTo('ADMIN'), serviceCtrl.updateService);
 router.delete('/services/:id', protect, restrictTo('ADMIN'), serviceCtrl.deleteService);
 
+// ==================== DYNAMIC COUPONS ====================
+router.post('/coupons/validate', bookingCtrl.validateCouponCode);
+
 // ==================== BOOKINGS SYSTEM ====================
 router.post('/bookings', protect, bookingLimiter, bookingCtrl.createBooking);
 router.get('/bookings', protect, bookingCtrl.getBookings);
 router.get('/bookings/:id', protect, bookingCtrl.getBookingById);
 router.put('/bookings/:id/assign', protect, restrictTo('ADMIN'), bookingCtrl.assignWorker);
 router.put('/bookings/:id/status', protect, workerCtrl.updateJobStatus);
+router.put('/bookings/:id/accept', protect, restrictTo('WORKER'), bookingCtrl.acceptBookingByPartner);
+router.put('/bookings/:id/reject', protect, restrictTo('WORKER'), bookingCtrl.rejectBookingByPartner);
 
 // ==================== WORKERS & PAYROLL LEDGER ====================
 router.get('/workers', protect, restrictTo('ADMIN'), workerCtrl.getAllWorkers);
 router.put('/workers/:id/status', protect, restrictTo('ADMIN'), workerCtrl.toggleWorkerStatus);
 router.get('/workers/jobs', protect, restrictTo('WORKER'), workerCtrl.getMyJobs);
+router.get('/workers/requests', protect, restrictTo('WORKER'), workerCtrl.getCategoryRequests);
 
 // ==================== REVIEWS & RATINGS ====================
 router.post('/reviews', protect, reviewCtrl.submitReview);

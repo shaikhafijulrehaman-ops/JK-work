@@ -11,7 +11,12 @@ export const useBookingStore = create((set, get) => ({
   fetchBookings: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/bookings`, { method: 'GET' });
+      const res = await fetch(`${API_URL}/bookings`, { 
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        }
+      });
       const data = await res.json();
       if (data.success) {
         set({ bookings: data.bookings, loading: false });
@@ -53,7 +58,7 @@ export const useBookingStore = create((set, get) => ({
       // Local fallback mock order execution
       const mockOrder = {
         id: `booking-mock-${Date.now()}`,
-        status: 'PENDING',
+        status: 'PENDING_PARTNER_ACCEPTANCE',
         paymentStatus: 'UNPAID',
         discountApplied: bookingData.discountApplied || 0.0,
         createdAt: new Date(),
@@ -65,6 +70,35 @@ export const useBookingStore = create((set, get) => ({
       current.push(mockOrder);
       localStorage.setItem('jk_bookings', JSON.stringify(current));
       set({ bookings: [...current], loading: false });
+
+      // Live dispatch acceptance simulation for offline preview
+      setTimeout(() => {
+        const bookingsList = JSON.parse(localStorage.getItem('jk_bookings')) || [];
+        const found = bookingsList.find(b => b.id === mockOrder.id);
+        if (found && found.status === 'PENDING_PARTNER_ACCEPTANCE') {
+          found.status = 'PARTNER_ACCEPTED';
+          found.workerId = 'w-seeded- Ramesh';
+          found.acceptedAt = new Date().toISOString();
+          
+          // Seed a realistic database-driven worker profile
+          found.worker = {
+            id: 'w-1',
+            rating: 4.8,
+            experienceYears: 3,
+            profilePhoto: '', // fallback to default or seed avatar
+            user: {
+              name: 'Ramesh Kumar',
+              phone: '9876543210'
+            }
+          };
+
+          // Save back to local storage and update Zustand state
+          const updatedList = bookingsList.map(b => b.id === mockOrder.id ? found : b);
+          localStorage.setItem('jk_bookings', JSON.stringify(updatedList));
+          set({ bookings: updatedList });
+        }
+      }, 7000); // After 7 seconds, simulate Vijay or Ramesh accepting
+
       return { success: true, booking: mockOrder };
     }
   },
@@ -74,7 +108,10 @@ export const useBookingStore = create((set, get) => ({
     try {
       const res = await fetch(`${API_URL}/bookings/${bookingId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
         body: JSON.stringify({ status })
       });
       const data = await res.json();
@@ -105,7 +142,10 @@ export const useBookingStore = create((set, get) => ({
     try {
       const res = await fetch(`${API_URL}/bookings/${bookingId}/assign`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
         body: JSON.stringify({ workerId })
       });
       const data = await res.json();
@@ -141,7 +181,10 @@ export const useBookingStore = create((set, get) => ({
     try {
       const res = await fetch(`${API_URL}/reviews`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
         body: JSON.stringify({ bookingId, rating, comment })
       });
       const data = await res.json();
@@ -168,7 +211,10 @@ export const useBookingStore = create((set, get) => ({
     try {
       const res = await fetch(`${API_URL}/payments/simulate-success`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
         body: JSON.stringify({ bookingId, paymentMethod: method })
       });
       const data = await res.json();
@@ -190,5 +236,99 @@ export const useBookingStore = create((set, get) => ({
       return true;
     }
     return false;
+  },
+
+  // Fetch detailed booking (for real-time status updates)
+  fetchBookingDetails: async (bookingId) => {
+    try {
+      const res = await fetch(`${API_URL}/bookings/${bookingId}`, { 
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update this booking in our state
+        const current = get().bookings;
+        const updated = current.map(b => b.id === bookingId ? data.booking : b);
+        set({ bookings: updated });
+        return { success: true, booking: data.booking };
+      }
+    } catch (e) {}
+
+    // Offline fallback: find in local state
+    const current = get().bookings;
+    const found = current.find(b => b.id === bookingId);
+    if (found) {
+      return { success: true, booking: found };
+    }
+    return { success: false, error: 'Booking details not found.' };
+  },
+
+  // Worker: Accept a booking request
+  acceptBooking: async (bookingId) => {
+    set({ loading: true });
+    try {
+      const res = await fetch(`${API_URL}/bookings/${bookingId}/accept`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        }
+      });
+      const data = await res.json();
+      set({ loading: false });
+      if (data.success) {
+        // Sync local storage and state
+        await get().fetchBookings();
+        return { success: true, booking: data.booking };
+      }
+      return { success: false, error: data.message };
+    } catch (e) {
+      set({ loading: false });
+      
+      // Sandbox fallback accept
+      const current = get().bookings;
+      const idx = current.findIndex(b => b.id === bookingId);
+      if (idx !== -1) {
+        current[idx].status = 'PARTNER_ACCEPTED';
+        current[idx].workerId = 'w-seeded';
+        current[idx].acceptedAt = new Date().toISOString();
+        current[idx].worker = {
+          id: 'w-seeded',
+          rating: 4.9,
+          experienceYears: 5,
+          user: { name: 'Ramesh Kumar', phone: '9876543210' }
+        };
+        localStorage.setItem('jk_bookings', JSON.stringify(current));
+        set({ bookings: [...current] });
+        return { success: true, booking: current[idx] };
+      }
+      return { success: false, error: 'Database network fallback error.' };
+    }
+  },
+
+  // Worker: Reject a booking request
+  rejectBooking: async (bookingId) => {
+    try {
+      const res = await fetch(`${API_URL}/bookings/${bookingId}/reject`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        return { success: true };
+      }
+    } catch (e) {}
+
+    // Sandbox fallback reject: remove from matched list for this local session
+    const current = get().bookings;
+    const updated = current.filter(b => b.id !== bookingId);
+    set({ bookings: updated });
+    return { success: true };
   }
 }));

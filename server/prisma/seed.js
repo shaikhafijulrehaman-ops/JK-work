@@ -39,10 +39,10 @@ async function main() {
 
   // 4. Create Promo Codes
   const promo1 = await prisma.promoCode.create({
-    data: { code: '9MINUTES', discountPct: 15.0, isActive: true },
+    data: { code: '9MINUTES', discountType: 'PERCENTAGE', discountValue: 15.0, isActive: true },
   });
   const promo2 = await prisma.promoCode.create({
-    data: { code: 'WELCOME10', discountPct: 10.0, isActive: true },
+    data: { code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, isActive: true },
   });
 
   console.log('Promo codes seeded.');
@@ -56,7 +56,7 @@ async function main() {
       price: 799.0,
       durationText: '6 Hours',
       packageText: 'Daily Needs',
-      imageUrl: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/babycare.jpg',
     },
     {
       name: 'Full House Deep Cleaning',
@@ -65,7 +65,7 @@ async function main() {
       price: 3499.0,
       durationText: '',
       packageText: 'Deep Hygiene',
-      imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/housecleaning.jpg',
     },
     {
       name: 'Bathroom Deep Cleaning',
@@ -74,7 +74,7 @@ async function main() {
       price: 749.0,
       durationText: '',
       packageText: 'Premium Sanitation',
-      imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/bathroom-cleaning.jpg',
     },
     {
       name: 'Full Kitchen Cleaning',
@@ -83,7 +83,7 @@ async function main() {
       price: 499.0,
       durationText: '',
       packageText: 'Fresh Kitchen',
-      imageUrl: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/kitchen-cleaning.jpg',
     },
     {
       name: 'Dust Cleaning',
@@ -92,7 +92,7 @@ async function main() {
       price: 149.0,
       durationText: '1 Hour',
       packageText: 'Quick Dusting',
-      imageUrl: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/dust-cleaning.jpg',
     },
     {
       name: 'House Shifting',
@@ -101,7 +101,7 @@ async function main() {
       price: 3499.0,
       durationText: '',
       packageText: '2BHK Package',
-      imageUrl: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/house-shifting.jpg',
     },
     {
       name: 'Cooking Service',
@@ -110,7 +110,7 @@ async function main() {
       price: 149.0,
       durationText: '1 Hour',
       packageText: 'Meal Prep',
-      imageUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/cooking-service.jpg',
     },
     {
       name: 'House Painting',
@@ -119,7 +119,7 @@ async function main() {
       price: 20099.0,
       durationText: '',
       packageText: 'All Materials Included',
-      imageUrl: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/house-painting.jpg',
     },
     {
       name: 'Electrician Service',
@@ -128,7 +128,7 @@ async function main() {
       price: 499.0,
       durationText: '1 Hour',
       packageText: 'Essential Repairs',
-      imageUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/electrician.jpg',
     },
     {
       name: 'Security Provider',
@@ -137,7 +137,7 @@ async function main() {
       price: 899.0,
       durationText: '8 Hours',
       packageText: 'Safe Protection',
-      imageUrl: 'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/security-provider-v2.jpg',
     },
     {
       name: 'Pest Control',
@@ -146,7 +146,7 @@ async function main() {
       price: 2599.0,
       durationText: '',
       packageText: '2BHK Package',
-      imageUrl: 'https://images.unsplash.com/photo-1615811361523-6bd03d7748e7?q=80&w=600&auto=format&fit=crop',
+      imageUrl: '/services/pest-control-v2.jpg',
     },
   ];
 

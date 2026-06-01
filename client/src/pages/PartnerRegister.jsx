@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabaseClient';
 import { 
   ShieldCheck, Phone, CheckCircle, ChevronRight, ChevronLeft, 
   Upload, Sparkles, Building, User, Mail, CreditCard,
@@ -21,12 +22,118 @@ const SERVICE_AREAS = [
   'Peenya', 'Madavara', 'Chikkabidarakallu', 'Doddabidarakallu'
 ];
 
-// Mock Document Preset URLs for easy local testing
-const PRESET_DOCUMENTS = {
-  aadhaarFront: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?q=80&w=600&auto=format&fit=crop',
-  aadhaarBack: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?q=80&w=600&auto=format&fit=crop',
-  selfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop',
-  profile: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?q=80&w=600&auto=format&fit=crop'
+// Helper to dynamically draw mockup identity documents and selfies onto client-side canvas to avoid using stock/unsplash photos.
+const generateDynamicBase64Doc = (type, label) => {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    
+    // Draw background
+    const grad = ctx.createLinearGradient(0, 0, 400, 300);
+    grad.addColorStop(0, '#0f172a'); // slate-900
+    grad.addColorStop(1, '#1e293b'); // slate-800
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 400, 300);
+    
+    // Draw border
+    ctx.strokeStyle = '#06b6d4'; // cyan-500
+    ctx.lineWidth = 4;
+    ctx.strokeRect(10, 10, 380, 280);
+    
+    if (type === 'selfie') {
+      // Draw face silhouette
+      ctx.fillStyle = '#334155'; // slate-700
+      // head
+      ctx.beginPath();
+      ctx.arc(200, 110, 45, 0, Math.PI * 2);
+      ctx.fill();
+      // shoulders
+      ctx.beginPath();
+      ctx.ellipse(200, 210, 75, 45, 0, Math.PI, 0);
+      ctx.fill();
+      
+      // Text
+      ctx.fillStyle = '#38bdf8'; // sky-400
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('PARTNER SELFIE SCAN', 200, 200);
+    } else {
+      // ID card background box
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(40, 50, 320, 180);
+      ctx.strokeStyle = '#334155';
+      ctx.strokeRect(40, 50, 320, 180);
+      
+      // Face placeholder inside card
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(60, 75, 70, 85);
+      
+      // Details text lines
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(150, 85, 170, 10);
+      ctx.fillRect(150, 105, 130, 10);
+      ctx.fillRect(150, 125, 150, 10);
+      
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label || 'AADHAAR CARD', 200, 205);
+    }
+    
+    // Safety verification timestamp
+    ctx.fillStyle = '#475569';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`VERIFIED SECURE: ${new Date().toLocaleDateString()}`, 200, 265);
+    
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch (e) {
+    console.error('Failed to generate base64 mockup doc on canvas:', e);
+    return '';
+  }
+};
+
+// Helper to convert base64 data URL to a Blob
+const dataURLtoBlob = (dataurl) => {
+  try {
+    let arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], {type:mime});
+  } catch (e) {
+    console.error("Failed to parse base64 URL to blob:", e);
+    return null;
+  }
+};
+
+const uploadToSupabase = async (base64OrFile, filename) => {
+  if (!base64OrFile) return null;
+  if (base64OrFile.startsWith('http')) return base64OrFile; // Already uploaded URL
+
+  const blob = dataURLtoBlob(base64OrFile);
+  if (!blob) throw new Error(`Invalid file format for ${filename}`);
+
+  const { data, error } = await supabase.storage
+    .from('partner-documents')
+    .upload(filename, blob, {
+      cacheControl: '3600',
+      contentType: blob.type,
+      upsert: true
+    });
+
+  if (error) {
+    throw new Error(`Storage upload failed for ${filename}: ${error.message}`);
+  }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('partner-documents')
+    .getPublicUrl(filename);
+
+  return publicUrl;
 };
 
 export default function PartnerRegister() {
@@ -84,7 +191,6 @@ export default function PartnerRegister() {
   const streamRef = React.useRef(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
-  const [cameraSimulated, setCameraSimulated] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [shutterFlash, setShutterFlash] = useState(false);
 
@@ -131,7 +237,6 @@ export default function PartnerRegister() {
   const handleStartSelfieCapture = async () => {
     setCameraOpen(true);
     setCameraActive(false);
-    setCameraSimulated(false);
     setCameraError(null);
     
     // Short timeout to ensure the video element renders before stream starts
@@ -150,8 +255,8 @@ export default function PartnerRegister() {
           setCameraActive(true);
         }
       } catch (err) {
-        console.warn("Webcam access blocked or hardware missing. Entering camera simulator mode.", err);
-        setCameraSimulated(true);
+        console.error("Webcam access blocked or hardware missing.", err);
+        setCameraError("Webcam access is required for identity verification. Please enable camera access and try again.");
       }
     }, 100);
   };
@@ -163,7 +268,6 @@ export default function PartnerRegister() {
     }
     setCameraOpen(false);
     setCameraActive(false);
-    setCameraSimulated(false);
   };
 
   const handleCaptureLiveSelfie = () => {
@@ -190,21 +294,11 @@ export default function PartnerRegister() {
       }
     } catch (err) {
       console.error("Failed to capture image from video element", err);
-      setCameraError("Capture failed. Try simulator capture.");
+      setCameraError("Capture failed.");
     }
   };
 
-  const handleSimulateCapture = () => {
-    setShutterFlash(true);
-    setTimeout(() => setShutterFlash(false), 200);
-
-    setTimeout(() => {
-      setFormData(prev => ({ ...prev, selfiePhoto: PRESET_DOCUMENTS.selfie }));
-      handleCloseCamera();
-    }, 150);
-  };
-
-  // Base64 helper for Aadhaar/Profile uploads
+  // Base64 helper for Aadhaar uploads
   const handleFileUpload = (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -219,12 +313,6 @@ export default function PartnerRegister() {
       setFormData(prev => ({ ...prev, [field]: reader.result }));
     };
     reader.readAsDataURL(file);
-  };
-
-  // Apply Document presets for quick testing (Aadhaar & Profile only)
-  const handleApplyPreset = (field, type) => {
-    if (field === 'selfiePhoto') return; // strictly forbidden
-    setFormData(prev => ({ ...prev, [field]: PRESET_DOCUMENTS[type] }));
   };
 
   // Next Step Validation
@@ -253,8 +341,8 @@ export default function PartnerRegister() {
       }
     }
     if (currentStep === 4) {
-      if (!formData.aadhaarFront || !formData.aadhaarBack || !formData.selfiePhoto || !formData.profilePhoto) {
-        setError('Please upload all required identity documents.');
+      if (!formData.aadhaarFront || !formData.aadhaarBack || !formData.selfiePhoto) {
+        setError('Please upload all required identity documents (Aadhaar Front, Aadhaar Back, and Selfie).');
         return;
       }
     }
@@ -297,6 +385,26 @@ export default function PartnerRegister() {
     setLoading(true);
     setError(null);
     try {
+      let aadhaarFrontUrl = '';
+      let aadhaarBackUrl = '';
+      let selfieUrl = '';
+
+      const phoneSanitized = formData.phone.replace(/[^0-9]/g, '');
+      const uniqueId = Date.now();
+
+      if (formData.aadhaarFront) {
+        const filename = `partner-${phoneSanitized}-aadhaar-front-${uniqueId}.jpg`;
+        aadhaarFrontUrl = await uploadToSupabase(formData.aadhaarFront, filename);
+      }
+      if (formData.aadhaarBack) {
+        const filename = `partner-${phoneSanitized}-aadhaar-back-${uniqueId}.jpg`;
+        aadhaarBackUrl = await uploadToSupabase(formData.aadhaarBack, filename);
+      }
+      if (formData.selfiePhoto) {
+        const filename = `partner-${phoneSanitized}-selfie-${uniqueId}.jpg`;
+        selfieUrl = await uploadToSupabase(formData.selfiePhoto, filename);
+      }
+
       const payload = {
         name: formData.name,
         email: formData.email,
@@ -308,10 +416,10 @@ export default function PartnerRegister() {
         pincode: formData.pincode,
         address: formData.address,
         serviceArea: formData.serviceArea,
-        aadhaarFront: formData.aadhaarFront,
-        aadhaarBack: formData.aadhaarBack,
-        selfiePhoto: formData.selfiePhoto,
-        profilePhoto: formData.profilePhoto,
+        aadhaarFront: aadhaarFrontUrl,
+        aadhaarBack: aadhaarBackUrl,
+        selfiePhoto: selfieUrl,
+        profilePhoto: selfieUrl, // admin reviews Selfie and Aadhaar only; profilePhoto is synced to Selfie
         bankDetails: {
           holderName: formData.bankHolder,
           bankName: formData.bankName,
@@ -361,8 +469,8 @@ export default function PartnerRegister() {
           rating: 5.0,
           user: newSandboxUser,
           skills: [{ service: { name: formData.category } }],
-          aadhaar: JSON.stringify({ front: formData.aadhaarFront, back: formData.aadhaarBack }),
-          profilePhoto: JSON.stringify({ profile: formData.profilePhoto, selfie: formData.selfiePhoto }),
+          aadhaar: JSON.stringify({ front: aadhaarFrontUrl, back: aadhaarBackUrl }),
+          profilePhoto: JSON.stringify({ profile: selfieUrl, selfie: selfieUrl }),
           bankDetails: JSON.stringify({
             holderName: formData.bankHolder,
             bankName: formData.bankName,
@@ -390,8 +498,14 @@ export default function PartnerRegister() {
         setError(data.message || 'Onboarding failed.');
       }
     } catch (err) {
-      console.warn('Backend API connection offline. Simulating success in sandbox modes...', err);
+      console.warn('Backend API connection offline or storage error. Simulating success in sandbox...', err);
       
+      if (err.message && err.message.startsWith('Storage upload failed')) {
+        setError(err.message);
+        setLoading(false);
+        return;
+      }
+
       // Save locally to localStorage so that the admin panel can show it immediately
       const newUserId = `user-worker-${Date.now()}`;
       const newWorkerId = `w-${Date.now()}`;
@@ -419,8 +533,8 @@ export default function PartnerRegister() {
         rating: 5.0,
         user: newSandboxUser,
         skills: [{ service: { name: formData.category } }],
-        aadhaar: JSON.stringify({ front: formData.aadhaarFront, back: formData.aadhaarBack }),
-        profilePhoto: JSON.stringify({ profile: formData.profilePhoto, selfie: formData.selfiePhoto }),
+        aadhaar: JSON.stringify({ front: aadhaarFrontUrl || formData.aadhaarFront, back: aadhaarBackUrl || formData.aadhaarBack }),
+        profilePhoto: JSON.stringify({ profile: selfieUrl || formData.selfiePhoto, selfie: selfieUrl || formData.selfiePhoto }),
         bankDetails: JSON.stringify({
           holderName: formData.bankHolder,
           bankName: formData.bankName,
@@ -813,26 +927,8 @@ export default function PartnerRegister() {
                         />
                       )}
 
-                      {/* Simulator fallback view */}
-                      {cameraSimulated && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-center px-6 relative overflow-hidden z-10">
-                          {/* Pulsing scanning guide */}
-                          <div className="absolute top-0 left-0 w-full h-1 bg-brand opacity-30 animate-scan"></div>
-                          
-                          <div className="w-20 h-20 bg-brand/10 text-brand rounded-full flex items-center justify-center mb-4 border border-brand/20 relative z-10">
-                            <Sparkles className="w-10 h-10 animate-spin-slow" />
-                          </div>
-                          <h4 className="text-white font-poppins font-black text-sm tracking-wide z-10">
-                            Webcam Simulator Mode
-                          </h4>
-                          <p className="text-[10px] text-slate-400 font-medium max-w-[220px] mt-1.5 leading-normal z-10">
-                            No camera hardware detected or sandbox browser active. Simulate high-res live selfie scan.
-                          </p>
-                        </div>
-                      )}
-
                       {/* Camera Loading State */}
-                      {!cameraActive && !cameraSimulated && (
+                      {!cameraActive && (
                         <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center text-center p-4">
                           <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-3"></div>
                           <span className="text-xs text-slate-400 font-bold">Initializing camera hardware...</span>
@@ -863,15 +959,6 @@ export default function PartnerRegister() {
                           >
                             <span className="w-3.5 h-3.5 rounded-full bg-white animate-ping"></span>
                             Capture Selfie
-                          </button>
-                        )}
-                        {cameraSimulated && (
-                          <button 
-                            onClick={handleSimulateCapture}
-                            className="bg-brand hover:bg-brand-dark text-white font-extrabold text-xs px-6 py-3 rounded-full flex items-center gap-1.5 shadow-lg shadow-brand/30 hover:scale-105 active:scale-95 transition-all"
-                          >
-                            <Sparkles className="w-4 h-4 animate-pulse" />
-                            Capture Simulated Selfie
                           </button>
                         )}
                         <button 
@@ -915,12 +1002,6 @@ export default function PartnerRegister() {
                             className="hidden" 
                           />
                         </label>
-                        <button 
-                          onClick={() => handleApplyPreset('aadhaarFront', 'aadhaarFront')}
-                          className="bg-slate-200/50 hover:bg-slate-200 text-slate-600 font-bold text-[10px] px-3 py-2 rounded-lg transition-all"
-                        >
-                          Mock File
-                        </button>
                       </div>
                     </div>
 
@@ -947,12 +1028,6 @@ export default function PartnerRegister() {
                             className="hidden" 
                           />
                         </label>
-                        <button 
-                          onClick={() => handleApplyPreset('aadhaarBack', 'aadhaarBack')}
-                          className="bg-slate-200/50 hover:bg-slate-200 text-slate-600 font-bold text-[10px] px-3 py-2 rounded-lg transition-all"
-                        >
-                          Mock File
-                        </button>
                       </div>
                     </div>
 
@@ -987,38 +1062,6 @@ export default function PartnerRegister() {
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
                           {formData.selfiePhoto ? 'Retake Selfie' : 'Open Camera'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 4. Professional Profile Photo Row */}
-                    <div className="border border-slate-100 rounded-xl p-4 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex-1">
-                        <span className="block text-xs font-black text-slate-700 uppercase tracking-wide">Professional Profile Photo</span>
-                        {formData.profilePhoto ? (
-                          <span className="text-[10px] text-green-600 font-black flex items-center mt-1">
-                            <Check className="w-3 h-3 mr-0.5" /> Profile Photo Uploaded Successfully
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 block mt-1">No file selected (Required for Client App)</span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <label className="bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-[10px] px-3 py-2 rounded-lg transition-all shadow-sm cursor-pointer flex items-center">
-                          <Upload className="w-3 h-3 mr-1" /> Upload Image
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            onChange={(e) => handleFileUpload(e, 'profilePhoto')}
-                            className="hidden" 
-                          />
-                        </label>
-                        <button 
-                          onClick={() => handleApplyPreset('profilePhoto', 'profile')}
-                          className="bg-slate-200/50 hover:bg-slate-200 text-slate-600 font-bold text-[10px] px-3 py-2 rounded-lg transition-all"
-                        >
-                          Mock File
                         </button>
                       </div>
                     </div>

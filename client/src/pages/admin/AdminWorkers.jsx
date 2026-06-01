@@ -7,6 +7,20 @@ import {
   AlertCircle, ShieldCheck, MapPin, Building, CreditCard, ExternalLink
 } from 'lucide-react';
 
+const isDocumentUploaded = (url) => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return !lower.includes('unsplash.com') && 
+         !lower.includes('sample') && 
+         url !== 'profile.jpg' && 
+         url !== 'selfie.jpg' && 
+         url !== 'profile' && 
+         url !== 'selfie' && 
+         url !== 'aadhaar_front' && 
+         url !== 'aadhaar_back' && 
+         url !== 'aadhaar';
+};
+
 export default function AdminWorkers() {
   const { addNotification } = useNotificationStore();
 
@@ -53,41 +67,11 @@ export default function AdminWorkers() {
         setError(data.message || 'Failed to fetch workers.');
       }
     } catch (err) {
-      console.warn('Backend server connection offline. Running in premium Sandbox mock fallback...', err);
-      // Premium Sandbox Fallback (Rich Seeds)
-      const mockWorkers = [
-        {
-          id: 'w-1',
-          approvalStatus: 'APPROVED',
-          experienceYears: 5,
-          address: 'Anchepalya, Tumkur Road, Bengaluru',
-          createdAt: new Date(Date.now() - 172800000).toISOString(),
-          rating: 4.8,
-          user: { name: 'Ramesh Kumar', phone: '7766554433', email: 'ramesh@jkenterprises.com' },
-          skills: [{ service: { name: 'Full House Deep Cleaning', category: 'Cleaning' } }],
-          aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=400', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=400' }),
-          profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150', selfie: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150' }),
-          bankDetails: JSON.stringify({ holderName: 'Ramesh Kumar', bankName: 'HDFC Bank', accountNumber: '501002938475', ifsc: 'HDFC0000140', upi: 'ramesh@upi' })
-        },
-        {
-          id: 'w-2',
-          approvalStatus: 'APPROVED',
-          experienceYears: 4,
-          address: 'Peenya Industrial Area, Bengaluru',
-          createdAt: new Date(Date.now() - 259200000).toISOString(),
-          rating: 4.9,
-          user: { name: 'Vijay Kumar', phone: '8877665544', email: 'vijay@jkenterprises.com' },
-          skills: [{ service: { name: 'Electrician Service', category: 'Technical' } }],
-          aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=400', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=400' }),
-          profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', selfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' }),
-          bankDetails: JSON.stringify({ holderName: 'Vijay Kumar', bankName: 'ICICI Bank', accountNumber: '000401928374', ifsc: 'ICIC0000004', upi: 'vijay@upi' })
-        }
-      ];
-
-      const activeMockWorkers = mockWorkers.filter(w => w.approvalStatus === activeTab);
-      console.log("Partner Approval Center Fetch Result");
-      console.log("Full Database Response (Workers - Sandbox):", activeMockWorkers);
-      setWorkers(activeMockWorkers);
+      console.warn('Backend server connection offline. Running in sandbox...', err);
+      const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
+      const activeLocalWorkers = localWorkers.filter(w => w.approvalStatus === activeTab);
+      console.log("Partner Approval Center Fetch Result (Sandbox):", activeLocalWorkers);
+      setWorkers(activeLocalWorkers);
     } finally {
       setLoading(false);
     }
@@ -262,7 +246,7 @@ export default function AdminWorkers() {
                 ) : workers.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="p-12 text-center text-slate-400 font-medium">
-                      No service partners found in this verification status tab.
+                      No Partner Applications Available
                     </td>
                   </tr>
                 ) : (
@@ -274,11 +258,17 @@ export default function AdminWorkers() {
                         {/* Profile & Contacts */}
                         <td className="p-4">
                           <div className="flex items-center space-x-3">
-                            <img 
-                              src={photos.profile || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=80'} 
-                              alt="profile" 
-                              className="w-10 h-10 rounded-full object-cover border border-slate-100 shrink-0" 
-                            />
+                            <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0 text-center p-0.5">
+                              {isDocumentUploaded(photos.profile) ? (
+                                <img 
+                                  src={photos.profile} 
+                                  alt="profile" 
+                                  className="w-full h-full object-cover rounded-full" 
+                                />
+                              ) : (
+                                <span className="text-[6px] font-bold text-slate-400 leading-none">Image Not Available</span>
+                              )}
+                            </div>
                             <div>
                               <span className="font-poppins font-extrabold text-slate-800 block text-sm">{w.user?.name}</span>
                               <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-0.5">
@@ -360,13 +350,13 @@ export default function AdminWorkers() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
             >
               <motion.div 
                 initial={{ scale: 0.96, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.96, y: 20 }}
-                className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 max-w-4xl w-full shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
+                className="bg-white border border-slate-100 rounded-2xl p-6 sm:p-8 max-w-4xl w-full shadow-xl space-y-6 max-h-[90vh] overflow-y-auto"
               >
                 
                 {/* Header */}
@@ -397,29 +387,22 @@ export default function AdminWorkers() {
                   {/* Left Side: Document Previews */}
                   <div className="space-y-5">
                     
-                    {/* Photos Side-By-Side Comparison */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Uploaded Profile Photo</span>
-                        <div className="relative aspect-square rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 shadow-sm">
-                          <img 
-                            src={photos.profile || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=300'} 
-                            alt="profile" 
-                            className="w-full h-full object-cover" 
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Verification Selfie</span>
-                        <div className="relative aspect-square rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 shadow-sm">
-                          <img 
-                            src={photos.selfie || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300'} 
-                            alt="selfie" 
-                            className="w-full h-full object-cover" 
-                          />
-                          <span className="absolute top-2 right-2 bg-emerald-500 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded">LIVE</span>
-                        </div>
+                    {/* Selfie Preview */}
+                    <div>
+                      <span className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Verification Selfie</span>
+                      <div className="relative aspect-square rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 shadow-sm flex items-center justify-center">
+                        {isDocumentUploaded(photos.selfie) ? (
+                          <>
+                            <img 
+                              src={photos.selfie} 
+                              alt="selfie" 
+                              className="w-full h-full object-cover" 
+                            />
+                            <span className="absolute top-2 right-2 bg-emerald-500 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded">LIVE</span>
+                          </>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400">Image Not Available</span>
+                        )}
                       </div>
                     </div>
 
@@ -427,23 +410,31 @@ export default function AdminWorkers() {
                     <div className="space-y-3.5">
                       <div>
                         <span className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Aadhaar Card Front</span>
-                        <div className="relative border border-slate-200 rounded-2xl bg-slate-100 p-2 overflow-hidden aspect-[1.6/1]">
-                          <img 
-                            src={aadhaar.front || 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500'} 
-                            alt="aadhaar front" 
-                            className="w-full h-full object-cover rounded-xl border border-slate-200" 
-                          />
+                        <div className="relative border border-slate-200 rounded-2xl bg-slate-100 p-2 overflow-hidden aspect-[1.6/1] flex items-center justify-center">
+                          {isDocumentUploaded(aadhaar.front) ? (
+                            <img 
+                              src={aadhaar.front} 
+                              alt="aadhaar front" 
+                              className="w-full h-full object-cover rounded-xl border border-slate-200" 
+                            />
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-400">Image Not Available</span>
+                          )}
                         </div>
                       </div>
 
                       <div>
                         <span className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Aadhaar Card Back</span>
-                        <div className="relative border border-slate-200 rounded-2xl bg-slate-100 p-2 overflow-hidden aspect-[1.6/1]">
-                          <img 
-                            src={aadhaar.back || 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500'} 
-                            alt="aadhaar back" 
-                            className="w-full h-full object-cover rounded-xl border border-slate-200" 
-                          />
+                        <div className="relative border border-slate-200 rounded-2xl bg-slate-100 p-2 overflow-hidden aspect-[1.6/1] flex items-center justify-center">
+                          {isDocumentUploaded(aadhaar.back) ? (
+                            <img 
+                              src={aadhaar.back} 
+                              alt="aadhaar back" 
+                              className="w-full h-full object-cover rounded-xl border border-slate-200" 
+                            />
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-400">Image Not Available</span>
+                          )}
                         </div>
                       </div>
                     </div>

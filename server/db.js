@@ -36,8 +36,8 @@ async function seedSandbox() {
 
   // Promo Codes
   sandbox.promoCodes.push(
-    { id: 'pc-1', code: '9MINUTES', discountPct: 15.0, isActive: true },
-    { id: 'pc-2', code: 'WELCOME10', discountPct: 10.0, isActive: true }
+    { id: 'pc-1', code: '9MINUTES', discountType: 'PERCENTAGE', discountValue: 15.0, minOrderValue: 0.0, maxDiscount: 200.0, usageLimit: 100, perUserLimit: 1, isActive: true, usedCount: 12, expiresAt: new Date('2026-12-31') },
+    { id: 'pc-2', code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, minOrderValue: 0.0, maxDiscount: 100.0, usageLimit: 200, perUserLimit: 1, isActive: true, usedCount: 34, expiresAt: new Date('2026-12-31') }
   );
 
   // User: Admin
@@ -68,19 +68,19 @@ async function seedSandbox() {
 
   // Services (11 Brochure items)
   const servicesList = [
-    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799, durationText: '6 Hours', packageText: 'Daily Needs', imageUrl: 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=600&auto=format&fit=crop', description: 'Professional baby care support at home by trained and verified caregivers. Safe, responsible, and caring service for infants and children with trusted assistance.' },
-    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499, durationText: '', packageText: 'Deep Hygiene', imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=600&auto=format&fit=crop', description: 'Complete deep cleaning service for the entire home including living room, bedrooms, kitchen, and bathroom. Professional equipment used for premium hygiene.' },
-    { id: 's-3', name: 'Bathroom Deep Cleaning', category: 'Cleaning', price: 749, durationText: '', packageText: 'Premium Sanitation', imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?q=80&w=600&auto=format&fit=crop', description: 'Deep sanitation and premium cleaning including tiles, fittings, mirrors, sinks, and floor cleaning with hygienic professional solutions.' },
-    { id: 's-4', name: 'Full Kitchen Cleaning', category: 'Cleaning', price: 499, durationText: '', packageText: 'Fresh Kitchen', imageUrl: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?q=80&w=600&auto=format&fit=crop', description: 'Complete kitchen cleaning including slabs, shelves, sink area, stove cleaning, and hygienic surface treatment.' },
-    { id: 's-5', name: 'Dust Cleaning', category: 'Cleaning', price: 149, durationText: '1 Hour', packageText: 'Quick Dusting', imageUrl: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?q=80&w=600&auto=format&fit=crop', description: 'Quick and effective dust removal for furniture, electronics, shelves, windows, and home interiors.' },
-    { id: 's-6', name: 'House Shifting', category: 'Shifting', price: 3499, durationText: '', packageText: '2BHK Package', imageUrl: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=600&auto=format&fit=crop', description: 'Professional packing and shifting service for safe home relocation with trained staff.' },
-    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149, durationText: '1 Hour', packageText: 'Meal Prep', imageUrl: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=600&auto=format&fit=crop', description: 'Professional home cooking support with hygienic preparation, kitchen assistance, and fresh meal service.' },
-    { id: 's-8', name: 'House Painting', category: 'Painting', price: 20099, durationText: '', packageText: 'All Materials Included', imageUrl: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=600&auto=format&fit=crop', description: 'Premium house painting service for interiors and exteriors with all materials included. 2BHK: Rs. 20,099 | 3BHK: Rs. 23,499.' },
-    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499, durationText: '1 Hour', packageText: 'Essential Repairs', imageUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=600&auto=format&fit=crop', description: 'Professional electrician support for repairs, installations, switchboards, wiring, fan fitting, and lighting.' },
-    { id: 's-10', name: 'Security Provider', category: 'Care', price: 899, durationText: '8 Hours', packageText: 'Safe Protection', imageUrl: 'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?q=80&w=600&auto=format&fit=crop', description: 'Trained and verified security personnel for homes, apartments, offices, and events.' },
-    { id: 's-11', name: 'Pest Control', category: 'Cleaning', price: 2599, durationText: '', packageText: '2BHK Package', imageUrl: 'https://images.unsplash.com/photo-1615811361523-6bd03d7748e7?q=80&w=600&auto=format&fit=crop', description: 'Professional pest control treatment for cockroaches, insects, termites, and unwanted pests.' }
+    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799, durationText: '6 Hours', packageText: 'Daily Needs', imageUrl: '/services/babycare.jpg', description: 'Professional baby care support at home by trained and verified caregivers. Safe, responsible, and caring service for infants and children with trusted assistance.' },
+    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499, durationText: '', packageText: 'Deep Hygiene', imageUrl: '/services/housecleaning.jpg', description: 'Complete deep cleaning service for the entire home including living room, bedrooms, kitchen, and bathroom. Professional equipment used for premium hygiene.' },
+    { id: 's-3', name: 'Bathroom Deep Cleaning', category: 'Cleaning', price: 749, durationText: '', packageText: 'Premium Sanitation', imageUrl: '/services/bathroom-cleaning.jpg', description: 'Deep sanitation and premium cleaning including tiles, fittings, mirrors, sinks, and floor cleaning with hygienic professional solutions.' },
+    { id: 's-4', name: 'Full Kitchen Cleaning', category: 'Cleaning', price: 499, durationText: '', packageText: 'Fresh Kitchen', imageUrl: '/services/kitchen-cleaning.jpg', description: 'Complete kitchen cleaning including slabs, shelves, sink area, stove cleaning, and hygienic surface treatment.' },
+    { id: 's-5', name: 'Dust Cleaning', category: 'Cleaning', price: 149, durationText: '1 Hour', packageText: 'Quick Dusting', imageUrl: '/services/dust-cleaning.jpg', description: 'Quick and effective dust removal for furniture, electronics, shelves, windows, and home interiors.' },
+    { id: 's-6', name: 'House Shifting', category: 'Shifting', price: 3499, durationText: '', packageText: '2BHK Package', imageUrl: '/services/house-shifting.jpg', description: 'Professional packing, loading, moving, and unloading services for 2BHK.' },
+    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149, durationText: '1 Hour', packageText: 'Meal Prep', imageUrl: '/services/cooking-service.jpg', description: 'Hygienic and healthy home-cooked meal preparation (veg/non-veg).' },
+    { id: 's-8', name: 'House Painting', category: 'Painting', price: 20099, durationText: '', packageText: 'All Materials Included', imageUrl: '/services/house-painting.jpg', description: 'Premium interior wall painting with material and labor warranty.' },
+    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499, durationText: '1 Hour', packageText: 'Essential Repairs', imageUrl: '/services/electrician.jpg', description: 'Repairing of switchboards, wiring issues, appliances, and fan installations.' },
+    { id: 's-10', name: 'Security Provider', category: 'Care', price: 899, durationText: '8 Hours', packageText: 'Safe Protection', imageUrl: '/services/security-provider-v2.jpg', description: 'Vigilant and background-verified security guards for corporate/residential properties.' },
+    { id: 's-11', name: 'Pest Control', category: 'Cleaning', price: 2599, durationText: '', packageText: '2BHK Package', imageUrl: '/services/pest-control-v2.jpg', description: 'Odourless gel and spray treatment for cockroaches, ants, and bedbugs.' }
   ];
-  sandbox.services.push(...servicesList);
+  sandbox.services.push(...servicesList.map(s => ({ ...s, isActive: true })));
 
   // Workers
   const workersSeed = [
@@ -96,8 +96,8 @@ async function seedSandbox() {
       experienceYears: 5,
       address: 'Anchepalya, Bengaluru',
       bankDetails: JSON.stringify({ holderName: 'Ramesh Kumar', bankName: 'HDFC Bank', accountNumber: '501002938475', ifsc: 'HDFC0000140', upi: 'ramesh@upi' }),
-      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150', selfie: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150' }),
-      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+      profilePhoto: null,
+      aadhaar: null
     },
     { 
       id: 'w-2', 
@@ -111,8 +111,8 @@ async function seedSandbox() {
       experienceYears: 4,
       address: 'Peenya Industrial Area, Bengaluru',
       bankDetails: JSON.stringify({ holderName: 'Vijay Kumar', bankName: 'ICICI Bank', accountNumber: '000401928374', ifsc: 'ICIC0000004', upi: 'vijay@upi' }),
-      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', selfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' }),
-      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+      profilePhoto: null,
+      aadhaar: null
     },
     { 
       id: 'w-3', 
@@ -126,8 +126,8 @@ async function seedSandbox() {
       experienceYears: 6,
       address: 'Nagasandra, Bengaluru',
       bankDetails: JSON.stringify({ holderName: 'Anitha Reddy', bankName: 'State Bank of India', accountNumber: '20491827364', ifsc: 'SBIN0003040', upi: 'anitha@upi' }),
-      profilePhoto: JSON.stringify({ profile: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', selfie: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' }),
-      aadhaar: JSON.stringify({ front: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300', back: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=300' })
+      profilePhoto: null,
+      aadhaar: null
     }
   ];
 
@@ -202,6 +202,34 @@ async function seedSandbox() {
     quantity: 1,
     price: 499.0
   });
+
+  // Seed Audit Logs representing real seed user interactions
+  sandbox.auditLogs.push(
+    {
+      id: 'al-seed-1',
+      userId: 'user-cust',
+      action: 'USER_LOGIN',
+      details: JSON.stringify({ email: 'customer@gmail.com', role: 'USER' }),
+      ipAddress: '127.0.0.1',
+      createdAt: new Date(Date.now() - 3600000 * 2) // 2 hours ago
+    },
+    {
+      id: 'al-seed-2',
+      userId: 'user-worker-w-2',
+      action: 'USER_LOGIN',
+      details: JSON.stringify({ email: 'vijay@jkenterprises.com', role: 'WORKER' }),
+      ipAddress: '127.0.0.1',
+      createdAt: new Date(Date.now() - 3600000 * 5) // 5 hours ago
+    },
+    {
+      id: 'al-seed-3',
+      userId: 'user-admin',
+      action: 'USER_LOGIN',
+      details: JSON.stringify({ email: 'admin@jkenterprises.com', role: 'ADMIN' }),
+      ipAddress: '127.0.0.1',
+      createdAt: new Date(Date.now() - 3600000 * 12) // 12 hours ago
+    }
+  );
 
   console.log('[JK Enterprises DB] In-memory Sandbox Seeding completed.');
 }
@@ -400,6 +428,7 @@ const db = {
       if (db.isSandbox()) {
         const item = {
           id: `s-${Date.now()}`,
+          isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
           ...args.data
@@ -527,9 +556,18 @@ const db = {
   promoCode: {
     findUnique: async (args) => {
       if (db.isSandbox()) {
+        if (args.where.id) {
+          return sandbox.promoCodes.find(p => p.id === args.where.id) || null;
+        }
         return sandbox.promoCodes.find(p => p.code === args.where.code) || null;
       }
       return await prisma.promoCode.findUnique(args);
+    },
+    findMany: async (args = {}) => {
+      if (db.isSandbox()) {
+        return sandbox.promoCodes;
+      }
+      return await prisma.promoCode.findMany(args);
     },
     create: async (args) => {
       if (db.isSandbox()) {
@@ -537,12 +575,46 @@ const db = {
           id: `pc-${Date.now()}`,
           usedCount: 0,
           isActive: true,
+          discountType: 'PERCENTAGE',
+          discountValue: 0,
+          minOrderValue: 0.0,
+          maxDiscount: null,
+          usageLimit: null,
+          perUserLimit: 1,
+          expiresAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
           ...args.data
         };
         sandbox.promoCodes.push(coupon);
         return coupon;
       }
       return await prisma.promoCode.create(args);
+    },
+    update: async (args) => {
+      if (db.isSandbox()) {
+        const idx = sandbox.promoCodes.findIndex(p => p.id === args.where.id);
+        if (idx !== -1) {
+          sandbox.promoCodes[idx] = {
+            ...sandbox.promoCodes[idx],
+            ...args.data,
+            updatedAt: new Date()
+          };
+          return sandbox.promoCodes[idx];
+        }
+        throw new Error('PromoCode not found in sandbox');
+      }
+      return await prisma.promoCode.update(args);
+    },
+    delete: async (args) => {
+      if (db.isSandbox()) {
+        const idx = sandbox.promoCodes.findIndex(p => p.id === args.where.id);
+        if (idx !== -1) {
+          return sandbox.promoCodes.splice(idx, 1)[0];
+        }
+        return null;
+      }
+      return await prisma.promoCode.delete(args);
     }
   },
 

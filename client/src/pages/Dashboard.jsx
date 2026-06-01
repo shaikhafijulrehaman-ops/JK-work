@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useBookingStore } from '../store/bookingStore';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
@@ -84,8 +85,8 @@ export default function Dashboard() {
 
   const getTimelineSteps = (status) => {
     const steps = [
-      { name: 'Pending', active: true, done: ['ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'Assigned', active: ['ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
+      { name: 'Pending', active: true, done: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
+      { name: 'Assigned', active: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
       { name: 'On The Way', active: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['IN_PROGRESS', 'COMPLETED'].includes(status) },
       { name: 'In Progress', active: ['IN_PROGRESS', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
       { name: 'Completed', active: status === 'COMPLETED', done: status === 'COMPLETED' }
@@ -115,9 +116,9 @@ export default function Dashboard() {
             <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto mb-6">
               You haven't placed any bookings. Head over to our catalog to select instant services in Anchepalya.
             </p>
-            <a href="/services" className="bg-brand text-white font-poppins font-bold text-xs px-6 py-3 rounded-lg shadow-md shadow-brand/10 transition-all uppercase tracking-wider">
+            <Link to="/services" className="bg-brand text-white font-poppins font-bold text-xs px-6 py-3 rounded-lg shadow-md shadow-brand/10 transition-all uppercase tracking-wider">
               Browse Services
-            </a>
+            </Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -145,7 +146,8 @@ export default function Dashboard() {
                       </span>
                       <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full leading-none ${
                         b.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                        b.status === 'PENDING' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-brand/10 text-brand'
+                        ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(b.status) ? 'bg-amber-100 text-amber-700 font-bold' :
+                        b.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
                       }`}>
                         {b.status.replace(/_/g, ' ')}
                       </span>
@@ -187,7 +189,8 @@ export default function Dashboard() {
                     
                     <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${
                       selectedBooking.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                      selectedBooking.status === 'PENDING' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-brand/10 text-brand'
+                      ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status) ? 'bg-amber-100 text-amber-700 font-bold' :
+                      selectedBooking.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
                     }`}>
                       {selectedBooking.status.replace(/_/g, ' ')}
                     </span>
@@ -261,21 +264,21 @@ export default function Dashboard() {
                     <div className="flex flex-wrap gap-2">
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'ON_THE_WAY')}
-                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status)}
                         className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
                       >
                         Simulate: Dispatched On The Way
                       </button>
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'IN_PROGRESS')}
-                        disabled={['PENDING', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
                         className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
                       >
                         Simulate: Start Service Action
                       </button>
                       <button 
                         onClick={() => updateJobStatus(selectedBooking.id, 'COMPLETED')}
-                        disabled={['PENDING', 'ASSIGNED', 'COMPLETED'].includes(selectedBooking.status)}
+                        disabled={selectedBooking.status !== 'IN_PROGRESS'}
                         className="bg-brand text-white hover:bg-brand-dark text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
                       >
                         Simulate: Complete Service
@@ -373,22 +376,27 @@ export default function Dashboard() {
 
                   {/* Assigned Worker Profile receipts with premium service worker illustrations */}
                   {selectedBooking.workerId && (() => {
-                    const firstItem = selectedBooking.items && selectedBooking.items[0];
-                    const category = firstItem ? firstItem.service.category : 'Cleaning';
-                    const workerAvatars = {
-                      'Care': 'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=120&auto=format&fit=crop',
-                      'Cleaning': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=120&auto=format&fit=crop',
-                      'Shifting': 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=120&auto=format&fit=crop',
-                      'Cooking': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=120&auto=format&fit=crop',
-                      'Painting': 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?q=80&w=120&auto=format&fit=crop',
-                      'Technical': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=120&auto=format&fit=crop'
-                    };
-                    const avatarUrl = workerAvatars[category] || workerAvatars['Cleaning'];
+                    let avatarUrl = null;
+                    if (selectedBooking.worker && selectedBooking.worker.profilePhoto) {
+                      try {
+                        const parsed = JSON.parse(selectedBooking.worker.profilePhoto);
+                        avatarUrl = parsed.profile || parsed.selfie || null;
+                      } catch (e) {
+                        avatarUrl = selectedBooking.worker.profilePhoto;
+                      }
+                    }
+                    if (avatarUrl && (avatarUrl.includes('unsplash.com') || avatarUrl.includes('sample') || avatarUrl.includes('profile.jpg') || avatarUrl.includes('selfie.jpg'))) {
+                      avatarUrl = null;
+                    }
                     return (
                       <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center justify-between text-xs">
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0">
-                            <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
+                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400 font-bold text-[8px] text-center leading-none p-1">
+                            {avatarUrl ? (
+                              <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
+                            ) : (
+                              <span>Image Not Available</span>
+                            )}
                           </div>
                           <div>
                             <span className="font-bold text-slate-800 block">Assigned Service Professional</span>

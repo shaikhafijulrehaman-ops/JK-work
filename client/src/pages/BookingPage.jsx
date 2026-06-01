@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useBookingStore } from '../store/bookingStore';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { catalog } from '../store/catalog';
+import { catalog as staticCatalog } from '../store/catalog';
 import { 
   X, 
   Clock, 
@@ -19,7 +19,9 @@ import {
   MessageSquare,
   FileText,
   User,
-  Heart
+  Heart,
+  Search,
+  AlertCircle
 } from 'lucide-react';
 
 export default function BookingPage() {
@@ -29,11 +31,34 @@ export default function BookingPage() {
   const initialVariant = searchParams.get('variant');
 
   const { createBooking } = useBookingStore();
-  const { isAuthenticated, user, login, register, loading: authLoading, error: authError } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
-  // Find the selected service
-  const service = catalog.find(s => s.id === serviceId);
+  const [service, setService] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchService = async () => {
+      if (!serviceId) return;
+      try {
+        const res = await fetch(`http://localhost:5000/api/services/${serviceId}`);
+        const data = await res.json();
+        if (data.success) {
+          setService(data.service);
+        } else {
+          const matched = staticCatalog.find(s => s.id === serviceId);
+          setService(matched);
+        }
+      } catch (err) {
+        console.warn('Backend service offline. Falling back to static catalog...', err);
+        const matched = staticCatalog.find(s => s.id === serviceId);
+        setService(matched);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchService();
+  }, [serviceId]);
 
   // Form controls
   const [variant, setVariant] = useState(initialVariant || '2BHK');
@@ -62,15 +87,47 @@ export default function BookingPage() {
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Authentication Fields (for inline auth)
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authMode, setAuthMode] = useState('login'); // login or signup
+
 
   // Booking result states
   const [isSuccess, setIsSuccess] = useState(false);
   const [bookingId, setBookingId] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
+  const [liveBooking, setLiveBooking] = useState(null);
+  const [searchTimeout, setSearchTimeout] = useState(false);
+
+  // Polling loop for active searching status
+  useEffect(() => {
+    let pollInterval;
+    let timeoutId;
+
+    if (isSuccess && liveBooking && liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE') {
+      setSearchTimeout(false);
+
+      // Start 2-second status polling
+      pollInterval = setInterval(async () => {
+        const { fetchBookingDetails } = useBookingStore.getState();
+        const res = await fetchBookingDetails(liveBooking.id);
+        if (res.success && res.booking) {
+          setLiveBooking(res.booking);
+          if (res.booking.status !== 'PENDING_PARTNER_ACCEPTANCE') {
+            clearInterval(pollInterval);
+          }
+        }
+      }, 2000);
+
+      // 20-second timeout fallback (rapid demonstration for preview)
+      timeoutId = setTimeout(() => {
+        clearInterval(pollInterval);
+        setSearchTimeout(true);
+      }, 20000);
+    }
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeoutId);
+    };
+  }, [isSuccess, liveBooking?.id, liveBooking?.status]);
 
   // Typewriter lines loop
   const phrases = [
@@ -90,11 +147,16 @@ export default function BookingPage() {
       setPhone(user.phone || '9876543210');
       setFullName(user.name || '');
       setEmail(user.email || '');
+    } else if (!isAuthenticated) {
+      navigate('/services');
+      const { setShowLoginModal } = useAuthStore.getState();
+      setShowLoginModal(true);
+      return;
     }
     // Set default date to today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, navigate]);
 
   // Typewriter effect logic
   useEffect(() => {
@@ -118,6 +180,17 @@ export default function BookingPage() {
     }
     return () => clearTimeout(timer);
   }, [typedText, isDeleting, currentPhraseIdx]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-5 text-white">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-xs text-slate-400">Loading service details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!service) {
     return (
@@ -163,15 +236,10 @@ export default function BookingPage() {
   const handleBookingConfirm = async (e) => {
     e.preventDefault();
 
-    // Verification check for authentication
     if (!isAuthenticated) {
-      if (authMode === 'login') {
-        const res = await login(authEmail, authPassword);
-        if (!res.success) return;
-      } else {
-        const res = await register(authEmail, authPassword, fullName, phone, 'USER');
-        if (!res.success) return;
-      }
+      const { setShowLoginModal } = useAuthStore.getState();
+      setShowLoginModal(true);
+      return;
     }
 
     // Format 24h time to 12h readable time slot
@@ -209,6 +277,7 @@ export default function BookingPage() {
       setBookingId(res.booking.id.substring(0, 8).toUpperCase());
       setArrivalTime(`${hrs}:${mins} ${ampm} (Instant 9-Mins dispatch active)`);
       addNotification('Service Booking Successful!', `Reference #${res.booking.id.substring(0,8).toUpperCase()} placed. Pay cash after service.`);
+      setLiveBooking(res.booking);
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -273,59 +342,165 @@ export default function BookingPage() {
           </h2>
         </div>
 
-        {isSuccess ? (
-          // Success view after booking confirm
-          <div className="bg-white border border-slate-100 rounded-3xl shadow-2xl p-6 sm:p-10 text-center space-y-8 animate-blur-fade-in w-full">
-            <div className="w-16 h-16 rounded-full bg-brand/10 border border-brand/20 text-brand flex items-center justify-center mx-auto animate-bounce shadow-xs">
-              <CheckCircle className="w-9 h-9 fill-current text-brand" />
-            </div>
+        {isSuccess && liveBooking ? (
+          // Immersive Success dispatch console
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-10 text-center space-y-8 animate-blur-fade-in w-full">
+            
+            {/* A. ACTIVE SEARCHING STATE */}
+            {liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE' && !searchTimeout && (
+              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
+                <div className="relative w-28 h-28 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-brand/10 rounded-full animate-ping duration-1000 opacity-60"></div>
+                  <div className="absolute -inset-4 bg-brand/5 rounded-full animate-ping duration-1500 opacity-40"></div>
+                  <div className="w-18 h-18 bg-slate-50 border border-slate-200/80 rounded-full shadow-lg flex items-center justify-center relative z-10 animate-pulse">
+                    <Search className="w-8 h-8 text-brand animate-bounce" />
+                  </div>
+                </div>
 
-            <div className="space-y-1">
-              <h3 className="font-poppins font-black text-xl text-slate-800 tracking-tight">Booking Dispatched!</h3>
-              <p className="text-xs text-slate-400 font-semibold font-poppins">Reference Order ID: #{bookingId}</p>
-            </div>
+                <div className="space-y-2 max-w-sm">
+                  <h3 className="font-poppins font-bold text-lg text-slate-850 tracking-tight leading-tight">Searching for available service partner...</h3>
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                    Please wait while we connect you with a verified professional near your area.
+                  </p>
+                </div>
 
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-left space-y-2.5 text-xs leading-normal shadow-inner">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Service Assigned:</span>
-                <span className="font-extrabold text-slate-700">{service.name} (x{qty})</span>
+                {/* Mini Booking Summary Box */}
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2.5 text-xs w-full shadow-inner leading-normal">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Selected Service:</span>
+                    <span className="font-extrabold text-slate-700">{service.name} (x{qty})</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Service Category:</span>
+                    <span className="font-extrabold text-brand bg-cyan-50 px-2 py-0.5 rounded uppercase tracking-wider text-[9px] font-black">{service.category}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Scheduled Time Slot:</span>
+                    <span className="font-extrabold text-slate-700">{liveBooking.timeSlot}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200/50 pt-2.5 font-poppins font-black text-slate-800 text-sm leading-none">
+                    <span>Subtotal Amount:</span>
+                    <span>Rs. {getFinalTotal().toLocaleString()}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Estimated Arrival:</span>
-                <span className="font-extrabold text-brand bg-cyan-50 border border-cyan-100 px-2 py-0.5 rounded animate-pulse">{arrivalTime}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Professional Status:</span>
-                <span className="font-extrabold text-slate-700 bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black uppercase">Assigning Expert</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-200/50 pt-2.5 font-poppins font-black text-slate-800 text-sm leading-none">
-                <span>Total Cash Due:</span>
-                <span>Rs. {getFinalTotal().toLocaleString()}</span>
-              </div>
-            </div>
+            )}
 
-            <div className="flex flex-col space-y-2.5">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md shadow-brand/10 transition-all"
-              >
-                Track Booking (Dashboard)
-              </button>
-              <a
-                href={`https://wa.me/918431588235?text=Hello%20JK%20Enterprises%2C%20I%20want%20to%20query%20my%20booking%20Ref%20%23${bookingId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-cyan-50 border border-cyan-200 text-cyan-700 hover:bg-cyan-100 font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all"
-              >
-                WhatsApp Support Chat
-              </a>
-              <button
-                onClick={() => navigate('/services')}
-                className="w-full bg-transparent hover:bg-slate-50 border border-slate-200 text-slate-600 font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all"
-              >
-                Back to Catalog
-              </button>
-            </div>
+            {/* B. SEARCH TIMEOUT / FALLBACK SUPPORT STATE */}
+            {liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE' && searchTimeout && (
+              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
+                <div className="w-16 h-16 rounded-full bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center shadow-xs animate-bounce">
+                  <AlertCircle className="w-9 h-9 text-rose-500" />
+                </div>
+
+                <div className="space-y-2 max-w-sm">
+                  <h3 className="font-poppins font-black text-lg text-slate-800 tracking-tight leading-tight">No partner available currently.</h3>
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed font-poppins">
+                    Would you like us to contact you manually? Our 9-minute executive desk is ready to dispatch via instant telephone or WhatsApp call.
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-2.5 w-full">
+                  <a
+                    href="tel:8431588235"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm"
+                  >
+                    Call Support
+                  </a>
+                  <a
+                    href={`https://wa.me/918431588235?text=Hello%20JK%20Enterprises%2C%20my%20booking%20Ref%20%23${bookingId}%20is%20pending%20matching%20for%20${service.name}.%20Please%20manually%20dispatch%20a%20partner!`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm"
+                  >
+                    WhatsApp Support
+                  </a>
+                  <button
+                    onClick={() => navigate('/dashboard')}
+                    className="bg-transparent hover:bg-slate-50 border border-slate-200 text-slate-600 font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all"
+                  >
+                    Track Booking (Dashboard)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* C. PARTNER ASSIGNED SUCCESS STATE */}
+            {liveBooking.status !== 'PENDING_PARTNER_ACCEPTANCE' && (
+              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+                  <CheckCircle className="w-9 h-9 fill-current text-emerald-500 animate-pulse" />
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="font-poppins font-black text-xl text-slate-800 tracking-tight leading-tight">Partner Assigned!</h3>
+                  <p className="text-xs text-slate-400 font-semibold font-poppins">Reference Order ID: #{bookingId}</p>
+                </div>
+
+                {/* Rich Professional Card */}
+                <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 shadow-xl w-full text-left relative overflow-hidden flex items-center justify-between">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand/20 to-transparent rounded-bl-full pointer-events-none" />
+                  
+                  <div className="flex items-center space-x-4 relative z-10">
+                    {/* Photo Section: Actual canvas/Supabase selfie photo from DB */}
+                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 overflow-hidden border-2 border-brand/40 shadow-inner shrink-0">
+                      {liveBooking.worker?.profilePhoto ? (
+                        <img 
+                          src={liveBooking.worker.profilePhoto} 
+                          alt="Partner Selfie" 
+                          className="w-full h-full object-cover" 
+                        />
+                      ) : (
+                        <User className="w-8 h-8 text-slate-500" />
+                      )}
+                    </div>
+
+                    <div className="flex flex-col leading-tight">
+                      <span className="font-poppins font-black text-base text-white">{liveBooking.worker?.user?.name || 'Ramesh Kumar'}</span>
+                      <span className="text-xs font-bold text-brand mt-1 uppercase tracking-wider">{service.category} Specialist</span>
+                      
+                      <div className="flex items-center space-x-3.5 mt-2">
+                        <span className="inline-flex items-center text-[10px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/15">
+                          ⭐ {liveBooking.worker?.rating || '4.8'} Rating
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          📍 {liveBooking.worker?.experienceYears || '3'} Years Exp
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions Box */}
+                <div className="flex flex-col gap-2.5 w-full">
+                  <div className="grid grid-cols-2 gap-3">
+                    <a
+                      href={`tel:${liveBooking.worker?.user?.phone || '9876543210'}`}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm border border-slate-200/50 font-bold"
+                    >
+                      Call Partner
+                    </a>
+                    <a
+                      href={`https://wa.me/91${liveBooking.worker?.user?.phone || '9876543210'}?text=Hello%20${liveBooking.worker?.user?.name || 'Ramesh'}%2C%20I%20am%20expecting%20you%20for%20my%20${service.category}%20booking.`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm border border-slate-200/50"
+                    >
+                      Chat Partner
+                    </a>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/dashboard')}
+                    className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-lg shadow-brand/10 transition-all duration-300"
+                  >
+                    Track Status (Dashboard)
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         ) : (
           // Main Advanced Checkout form wrapped inside highly transparent floating glassmorphic container card
@@ -536,99 +711,6 @@ export default function BookingPage() {
               </div>
             </div>
 
-            {/* Section 5: Authentication (for guest checkout verification) */}
-            {!isAuthenticated && (
-              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3.5 animate-blur-fade-in">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-poppins font-black text-[10px] uppercase tracking-wider text-slate-800 flex items-center">
-                    <Lock className="w-4 h-4 text-brand mr-1.5" /> Verification Gate
-                  </h3>
-                </div>
-
-                {authError && (
-                  <div className="text-[9.5px] bg-red-50 border border-red-100 text-red-500 p-2.5 rounded-lg font-bold">
-                    ⚠️ {authError}
-                  </div>
-                )}
-
-                {authMode === 'login' ? (
-                  <div className="space-y-3">
-                    <div className="form-group">
-                      <input 
-                        type="email" 
-                        id="authEmail"
-                        className="form-input" 
-                        placeholder=" " 
-                        value={authEmail} 
-                        onChange={e => setAuthEmail(e.target.value)} 
-                        required 
-                      />
-                      <label htmlFor="authEmail" className="form-label">Email</label>
-                    </div>
-                    <div className="form-group">
-                      <input 
-                        type="password" 
-                        id="authPassword"
-                        className="form-input" 
-                        placeholder=" " 
-                        value={authPassword} 
-                        onChange={e => setAuthPassword(e.target.value)} 
-                        required 
-                      />
-                      <label htmlFor="authPassword" className="form-label">Password</label>
-                    </div>
-
-                    <div className="text-center pt-1">
-                      <button 
-                        type="button" 
-                        onClick={() => setAuthMode('signup')}
-                        className="text-[10px] text-brand hover:underline font-bold"
-                      >
-                        New to JK Enterprises? Sign Up →
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="form-group">
-                      <input 
-                        type="email" 
-                        id="authEmail"
-                        className="form-input" 
-                        placeholder=" " 
-                        value={authEmail} 
-                        onChange={e => setAuthEmail(e.target.value)} 
-                        required 
-                      />
-                      <label htmlFor="authEmail" className="form-label">Email</label>
-                    </div>
-                    <div className="form-group">
-                      <input 
-                        type="password" 
-                        id="authPassword"
-                        className="form-input" 
-                        placeholder=" " 
-                        value={authPassword} 
-                        onChange={e => setAuthPassword(e.target.value)} 
-                        required 
-                      />
-                      <label htmlFor="authPassword" className="form-label">Password</label>
-                    </div>
-
-                    <div className="text-center pt-1">
-                      <button 
-                        type="button" 
-                        onClick={() => setAuthMode('login')}
-                        className="text-[10px] text-brand hover:underline font-bold"
-                      >
-                        Already verified? Log In here →
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Bottom Section: Compact Invoice details & Pay After Service Badge */}
             <div className="border-t border-slate-100/50 pt-4 space-y-3.5">
               <div className="flex justify-between items-center text-xs">
@@ -647,10 +729,9 @@ export default function BookingPage() {
               {/* Confirm Button */}
               <button 
                 type="submit"
-                disabled={authLoading}
                 className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-lg shadow-brand/10 flex items-center justify-center space-x-1.5 transition-all duration-300"
               >
-                <span>{authLoading ? 'Verifying Details...' : 'Confirm Booking & Dispatch'}</span>
+                <span>Confirm Booking & Dispatch</span>
                 <CheckCircle className="w-4.5 h-4.5 text-white" />
               </button>
             </div>
