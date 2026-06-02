@@ -270,4 +270,21 @@
   animation: spin 8s linear infinite;
 }
 
+/* Purge Vercel Toolbar/Live Feedback Overlay and Widgets */
+#vercel-live-feedback,
+.vercel-feedback-widget,
+[data-vercel-feedback-button],
+vercel-live-feedback,
+iframe[src*="vercel"],
+iframe[id^="vercel"],
+iframe[class*="vercel"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
 

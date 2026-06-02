@@ -20,8 +20,8 @@ window.fetch = async function (url, options = {}) {
   }
   options.headers = headers;
 
-  const timeout = options.timeout || 2000; // 2 seconds per attempt to handle database cold starts gracefully
-  const retries = options.hasOwnProperty('retries') ? options.retries : 1; // 1 retry default (total 2 attempts = 4s max)
+  const timeout = options.timeout || 5000; // 5 seconds per attempt to handle serverless database cold starts gracefully
+  const retries = options.hasOwnProperty('retries') ? options.retries : 2; // 2 retries default (total 3 attempts = 15s max)
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
