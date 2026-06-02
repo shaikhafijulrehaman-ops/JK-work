@@ -90,44 +90,25 @@ export default function BookingPage() {
 
 
   // Booking result states
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [bookingId, setBookingId] = useState('');
-  const [arrivalTime, setArrivalTime] = useState('');
-  const [liveBooking, setLiveBooking] = useState(null);
-  const [searchTimeout, setSearchTimeout] = useState(false);
+  const [bookingState, setBookingState] = useState('FORM'); // 'FORM', 'AWAITING_PAYMENT', 'PAYMENT_SUCCESS'
+  const [tempBookingId, setTempBookingId] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // Polling loop for active searching status
-  useEffect(() => {
-    let pollInterval;
-    let timeoutId;
-
-    if (isSuccess && liveBooking && liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE') {
-      setSearchTimeout(false);
-
-      // Start 2-second status polling
-      pollInterval = setInterval(async () => {
-        const { fetchBookingDetails } = useBookingStore.getState();
-        const res = await fetchBookingDetails(liveBooking.id);
-        if (res.success && res.booking) {
-          setLiveBooking(res.booking);
-          if (res.booking.status !== 'PENDING_PARTNER_ACCEPTANCE') {
-            clearInterval(pollInterval);
-          }
-        }
-      }, 2000);
-
-      // 20-second timeout fallback (rapid demonstration for preview)
-      timeoutId = setTimeout(() => {
-        clearInterval(pollInterval);
-        setSearchTimeout(true);
-      }, 20000);
-    }
-
-    return () => {
-      clearInterval(pollInterval);
-      clearTimeout(timeoutId);
-    };
-  }, [isSuccess, liveBooking?.id, liveBooking?.status]);
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
 
   // Typewriter lines loop
   const phrases = [
@@ -242,44 +223,148 @@ export default function BookingPage() {
       return;
     }
 
-    // Format 24h time to 12h readable time slot
-    let timeLabel = selectedSlot;
-    try {
-      const [hours, minutes] = selectedSlot.split(':');
-      const h = parseInt(hours);
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const formattedHr = h % 12 || 12;
-      timeLabel = `${formattedHr}:${minutes} ${ampm}`;
-    } catch(err) {}
+    const generatedId = `JK-${Math.floor(100000 + Math.random() * 900000)}`;
+    setTempBookingId(generatedId);
+    setBookingState('AWAITING_PAYMENT');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-    const payload = {
-      items: [{ serviceId: service.id, quantity: qty, variant: service.name === 'House Painting' ? variant : null }],
-      pincode: pincode,
-      address: `${address} | Landmark: ${landmark} | City: ${city} | Notes: ${notes} | Instructions: ${specialInstructions} | HasPet: ${hasPet ? 'YES' : 'NO'} | Parking: ${parkingAvailable ? 'YES' : 'NO'}`,
-      scheduledAt: new Date(selectedDate),
-      timeSlot: timeLabel,
-      phone,
-      paymentMethod: 'CASH',
-      totalPrice: getServicePrice(),
-      discountApplied: 0.0,
-      finalPrice: getFinalTotal()
+  const handlePayNow = async () => {
+    setIsProcessingPayment(true);
+    setErrorMsg('');
+
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      setErrorMsg('Failed to load payment gateway. Please check your internet connection.');
+      setIsProcessingPayment(false);
+      return;
+    }
+
+    const amountInINR = getFinalTotal();
+    const razorpayKey = 'rzp_test_jkenterprises2026';
+
+    const options = {
+      key: razorpayKey,
+      amount: Math.round(amountInINR * 100),
+      currency: 'INR',
+      name: 'JK Enterprises',
+      description: `Payment for ${service.name}`,
+      image: '/favicon.svg',
+      handler: async function (response) {
+        const paymentId = response.razorpay_payment_id;
+        setTransactionId(paymentId);
+        await handlePaymentSuccess(paymentId);
+      },
+      prefill: {
+        name: fullName,
+        email: email,
+        contact: phone
+      },
+      notes: {
+        bookingId: tempBookingId
+      },
+      theme: {
+        color: '#0891b2'
+      },
+      modal: {
+        ondismiss: function () {
+          setIsProcessingPayment(false);
+        }
+      }
     };
 
-    const res = await createBooking(payload);
-    if (res.success) {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + 9);
-      const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-      let hrs = now.getHours() % 12;
-      hrs = hrs ? hrs : 12;
-      const mins = now.getMinutes() < 10 ? '0' + now.getMinutes() : now.getMinutes();
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  };
 
-      setBookingId(res.booking.id.substring(0, 8).toUpperCase());
-      setArrivalTime(`${hrs}:${mins} ${ampm} (Instant 9-Mins dispatch active)`);
-      addNotification('Service Booking Successful!', `Reference #${res.booking.id.substring(0,8).toUpperCase()} placed. Pay cash after service.`);
-      setLiveBooking(res.booking);
-      setIsSuccess(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handlePaymentSuccess = async (payId) => {
+    setIsProcessingPayment(true);
+    try {
+      const payload = {
+        booking_id: tempBookingId,
+        customer_name: fullName,
+        phone: phone,
+        email: email || 'no-email@waitlist.com',
+        service_name: service.name,
+        amount: getFinalTotal(),
+        address: `${address} | Landmark: ${landmark} | City: ${city}`,
+        area: city,
+        pincode: pincode,
+        notes: notes || specialInstructions || '',
+        transaction_id: payId
+      };
+
+      const res = await fetch('http://localhost:5000/api/bookings/payment-success', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      setIsProcessingPayment(false);
+
+      if (data.success) {
+        setBookingState('PAYMENT_SUCCESS');
+        addNotification('Payment Successful! 🎉', `Booking Ref #${tempBookingId} confirmed.`);
+        
+        const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        const waMessage = `New Booking Request
+
+Booking ID:
+#${tempBookingId}
+
+Customer Name:
+${fullName}
+
+Mobile Number:
+${phone}
+
+Email:
+${email || 'N/A'}
+
+Service:
+${service.name}
+
+Amount Paid:
+₹${getFinalTotal()}
+
+Address:
+${address} | Landmark: ${landmark} | City: ${city}
+
+Area:
+${city}
+
+Pincode:
+${pincode}
+
+Additional Notes:
+${notes || specialInstructions || 'None'}
+
+Payment Status:
+PAID
+
+Transaction ID:
+${payId}
+
+Booking Time:
+${formattedDate}`;
+
+        setTimeout(() => {
+          const encodedText = encodeURIComponent(waMessage);
+          window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
+        }, 2000);
+
+      } else {
+        setErrorMsg(data.message || 'Payment capture failed. Please contact support.');
+      }
+
+    } catch (err) {
+      console.error('Payment confirmation error:', err);
+      setIsProcessingPayment(false);
+      setErrorMsg('Network error confirming payment status. Your payment succeeded - please contact support.');
     }
   };
 
@@ -342,168 +427,116 @@ export default function BookingPage() {
           </h2>
         </div>
 
-        {isSuccess && liveBooking ? (
-          // Immersive Success dispatch console
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-10 text-center space-y-8 animate-blur-fade-in w-full">
-            
-            {/* A. ACTIVE SEARCHING STATE */}
-            {liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE' && !searchTimeout && (
-              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
-                <div className="relative w-28 h-28 flex items-center justify-center">
-                  <div className="absolute inset-0 bg-brand/10 rounded-full animate-ping duration-1000 opacity-60"></div>
-                  <div className="absolute -inset-4 bg-brand/5 rounded-full animate-ping duration-1500 opacity-40"></div>
-                  <div className="w-18 h-18 bg-slate-50 border border-slate-200/80 rounded-full shadow-lg flex items-center justify-center relative z-10 animate-pulse">
-                    <Search className="w-8 h-8 text-brand animate-bounce" />
-                  </div>
-                </div>
+        {bookingState === 'AWAITING_PAYMENT' ? (
+          /* ==================== AWAITING PAYMENT STATE ==================== */
+          <div className="bg-white/90 border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-8 text-center space-y-6 animate-blur-fade-in w-full text-slate-800 backdrop-blur-md">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black text-brand uppercase tracking-widest bg-cyan-100 px-3 py-1 rounded-full w-max mx-auto block">
+                Step 2: Pay Securely
+              </span>
+              <h3 className="font-poppins font-black text-xl text-slate-900 uppercase tracking-tight pt-2">
+                THANK YOU FOR YOUR BOOKING
+              </h3>
+            </div>
 
-                <div className="space-y-2 max-w-sm">
-                  <h3 className="font-poppins font-bold text-lg text-slate-850 tracking-tight leading-tight">Searching for available service partner...</h3>
-                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                    Please wait while we connect you with a verified professional near your area.
-                  </p>
-                </div>
+            {/* Receipt Summary Card */}
+            <div className="bg-slate-50 border border-slate-200/30 rounded-2xl p-5 text-left space-y-3.5 text-xs shadow-inner leading-relaxed">
+              <div className="flex justify-between items-center border-b pb-2.5">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Service Name</span>
+                <span className="font-extrabold text-slate-800 text-right">{service.name} (x{qty})</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-2.5">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Booking ID</span>
+                <span className="font-mono font-extrabold text-brand bg-cyan-50 px-2 py-0.5 rounded">#{tempBookingId}</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-2.5">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Status</span>
+                <span className="font-extrabold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200/50 uppercase text-[9px] font-black">Awaiting Payment</span>
+              </div>
+              <div className="flex justify-between items-center pt-1 font-poppins font-black text-slate-800 text-sm">
+                <span className="uppercase tracking-wider text-[10px]">Booking Amount</span>
+                <span className="text-brand text-base">₹{getFinalTotal().toLocaleString()}</span>
+              </div>
+            </div>
 
-                {/* Mini Booking Summary Box */}
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2.5 text-xs w-full shadow-inner leading-normal">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Selected Service:</span>
-                    <span className="font-extrabold text-slate-700">{service.name} (x{qty})</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Service Category:</span>
-                    <span className="font-extrabold text-brand bg-cyan-50 px-2 py-0.5 rounded uppercase tracking-wider text-[9px] font-black">{service.category}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Scheduled Time Slot:</span>
-                    <span className="font-extrabold text-slate-700">{liveBooking.timeSlot}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-slate-200/50 pt-2.5 font-poppins font-black text-slate-800 text-sm leading-none">
-                    <span>Subtotal Amount:</span>
-                    <span>Rs. {getFinalTotal().toLocaleString()}</span>
-                  </div>
-                </div>
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3 pt-2">
+              <button
+                onClick={handlePayNow}
+                disabled={isProcessingPayment}
+                className="w-full bg-slate-950 hover:bg-slate-850 text-white font-poppins font-black text-xs py-4 rounded-xl uppercase tracking-widest shadow-lg flex items-center justify-center space-x-2 transition-all animate-pulse-slow"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1"></span>
+                    <span>Opening Checkout...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>PAY NOW</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Powered by Razorpay</span>
+                  </>
+                )}
+              </button>
+
+
+
+              <button
+                onClick={() => setBookingState('FORM')}
+                disabled={isProcessingPayment}
+                className="bg-transparent hover:bg-slate-100 text-slate-500 font-poppins font-bold text-[10px] py-2 rounded-xl uppercase tracking-wider transition-all"
+              >
+                Back to Details
+              </button>
+            </div>
+            {errorMsg && (
+              <div className="text-red-500 text-[10px] font-extrabold text-center mt-3 bg-rose-500/5 border border-rose-500/10 p-2.5 rounded-xl animate-shake select-none">
+                {errorMsg}
               </div>
             )}
+          </div>
+        ) : bookingState === 'PAYMENT_SUCCESS' ? (
+          /* ==================== PAYMENT SUCCESS STATE ==================== */
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-10 text-center space-y-6 animate-blur-fade-in w-full text-slate-800">
+            <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+              <CheckCircle className="w-10 h-10 text-emerald-500" />
+            </div>
 
-            {/* B. SEARCH TIMEOUT / FALLBACK SUPPORT STATE */}
-            {liveBooking.status === 'PENDING_PARTNER_ACCEPTANCE' && searchTimeout && (
-              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
-                <div className="w-16 h-16 rounded-full bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center shadow-xs animate-bounce">
-                  <AlertCircle className="w-9 h-9 text-rose-500" />
-                </div>
+            <div className="space-y-1.5">
+              <h3 className="font-poppins font-black text-xl text-slate-900 uppercase tracking-tight">
+                PAYMENT SUCCESSFUL
+              </h3>
+              <p className="text-xs text-slate-500 font-semibold max-w-[270px] mx-auto leading-relaxed">
+                Your booking has been confirmed successfully.
+              </p>
+            </div>
 
-                <div className="space-y-2 max-w-sm">
-                  <h3 className="font-poppins font-black text-lg text-slate-800 tracking-tight leading-tight">No partner available currently.</h3>
-                  <p className="text-xs text-slate-500 font-semibold leading-relaxed font-poppins">
-                    Would you like us to contact you manually? Our 9-minute executive desk is ready to dispatch via instant telephone or WhatsApp call.
-                  </p>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col gap-2.5 w-full">
-                  <a
-                    href="tel:8431588235"
-                    className="bg-slate-900 hover:bg-slate-800 text-white font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm"
-                  >
-                    Call Support
-                  </a>
-                  <a
-                    href={`https://wa.me/918431588235?text=Hello%20JK%20Enterprises%2C%20my%20booking%20Ref%20%23${bookingId}%20is%20pending%20matching%20for%20${service.name}.%20Please%20manually%20dispatch%20a%20partner!`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm"
-                  >
-                    WhatsApp Support
-                  </a>
-                  <button
-                    onClick={() => navigate('/dashboard')}
-                    className="bg-transparent hover:bg-slate-50 border border-slate-200 text-slate-600 font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all"
-                  >
-                    Track Booking (Dashboard)
-                  </button>
-                </div>
+            {/* Receipt Box */}
+            <div className="bg-slate-50 border border-slate-200/50 rounded-2xl p-5 text-left space-y-3 text-xs leading-normal">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Booking ID:</span>
+                <span className="font-mono font-extrabold text-slate-800">#{tempBookingId}</span>
               </div>
-            )}
-
-            {/* C. PARTNER ASSIGNED SUCCESS STATE */}
-            {liveBooking.status !== 'PENDING_PARTNER_ACCEPTANCE' && (
-              <div className="flex flex-col items-center py-4 space-y-6 animate-blur-fade-in">
-                <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
-                  <CheckCircle className="w-9 h-9 fill-current text-emerald-500 animate-pulse" />
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="font-poppins font-black text-xl text-slate-800 tracking-tight leading-tight">Partner Assigned!</h3>
-                  <p className="text-xs text-slate-400 font-semibold font-poppins">Reference Order ID: #{bookingId}</p>
-                </div>
-
-                {/* Rich Professional Card */}
-                <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 shadow-xl w-full text-left relative overflow-hidden flex items-center justify-between">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand/20 to-transparent rounded-bl-full pointer-events-none" />
-                  
-                  <div className="flex items-center space-x-4 relative z-10">
-                    {/* Photo Section: Actual canvas/Supabase selfie photo from DB */}
-                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 overflow-hidden border-2 border-brand/40 shadow-inner shrink-0">
-                      {liveBooking.worker?.profilePhoto ? (
-                        <img 
-                          src={liveBooking.worker.profilePhoto} 
-                          alt="Partner Selfie" 
-                          className="w-full h-full object-cover" 
-                        />
-                      ) : (
-                        <User className="w-8 h-8 text-slate-500" />
-                      )}
-                    </div>
-
-                    <div className="flex flex-col leading-tight">
-                      <span className="font-poppins font-black text-base text-white">{liveBooking.worker?.user?.name || 'Ramesh Kumar'}</span>
-                      <span className="text-xs font-bold text-brand mt-1 uppercase tracking-wider">{service.category} Specialist</span>
-                      
-                      <div className="flex items-center space-x-3.5 mt-2">
-                        <span className="inline-flex items-center text-[10px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/15">
-                          ⭐ {liveBooking.worker?.rating || '4.8'} Rating
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                          📍 {liveBooking.worker?.experienceYears || '3'} Years Exp
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions Box */}
-                <div className="flex flex-col gap-2.5 w-full">
-                  <div className="grid grid-cols-2 gap-3">
-                    <a
-                      href={`tel:${liveBooking.worker?.user?.phone || '9876543210'}`}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm border border-slate-200/50 font-bold"
-                    >
-                      Call Partner
-                    </a>
-                    <a
-                      href={`https://wa.me/91${liveBooking.worker?.user?.phone || '9876543210'}?text=Hello%20${liveBooking.worker?.user?.name || 'Ramesh'}%2C%20I%20am%20expecting%20you%20for%20my%20${service.category}%20booking.`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-poppins font-bold text-xs py-3.5 rounded-xl uppercase tracking-wider text-center block transition-all shadow-sm border border-slate-200/50"
-                    >
-                      Chat Partner
-                    </a>
-                  </div>
-
-                  <button
-                    onClick={() => navigate('/dashboard')}
-                    className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-lg shadow-brand/10 transition-all duration-300"
-                  >
-                    Track Status (Dashboard)
-                  </button>
-                </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Amount Paid:</span>
+                <span className="font-extrabold text-emerald-600">₹{getFinalTotal()}</span>
               </div>
-            )}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Transaction ID:</span>
+                <span className="font-mono font-bold text-slate-700">{transactionId}</span>
+              </div>
+            </div>
 
+            {/* Loading Dispatch Spinner */}
+            <div className="pt-4 flex flex-col items-center space-y-3.5">
+              <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
+                Redirecting to WhatsApp in 2s...
+              </p>
+            </div>
           </div>
         ) : (
-          // Main Advanced Checkout form wrapped inside highly transparent floating glassmorphic container card
+          /* ==================== FORM ENTRY STATE ==================== */
           <form onSubmit={handleBookingConfirm} className="bg-white/75 backdrop-blur-2xl border border-white/50 shadow-2xl rounded-3xl p-5 sm:p-8 w-full space-y-5 animate-blur-fade-in text-slate-800">
             
             {/* Selected Service Header summary card */}
@@ -722,7 +755,7 @@ export default function BookingPage() {
               <div className="bg-cyan-50/50 border border-cyan-100/50 rounded-xl p-2.5 flex items-center space-x-2 text-cyan-800">
                 <ShieldCheck className="w-4 h-4 text-cyan-600 flex-shrink-0" />
                 <span className="text-[9.5px] font-semibold text-cyan-700 text-left">
-                  Pay cash/UPI directly after service. Secure dispatch locked.
+                  Secure checkout via UPI, Card or Netbanking powered by Razorpay.
                 </span>
               </div>
 
@@ -731,9 +764,16 @@ export default function BookingPage() {
                 type="submit"
                 className="w-full bg-brand hover:bg-brand-dark text-white font-poppins font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-lg shadow-brand/10 flex items-center justify-center space-x-1.5 transition-all duration-300"
               >
-                <span>Confirm Booking & Dispatch</span>
+                <span>CONFIRM BOOKING</span>
                 <CheckCircle className="w-4.5 h-4.5 text-white" />
               </button>
+
+              {/* Error Alert Display */}
+              {errorMsg && (
+                <div className="text-red-500 text-[10px] font-extrabold text-center mt-3 bg-rose-500/5 border border-rose-500/10 p-2.5 rounded-xl animate-shake select-none">
+                  {errorMsg}
+                </div>
+              )}
             </div>
 
           </form>

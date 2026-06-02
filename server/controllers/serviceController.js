@@ -119,38 +119,6 @@ exports.updateService = async (req, res) => {
       }
     }).catch(() => {});
 
-    // Notify ONLY Service Partners related to that category
-    try {
-      const workers = await db.worker.findMany({
-        where: {
-          skills: {
-            some: {
-              service: {
-                category: updated.category
-              }
-            }
-          }
-        },
-        include: {
-          user: true
-        }
-      });
-
-      for (const w of workers) {
-        if (w.user && w.user.role === 'WORKER') {
-          await db.notification.create({
-            data: {
-              userId: w.user.id,
-              type: 'ADMIN_UPDATE',
-              title: '🔧 Service Catalog Updated',
-              message: `The service "${updated.name}" in category "${updated.category}" has been updated.`
-            }
-          }).catch((err) => console.error('Failed to notify worker user:', w.user.id, err));
-        }
-      }
-    } catch (notificationError) {
-      console.error('Failed to notify category partners of service update:', notificationError);
-    }
 
     res.status(200).json({
       success: true,

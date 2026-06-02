@@ -198,7 +198,7 @@ export default function ServicesPage() {
                         {s.name}
                       </h3>
                       <p className="hidden md:block text-xs text-slate-500 leading-relaxed font-normal">
-                        {s.desc}
+                        {s.description || s.desc}
                       </p>
                     </div>
                   </div>
@@ -292,7 +292,7 @@ export default function ServicesPage() {
               <div className="border-t border-slate-100 py-4 space-y-4">
                 <div>
                   <h4 className="text-xs font-bold text-slate-700 mb-1">Service Description</h4>
-                  <p className="text-xs text-slate-500 leading-relaxed font-normal">{selectedService.desc}</p>
+                  <p className="text-xs text-slate-500 leading-relaxed font-normal">{selectedService.description || selectedService.desc}</p>
                 </div>
 
                 <div>

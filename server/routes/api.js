@@ -47,6 +47,7 @@ router.post('/coupons/validate', bookingCtrl.validateCouponCode);
 
 // ==================== BOOKINGS SYSTEM ====================
 router.post('/bookings', protect, bookingLimiter, bookingCtrl.createBooking);
+router.post('/bookings/payment-success', protect, bookingCtrl.confirmPaymentSuccess);
 router.get('/bookings', protect, bookingCtrl.getBookings);
 router.get('/bookings/:id', protect, bookingCtrl.getBookingById);
 router.put('/bookings/:id/assign', protect, restrictTo('ADMIN'), bookingCtrl.assignWorker);

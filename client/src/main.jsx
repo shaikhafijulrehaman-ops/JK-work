@@ -3,8 +3,73 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
+// Global Fetch Timeout & Retry Wrapper (Maximum 2 seconds total execution guarantee)
+const originalFetch = window.fetch;
+window.fetch = async function (url, options = {}) {
+  // If the request is not to our backend API, or explicitly skipped, bypass
+  const isApi = typeof url === 'string' && (url.includes('/api') || url.startsWith('http://localhost:5000'));
+  if (!isApi) {
+    return originalFetch(url, options);
+  }
+
+  // Automatically inject active Authorization Bearer token from localStorage
+  const token = localStorage.getItem('jk_token');
+  const headers = { ...options.headers };
+  if (token && !headers['Authorization'] && !headers['authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  options.headers = headers;
+
+  const timeout = options.timeout || 1000; // 1 second per attempt
+  const retries = options.hasOwnProperty('retries') ? options.retries : 1; // 1 retry default (total 2 attempts = 2s)
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    // Propagate existing signal if any
+    let signalListener;
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        signalListener = () => controller.abort();
+        options.signal.addEventListener('abort', signalListener);
+      }
+    }
+
+    try {
+      const response = await originalFetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (options.signal && signalListener) {
+        options.signal.removeEventListener('abort', signalListener);
+      }
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (options.signal && signalListener) {
+        options.signal.removeEventListener('abort', signalListener);
+      }
+      
+      const isAbort = err.name === 'AbortError' || err.message?.toLowerCase().includes('abort');
+      lastError = isAbort ? new Error('Request timed out. Please try again.') : err;
+      
+      console.warn(`[Fetch Interceptor] Attempt ${attempt + 1} to ${url} failed: ${err.message}. ${attempt < retries ? 'Retrying...' : 'All attempts exhausted.'}`);
+      
+      if (attempt === retries) {
+        throw lastError;
+      }
+    }
+  }
+};
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+

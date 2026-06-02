@@ -6,7 +6,7 @@ import { Mail, Lock, User, Phone, CheckCircle, PhoneCall, Key } from 'lucide-rea
 import AuthSignupFlow from '../components/auth/AuthSignupFlow';
 
 export default function Auth() {
-  const { login, register, sendOtp, verifyOtp, error, loading } = useAuthStore();
+  const { login, register, sendOtp, verifyOtp, simulatedOtp, error, loading } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -77,15 +77,15 @@ export default function Auth() {
     }
   };
 
-  // Handles Phone OTP Login dispatch
+  // Handles Email OTP Login dispatch
   const handleSendOtp = async (e) => {
     e.preventDefault();
     setLocalErr(null);
-    if (!phone) {
-      setLocalErr('Please provide your phone number.');
+    if (!email) {
+      setLocalErr('Please provide your email address.');
       return;
     }
-    const sent = await sendOtp(phone);
+    const sent = await sendOtp(email);
     if (sent) {
       setOtpSent(true);
       setMsg('Simulated OTP code dispatched successfully! Check developer console or use mock validation.');
@@ -98,7 +98,7 @@ export default function Auth() {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setLocalErr(null);
-    const res = await verifyOtp(phone, otpCode);
+    const res = await verifyOtp(email, otpCode);
     if (res.success) {
       navigate('/services');
     } else {
@@ -214,41 +214,44 @@ export default function Auth() {
               </button>
             </form>
           ) : (
-            /* OTP SMS Login Form */
+            /* OTP Email Login Form */
             <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="flex flex-col items-center justify-center h-full px-10 bg-white text-center">
               <h2 className="font-poppins font-extrabold text-2xl text-slate-800 tracking-wide mb-1">
                 OTP Verification
               </h2>
-              <p className="text-xs text-slate-400 mb-6">Verify your phone to check bookings</p>
+              <p className="text-xs text-slate-400 mb-6">Verify your email to check bookings</p>
 
               <div className="w-full space-y-4 px-2 mb-2">
                 {!otpSent ? (
                   <div className="form-group">
                     <input 
-                      type="tel" 
+                      type="email" 
                       className="form-input" 
-                      placeholder="Phone"
-                      value={phone}
-                      onChange={e => setPhone(e.target.value)}
+                      placeholder="Email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
                       required 
                     />
                     <label className="form-label flex items-center space-x-1">
-                      <Phone className="w-3.5 h-3.5 inline mr-1" /> Mobile Number
+                      <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
                     </label>
                   </div>
                 ) : (
-                  <div className="form-group">
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="OTP Code"
-                      value={otpCode}
-                      onChange={e => setOtpCode(e.target.value)}
-                      required 
-                    />
-                    <label className="form-label flex items-center space-x-1">
-                      <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
-                    </label>
+                  <div className="space-y-3">
+                    <div className="form-group">
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="OTP Code"
+                        value={otpCode}
+                        onChange={e => setOtpCode(e.target.value)}
+                        required 
+                      />
+                      <label className="form-label flex items-center space-x-1">
+                        <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
+                      </label>
+                    </div>
+
                   </div>
                 )}
               </div>
@@ -312,7 +315,7 @@ export default function Auth() {
               </p>
               <button 
                 type="button"
-                onClick={() => { setIsActive(true); setLocalErr(null); }}
+                onClick={() => navigate('/customer-register')}
                 className="border-2 border-white/40 hover:border-white/80 text-white font-poppins font-bold text-[10px] px-8 py-3 rounded-lg hover:bg-white hover:text-brand transition-all tracking-wider uppercase"
               >
                 Sign Up
@@ -530,38 +533,41 @@ export default function Auth() {
                         transition={{ duration: 0.25 }}
                       >
                         <div className="text-center mb-6">
-                          <h3 className="font-poppins font-bold text-xl text-slate-900">OTP SMS Login</h3>
-                          <p className="text-xs text-slate-600 font-medium">Verify your phone to check bookings</p>
+                          <h3 className="font-poppins font-bold text-xl text-slate-900">OTP Email Login</h3>
+                          <p className="text-xs text-slate-600 font-medium">Verify your email to check bookings</p>
                         </div>
 
                         <div className="space-y-4 mb-4">
                           {!otpSent ? (
                             <div className="form-group">
                               <input 
-                                type="tel" 
+                                type="email" 
                                 className="form-input" 
-                                placeholder="Phone"
-                                value={phone}
-                                onChange={e => setPhone(e.target.value)}
+                                placeholder="Email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
                                 required 
                               />
                               <label className="form-label flex items-center space-x-1">
-                                <Phone className="w-3.5 h-3.5 inline mr-1" /> Mobile Number
+                                <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
                               </label>
                             </div>
                           ) : (
-                            <div className="form-group">
-                              <input 
-                                type="text" 
-                                className="form-input" 
-                                placeholder="OTP Code"
-                                value={otpCode}
-                                onChange={e => setOtpCode(e.target.value)}
-                                required 
-                              />
-                              <label className="form-label flex items-center space-x-1">
-                                <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
-                              </label>
+                            <div className="space-y-3">
+                              <div className="form-group">
+                                <input 
+                                  type="text" 
+                                  className="form-input" 
+                                  placeholder="OTP Code"
+                                  value={otpCode}
+                                  onChange={e => setOtpCode(e.target.value)}
+                                  required 
+                                />
+                                <label className="form-label flex items-center space-x-1">
+                                  <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
+                                </label>
+                              </div>
+
                             </div>
                           )}
                         </div>
@@ -632,7 +638,7 @@ export default function Auth() {
                     New here?{' '}
                     <button 
                       type="button" 
-                      onClick={() => { setIsActive(true); setLocalErr(null); }} 
+                      onClick={() => navigate('/customer-register')} 
                       className="text-brand-dark hover:underline font-extrabold"
                     >
                       Create an account

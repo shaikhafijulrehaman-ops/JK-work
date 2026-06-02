@@ -197,7 +197,7 @@ export default function Navbar({ onCartToggle }) {
                 
                 <div className="relative">
                   <Link 
-                    to={user.role === 'ADMIN' ? '/admin' : user.role === 'WORKER' ? '/worker/dashboard' : '/account'}
+                    to={user.role === 'ADMIN' ? '/admin' : '/account'}
                     className="flex items-center space-x-2 hover:opacity-80 transition-opacity cursor-pointer"
                   >
                     <div className="flex flex-col text-right">
@@ -212,12 +212,6 @@ export default function Navbar({ onCartToggle }) {
               </div>
             ) : (
               <div className="flex items-center space-x-3">
-                <Link 
-                  to="/partner-register" 
-                  className="border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs px-4 py-2.5 rounded-lg transition-all font-inter"
-                >
-                  Register as Partner
-                </Link>
                 <Link 
                   to="/auth" 
                   className="bg-brand hover:bg-brand-dark text-white font-medium text-xs px-5 py-2.5 rounded-lg shadow-md shadow-brand/10 hover:shadow-brand/20 transition-all font-inter"
@@ -279,19 +273,11 @@ export default function Navbar({ onCartToggle }) {
           <Link to="/services" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
             Our Services
           </Link>
-          <Link to="/partner-register" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
-            Register as Partner
-          </Link>
           {isAuthenticated && user && (
             <>
               {user.role === 'ADMIN' && (
                 <Link to="/admin" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
                   Admin Panel
-                </Link>
-              )}
-              {user.role === 'WORKER' && (
-                <Link to="/worker/dashboard" onClick={() => setIsOpen(false)} className="block px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
-                  Worker Portal
                 </Link>
               )}
               {user.role === 'USER' && (
@@ -303,7 +289,7 @@ export default function Navbar({ onCartToggle }) {
                 Notifications
               </Link>
               <div className="border-t border-slate-50 pt-2 flex items-center justify-between px-3 mt-2">
-                <Link to={user.role === 'ADMIN' ? '/admin' : user.role === 'WORKER' ? '/worker/dashboard' : '/account'} onClick={() => setIsOpen(false)} className="flex items-center space-x-2">
+                <Link to={user.role === 'ADMIN' ? '/admin' : '/account'} onClick={() => setIsOpen(false)} className="flex items-center space-x-2">
                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
                     <UserIcon className="w-4 h-4" />
                   </div>

@@ -76,7 +76,6 @@ export default function App() {
             <Route path="/services" element={<ServicesPage />} />
             <Route path="/book" element={<BookingPage />} />
             <Route path="/auth" element={isAuthenticated ? <Navigate to="/services" replace /> : <Auth />} />
-            <Route path="/partner-register" element={<PartnerRegister />} />
             <Route path="/customer-register" element={<CustomerRegister />} />
 
             {/* ==================== USER PROTECTED DASHBOARD ==================== */}
@@ -86,50 +85,43 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/notifications" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <NotificationsPage />
               </ProtectedRoute>
             } />
             <Route path="/account/notifications" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <NotificationsPage />
               </ProtectedRoute>
             } />
             <Route path="/account" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <AccountPage />
               </ProtectedRoute>
             } />
             <Route path="/account/profile" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <ProfilePage />
               </ProtectedRoute>
             } />
             <Route path="/account/bookings" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <BookingsPage />
               </ProtectedRoute>
             } />
             <Route path="/account/addresses" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <ManageAddresses />
               </ProtectedRoute>
             } />
             <Route path="/account/settings" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <SettingsPage />
               </ProtectedRoute>
             } />
             <Route path="/account/help" element={
-              <ProtectedRoute allowedRoles={['USER', 'WORKER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['USER', 'ADMIN']}>
                 <HelpPage />
-              </ProtectedRoute>
-            } />
-
-            {/* ==================== WORKER PORTAL ==================== */}
-            <Route path="/worker/dashboard" element={
-              <ProtectedRoute allowedRoles={['WORKER']}>
-                <WorkerPortal />
               </ProtectedRoute>
             } />
 
@@ -142,11 +134,6 @@ export default function App() {
             <Route path="/admin/bookings" element={
               <ProtectedRoute allowedRoles={['ADMIN']}>
                 <AdminOverview defaultTab="bookings" />
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/workers" element={
-              <ProtectedRoute allowedRoles={['ADMIN']}>
-                <AdminOverview defaultTab="partner-approvals" />
               </ProtectedRoute>
             } />
             <Route path="/admin/services" element={

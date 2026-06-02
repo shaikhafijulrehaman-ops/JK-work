@@ -1066,8 +1066,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               { id: 'dashboard', label: 'Dashboard', icon: Grid },
               { id: 'audit-logs', label: 'Audit Center', icon: ShieldCheck },
               { id: 'bookings', label: 'Bookings', icon: Calendar },
-              { id: 'partner-approvals', label: 'Partner Approvals', icon: ShieldCheck, badge: pendingWorkers.length },
-              { id: 'partners', label: 'Partners', icon: Users },
               { id: 'customers', label: 'Customers', icon: Award },
               { id: 'payments', label: 'Payments', icon: Landmark },
               { id: 'services', label: 'Services', icon: Layers },
@@ -1321,20 +1319,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                         <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center"><XCircle className="w-5 h-5" /></div>
                       </div>
 
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('customers')}>
                         <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Active Service Partners</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.activePartnersCount}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Total Customers</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{customerList.length}</span>
                         </div>
-                        <div className="w-10 h-10 bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center"><Users className="w-5 h-5" /></div>
-                      </div>
-
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Pending Approvals</span>
-                          <span className="font-poppins font-black text-xl text-brand mt-1 block">{stats.pendingApprovalsCount}</span>
-                        </div>
-                        <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><ShieldAlert className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center"><Award className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('coupons')}>
@@ -1380,34 +1370,30 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           {bookings.length === 0 && <p className="text-xs text-slate-400 text-center py-8">No bookings yet</p>}
                         </div>
                       </div>
-
-                      {/* Recent Applications view */}
+                      {/* Recent Customers / Registrations view */}
                       <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-poppins font-extrabold text-sm text-slate-800 flex items-center space-x-2">
                             <span className="w-2.5 h-2.5 rounded-full bg-brand animate-pulse"></span>
-                            <span>Awaiting Partner Approvals</span>
+                            <span>Recent Registrations</span>
                           </h3>
-                          <button onClick={() => setActiveTab('partner-approvals')} className="text-brand text-xs font-bold hover:underline">Manage</button>
+                          <button onClick={() => setActiveTab('customers')} className="text-brand text-xs font-bold hover:underline">View All</button>
                         </div>
 
                         <div className="space-y-3">
-                          {workers.filter(w => w.approvalStatus === 'PENDING').slice(0, 4).map(w => (
-                            <div key={w.id} className="bg-slate-50 border border-slate-200/40 rounded-xl p-4 flex items-center justify-between">
+                          {customerList.slice(0, 4).map(c => (
+                            <div key={c.id} className="bg-slate-50 border border-slate-200/40 rounded-xl p-4 flex items-center justify-between">
                               <div>
-                                <h4 className="text-xs font-bold text-slate-800">{w.user?.name}</h4>
-                                <p className="text-[10px] text-slate-500 mt-0.5">{w.skills?.[0]?.service?.name || 'Service Specialist'} • {w.experienceYears} Years Exp</p>
+                                <h4 className="text-xs font-bold text-slate-800">{c.name}</h4>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{c.email} • {c.phone}</p>
                               </div>
-                              <button 
-                                onClick={() => { setSelectedWorker(w); openVerificationDrawer(w); }}
-                                className="bg-brand hover:bg-brand-dark text-white font-bold text-[9px] uppercase px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-brand/10"
-                              >
-                                Review App
-                              </button>
+                              <div className="text-right">
+                                <span className="text-[9px] text-slate-400 block">{new Date(c.createdAt).toLocaleDateString()}</span>
+                              </div>
                             </div>
                           ))}
-                          {workers.filter(w => w.approvalStatus === 'PENDING').length === 0 && (
-                            <p className="text-xs text-slate-400 text-center py-8">No Partner Applications Available</p>
+                          {customerList.length === 0 && (
+                            <p className="text-xs text-slate-400 text-center py-8">No Customers Registered</p>
                           )}
                         </div>
                       </div>
@@ -1684,12 +1670,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   </div>
                 )}
 
-                {/* ==================== TAB 2: PARTNER APPROVAL CENTER / PERFORMANCE ==================== */}
-                {(activeTab === 'partner-approvals' || activeTab === 'partners') && (
-                  <React.Suspense fallback={<TableSkeleton cols={7} rows={6} />}>
-                    <AdminWorkersTab activeTab={activeTab} />
-                  </React.Suspense>
-                )}
+
 
                 {/* ==================== TAB 3: BOOKINGS MANAGEMENT ==================== */}
                 {activeTab === 'bookings' && (
@@ -1736,68 +1717,70 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             <tr>
                               <th className="p-4">Booking ID</th>
                               <th className="p-4">Customer Name</th>
-                              <th className="p-4">Customer Mobile</th>
-                              <th className="p-4">Area</th>
+                              <th className="p-4">Mobile</th>
                               <th className="p-4">Service</th>
-                              <th className="p-4">Date & Time</th>
-                              <th className="p-4">Status</th>
-                              <th className="p-4">Assigned Partner</th>
+                              <th className="p-4">Area</th>
+                              <th className="p-4">Amount</th>
+                              <th className="p-4">Payment Status</th>
+                              <th className="p-4">Booking Status</th>
+                              <th className="p-4">Date</th>
                               <th className="p-4 text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                             {filteredBookings.map(b => (
                               <tr key={b.id} className="hover:bg-slate-50/50">
-                                <td className="p-4 font-mono font-bold text-brand">{b.id.substring(0,8)}</td>
-                                <td className="p-4 font-bold text-slate-800">{b.user?.name}</td>
-                                <td className="p-4 font-mono">{b.user?.phone}</td>
-                                <td className="p-4 text-slate-500">{b.address?.split(',')?.[1] || 'Anchepalya'}</td>
+                                <td className="p-4 font-mono font-bold text-brand">{b.id.startsWith('JK-') ? b.id : b.id.substring(0,8).toUpperCase()}</td>
+                                <td className="p-4 font-bold text-slate-800">{b.customer_name || b.user?.name || 'Customer'}</td>
+                                <td className="p-4 font-mono">{b.phone || b.user?.phone || 'N/A'}</td>
                                 <td className="p-4">
                                   <span className="font-bold text-slate-800">
-                                    {b.items?.[0]?.service?.name || 'General Service'}
+                                    {b.service_name || b.items?.[0]?.service?.name || 'General Service'}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-slate-500">{b.area || b.address?.split(',')?.[1] || 'Anchepalya'}</td>
+                                <td className="p-4 font-extrabold text-slate-800">₹{b.amount || b.finalPrice}</td>
+                                <td className="p-4">
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg uppercase tracking-wider ${
+                                    (b.payment_status || b.paymentStatus) === 'Paid' || (b.payment_status || b.paymentStatus) === 'PAID' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                    (b.payment_status || b.paymentStatus) === 'Refunded' || (b.payment_status || b.paymentStatus) === 'REFUNDED' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' :
+                                    (b.payment_status || b.paymentStatus) === 'Failed' || (b.payment_status || b.paymentStatus) === 'FAILED' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                    'bg-amber-50 text-amber-700 border border-amber-250/50'
+                                  }`}>
+                                    {b.payment_status || b.paymentStatus || 'Pending'}
                                   </span>
                                 </td>
                                 <td className="p-4">
-                                  <div className="text-slate-700">{new Date(b.scheduledAt).toLocaleDateString()}</div>
-                                  <div className="text-[10px] text-slate-400 mt-0.5">{b.timeSlot}</div>
-                                </td>
-                                <td className="p-4">
                                   <select
-                                    value={b.status}
-                                    onChange={(e) => handleChangeBookingStatus(b.id, e.target.value)}
-                                    className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider focus:outline-none border-none cursor-pointer ${
-                                      b.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' :
-                                      b.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' :
-                                      'bg-amber-50 text-amber-700'
+                                    value={b.booking_status || (b.status === 'PENDING' ? 'New Booking' : b.status)}
+                                    onChange={async (e) => {
+                                      const nextStatus = e.target.value;
+                                      const statusMap = {
+                                        'New Booking': 'PENDING',
+                                        'Confirmed': 'PENDING',
+                                        'In Progress': 'IN_PROGRESS',
+                                        'Completed': 'COMPLETED',
+                                        'Cancelled': 'CANCELLED'
+                                      };
+                                      
+                                      await handleChangeBookingStatus(b.id, statusMap[nextStatus] || 'PENDING');
+                                      setBookings(prev => prev.map(item => item.id === b.id ? { ...item, booking_status: nextStatus, status: statusMap[nextStatus] || 'PENDING' } : item));
+                                    }}
+                                    className={`text-[10px] font-black px-2 py-0.5 rounded-lg uppercase tracking-wider focus:outline-none border border-slate-200/50 cursor-pointer ${
+                                      (b.booking_status || b.status) === 'Completed' || (b.booking_status || b.status) === 'COMPLETED' ? 'bg-emerald-50 text-emerald-750' :
+                                      (b.booking_status || b.status) === 'Cancelled' || (b.booking_status || b.status) === 'CANCELLED' ? 'bg-rose-50 text-rose-750' :
+                                      'bg-cyan-50 text-cyan-750'
                                     }`}
                                   >
-                                    <option value="PENDING" className="bg-white text-slate-800">New</option>
-                                    <option value="ASSIGNED" className="bg-white text-slate-800">Assigned</option>
-                                    <option value="ON_THE_WAY" className="bg-white text-slate-800">On The Way</option>
-                                    <option value="STARTED" className="bg-white text-slate-800">Started</option>
-                                    <option value="COMPLETED" className="bg-white text-slate-800">Completed</option>
-                                    <option value="CANCELLED" className="bg-white text-slate-800">Cancelled</option>
+                                    <option value="New Booking">New Booking</option>
+                                    <option value="Confirmed">Confirmed</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
                                   </select>
                                 </td>
                                 <td className="p-4">
-                                  {b.worker ? (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="text-xs font-bold text-emerald-600">{b.worker.user?.name}</span>
-                                    </div>
-                                  ) : (
-                                    <select
-                                      defaultValue=""
-                                      onChange={(e) => handleAssignWorker(b.id, e.target.value)}
-                                      className="bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-[10px] font-bold text-slate-500 focus:outline-none cursor-pointer"
-                                    >
-                                      <option value="" disabled>Assign Partner...</option>
-                                      {workers.filter(w => w.approvalStatus === 'APPROVED').map(w => (
-                                        <option key={w.id} value={w.id} className="bg-white text-slate-850">
-                                          {w.user?.name} ({w.rating}★)
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
+                                  <div className="text-slate-700">{new Date(b.created_at || b.createdAt).toLocaleDateString()}</div>
                                 </td>
                                 <td className="p-4 text-right space-x-1 shrink-0">
                                   <button 
@@ -1806,14 +1789,13 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                   >
                                     Details
                                   </button>
-                                  <a href={`tel:${b.user?.phone}`} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-extrabold text-[9px] uppercase px-2 py-1.5 rounded-lg inline-block shadow-sm">Call Cust</a>
-                                  {b.worker && <a href={`tel:${b.worker.user?.phone}`} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-extrabold text-[9px] uppercase px-2 py-1.5 rounded-lg inline-block shadow-sm">Call Partner</a>}
+                                  <a href={`tel:${b.phone || b.user?.phone}`} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-extrabold text-[9px] uppercase px-2 py-1.5 rounded-lg inline-block shadow-sm">Call Cust</a>
                                 </td>
                               </tr>
                             ))}
                             {filteredBookings.length === 0 && (
                               <tr>
-                                <td colSpan="9" className="p-8 text-center text-slate-400 font-medium">No bookings yet</td>
+                                <td colSpan="10" className="p-8 text-center text-slate-400 font-medium">No bookings yet</td>
                               </tr>
                             )}
                           </tbody>

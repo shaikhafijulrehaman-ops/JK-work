@@ -19,12 +19,35 @@ const SERVICE_ZONES = [
   { name: 'Doddabidarakallu', pincode: '560073' }
 ];
 
+const SUPPORTED_CENTERS = [
+  { name: 'Nagasandra', lat: 13.0482, lng: 77.4951, pincode: '560073' },
+  { name: 'Bagalagunte', lat: 13.0441, lng: 77.5085, pincode: '560073' },
+  { name: 'Anchepalya', lat: 13.0445, lng: 77.4893, pincode: '560073' },
+  { name: 'Peenya Industrial Area', lat: 13.0285, lng: 77.5132, pincode: '560058' },
+  { name: 'Peenya', lat: 13.0329, lng: 77.5250, pincode: '560058' },
+  { name: 'Madavara', lat: 13.0531, lng: 77.4782, pincode: '562123' },
+  { name: 'Chikkabidarakallu', lat: 13.0435, lng: 77.4820, pincode: '560073' },
+  { name: 'Doddabidarakallu', lat: 13.0392, lng: 77.4998, pincode: '560073' }
+];
+
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
 export default function CustomerSignup({ onBack }) {
-  const { register, sendOtp, simulatedOtp, otpSent, loading, joinWaitlist } = useAuthStore();
+  const { register, sendOtp, verifyOtp, simulatedOtp, otpSent, loading, joinWaitlist } = useAuthStore();
   const navigate = useNavigate();
 
   // Onboarding Step State:
-  // 1: Mobile Verification, 2: Basic Details, 3: Service Location, 4: Availability Check, 5: Create Account
+  // 1: Email Verification, 2: Basic Details, 3: Service Location, 4: Availability Check, 5: Create Account
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward
 
@@ -45,6 +68,9 @@ export default function CustomerSignup({ onBack }) {
   const [otpCountdown, setOtpCountdown] = useState(30);
   const [isLocating, setIsLocating] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
+  const [gpsFailed, setGpsFailed] = useState(false);
 
   // Password Validation States
   const hasMinLength = password.length >= 8;
@@ -67,7 +93,7 @@ export default function CustomerSignup({ onBack }) {
   // Dynamic header titles based on step
   const getStepTitle = () => {
     switch (step) {
-      case 1: return 'Verify Phone';
+      case 1: return 'Verify Email';
       case 2: return 'Basic Details';
       case 3: return 'Service Area';
       case 4: return 'Service Status';
@@ -94,12 +120,12 @@ export default function CustomerSignup({ onBack }) {
     if (e) e.preventDefault();
     setErrorMsg('');
     
-    if (!phone || phone.length < 10) {
-      setErrorMsg('Please enter a valid 10-digit mobile number.');
+    if (!email) {
+      setErrorMsg('Please enter your email address.');
       return;
     }
 
-    const sent = await sendOtp(phone);
+    const sent = await sendOtp(email);
     if (sent) {
       setOtpCountdown(30);
       setSuccessToast('Verification code dispatched!');
@@ -115,14 +141,17 @@ export default function CustomerSignup({ onBack }) {
     setIsVerifyingOtp(true);
 
     if (otpCode && otpCode.length === 6) {
-      setTimeout(() => {
-        setIsVerifyingOtp(false);
-        setSuccessToast('Phone verified successfully! ✨');
+      const res = await verifyOtp(email, otpCode);
+      setIsVerifyingOtp(false);
+      if (res.success) {
+        setSuccessToast('Email verified successfully! ✨');
         setTimeout(() => {
           setSuccessToast('');
           nextStep();
         }, 1000);
-      }, 1200);
+      } else {
+        setErrorMsg(res.error || 'Please enter a valid 6-digit verification code.');
+      }
     } else {
       setIsVerifyingOtp(false);
       setErrorMsg('Please enter a valid 6-digit verification code.');
@@ -143,24 +172,70 @@ export default function CustomerSignup({ onBack }) {
   // STEP 3 Action: Geolocation & Pincode Lookup
   const handleAutoDetectLocation = () => {
     setErrorMsg('');
+    setGpsFailed(false);
     setIsLocating(true);
-    
-    // Simulate high precision GPS locator sweep
-    setTimeout(() => {
-      const randomZone = SERVICE_ZONES[2]; // Anchepalya
-      setPincode(randomZone.pincode);
-      setServiceArea(randomZone.name);
+
+    if (!navigator.geolocation) {
+      setErrorMsg('Location permission denied. Please select your area manually from the dropdown list.');
+      setGpsFailed(true);
       setIsLocating(false);
-      setSuccessToast('GPS Lock: Anchepalya (560073)');
-      setTimeout(() => setSuccessToast(''), 2500);
-    }, 1800);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude: lat, longitude: lng } = position.coords;
+        setLatitude(lat);
+        setLongitude(lng);
+
+        // Find distance to all centers and match nearest
+        let minDistance = Infinity;
+        let matchedArea = null;
+
+        SUPPORTED_CENTERS.forEach(center => {
+          const dist = calculateDistance(lat, lng, center.lat, center.lng);
+          if (dist < minDistance) {
+            minDistance = dist;
+            matchedArea = center;
+          }
+        });
+
+        setIsLocating(false);
+
+        // Check if user is inside the matched service area
+        // Threshold: 1.8 kilometers
+        if (matchedArea && minDistance < 1.8) {
+          setServiceArea(matchedArea.name);
+          setPincode(matchedArea.pincode);
+          setGpsFailed(false);
+          setSuccessToast(`GPS Lock: ${matchedArea.name}`);
+          setTimeout(() => setSuccessToast(''), 2500);
+
+          // Success: Proceed to Step 4 to show availability check results
+          setDirection(1);
+          setStep(4);
+        } else {
+          // Failure: Outside all supported areas
+          setServiceArea('');
+          setPincode('');
+          setGpsFailed(true);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        setServiceArea('');
+        setPincode('');
+        setGpsFailed(true);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handleLocationSubmit = (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!pincode) {
+    if (serviceArea !== 'Other / Not Listed' && !pincode) {
       setErrorMsg('Please enter your pincode.');
       return;
     }
@@ -173,17 +248,23 @@ export default function CustomerSignup({ onBack }) {
   };
 
   // STEP 4 Checks: Service Availability Routing
-  const selectedZoneData = SERVICE_ZONES.find(
-    z => z.name.toLowerCase() === serviceArea.toLowerCase() && z.pincode === pincode
-  );
-  
-  const isServiceAvailable = !!selectedZoneData && serviceArea !== 'Other / Not Listed';
+  const isServiceAvailable = SERVICE_ZONES.some(z => z.name.toLowerCase() === serviceArea.toLowerCase());
 
   const handleWaitlistSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     
-    const result = await joinWaitlist(name, phone, email || 'no-email@waitlist.com', serviceArea, pincode);
+    const locationStr = latitude && longitude ? `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}` : 'Manual selection outside area';
+    const result = await joinWaitlist(
+      name, 
+      phone, 
+      email || 'no-email@waitlist.com', 
+      serviceArea || 'Outside Service Area', 
+      pincode || '',
+      locationStr,
+      latitude,
+      longitude
+    );
     if (result.success) {
       setSuccessToast('Successfully joined the waitlist! 🎉');
       setTimeout(() => {
@@ -336,42 +417,41 @@ export default function CustomerSignup({ onBack }) {
             exit="exit"
             className="w-full flex-grow flex flex-col justify-between [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
-            {/* ==================== STEP 1: MOBILE VERIFICATION ==================== */}
+            {/* ==================== STEP 1: EMAIL VERIFICATION ==================== */}
             {step === 1 && (
               <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="flex flex-col h-full justify-between text-left relative overflow-hidden select-none">
                 <div className="flex-1 overflow-y-auto pr-1 pb-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                   <div>
-                    <h4 className="font-poppins font-extrabold text-base text-slate-900 leading-tight">Verify Mobile Number</h4>
+                    <h4 className="font-poppins font-extrabold text-base text-slate-900 leading-tight">Verify Email Address</h4>
                     <p className="text-[10.5px] text-slate-400 leading-relaxed mt-1 font-semibold">
-                      Enter your mobile number to get started. We will send a secure validation passcode.
+                      Enter your email address to get started. We will send a secure validation passcode.
                     </p>
                   </div>
 
                   {!otpSent ? (
                     <div className="form-group relative mt-2">
                       <input 
-                        type="tel" 
-                        maxLength={10}
-                        className="form-input bg-white/60 border border-slate-200 focus:bg-white text-slate-950 font-bold transition-all pr-12 text-sm" 
-                        placeholder="Mobile Number" 
-                        value={phone} 
-                        onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} 
+                        type="email" 
+                        className="form-input bg-white/60 border border-slate-200 focus:bg-white text-slate-950 font-bold transition-all text-sm" 
+                        placeholder="Email Address" 
+                        value={email} 
+                        onChange={e => setEmail(e.target.value)} 
                         required 
                       />
                       <label className="form-label flex items-center space-x-1">
-                        <Phone className="w-3.5 h-3.5 inline mr-1 text-slate-400" /> Mobile Number
+                        <Mail className="w-3.5 h-3.5 inline mr-1 text-slate-400" /> Email Address
                       </label>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200/60">
-                        +91
-                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4 mt-2">
-                      <div className="p-3 bg-cyan-50/50 border border-brand/10 rounded-2xl flex items-center space-x-3">
-                        <ShieldCheck className="w-4 h-4 text-brand flex-shrink-0" />
-                        <span className="text-[10.5px] text-slate-600 font-bold">
-                          OTP Sent successfully to <strong className="text-slate-950">+91 {phone}</strong>
-                        </span>
+                      <div className="p-3 bg-cyan-50/50 border border-brand/10 rounded-2xl flex flex-col space-y-1.5 text-left animate-fade-in">
+                        <div className="flex items-center space-x-3">
+                          <ShieldCheck className="w-4 h-4 text-brand flex-shrink-0" />
+                          <span className="text-[10.5px] text-slate-600 font-bold">
+                            OTP Sent successfully to <strong className="text-slate-950">{email}</strong>
+                          </span>
+                        </div>
+
                       </div>
 
                       <div className="form-group">
@@ -403,10 +483,10 @@ export default function CustomerSignup({ onBack }) {
                         )}
                         <button 
                           type="button" 
-                          onClick={() => { setPhone(''); useAuthStore.setState({ otpSent: false }); }}
+                          onClick={() => { setEmail(''); useAuthStore.setState({ otpSent: false }); }}
                           className="hover:text-slate-600 font-black"
                         >
-                          Change Number
+                          Change Email
                         </button>
                       </div>
                     </div>
@@ -429,7 +509,7 @@ export default function CustomerSignup({ onBack }) {
                       <span>Sending OTP...</span>
                     ) : (
                       <>
-                        <span>{otpSent ? 'Verify & Continue' : 'Verify Mobile'}</span>
+                        <span>{otpSent ? 'Verify & Continue' : 'Verify Email'}</span>
                         <ChevronRight className="w-4 h-4 ml-1" />
                       </>
                     )}
@@ -445,7 +525,7 @@ export default function CustomerSignup({ onBack }) {
                   <div>
                     <h4 className="font-poppins font-extrabold text-base text-slate-900 leading-tight">Basic Details</h4>
                     <p className="text-[10.5px] text-slate-400 leading-relaxed mt-1 font-semibold">
-                      Please enter your name and email address to customize your home service requests.
+                      Please enter your name and mobile number to customize your home service requests.
                     </p>
                   </div>
 
@@ -465,14 +545,16 @@ export default function CustomerSignup({ onBack }) {
 
                   <div className="form-group">
                     <input 
-                      type="email" 
+                      type="tel" 
+                      maxLength={10}
                       className="form-input bg-white/60 border border-slate-200 focus:bg-white text-slate-950 font-bold transition-all text-sm" 
-                      placeholder="Email Address" 
-                      value={email} 
-                      onChange={e => setEmail(e.target.value)} 
+                      placeholder="Mobile Number" 
+                      value={phone} 
+                      onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} 
+                      required
                     />
                     <label className="form-label flex items-center space-x-1">
-                      <Mail className="w-3.5 h-3.5 inline mr-1 text-slate-400" /> Email Address (Optional)
+                      <Phone className="w-3.5 h-3.5 inline mr-1 text-slate-400" /> Mobile Number
                     </label>
                   </div>
                 </div>
@@ -510,7 +592,7 @@ export default function CustomerSignup({ onBack }) {
                         placeholder="Pincode" 
                         value={pincode} 
                         onChange={e => setPincode(e.target.value.replace(/\D/g, ''))} 
-                        required 
+                        required={serviceArea !== 'Other / Not Listed'} 
                       />
                       <label className="form-label flex items-center space-x-1">
                         <MapPin className="w-3.5 h-3.5 inline mr-1 text-slate-400" /> Pincode
@@ -532,6 +614,32 @@ export default function CustomerSignup({ onBack }) {
                     </button>
                   </div>
 
+                  {gpsFailed && (
+                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl space-y-2 animate-fade-in text-slate-800">
+                      <div className="flex items-center space-x-2 text-amber-700">
+                        <AlertTriangle className="w-4.5 h-4.5 flex-shrink-0" />
+                        <h4 className="font-poppins font-black text-xs uppercase tracking-wider leading-none">Location not recognized.</h4>
+                      </div>
+                      <p className="text-[10.5px] text-amber-800/80 leading-relaxed font-semibold">
+                        Your GPS location could not be matched with our service areas. Please select your area manually.
+                      </p>
+                      
+                      <div className="text-[10px] text-slate-500 font-bold mt-2">
+                        Supported Areas:
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5 font-semibold text-slate-600">
+                          <li>Nagasandra</li>
+                          <li>Bagalagunte</li>
+                          <li>Anchepalya</li>
+                          <li>Peenya Industrial Area</li>
+                          <li>Peenya</li>
+                          <li>Madavara</li>
+                          <li>Chikkabidarakallu</li>
+                          <li>Doddabidarakallu</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="form-group relative">
                     <select
                       className="form-input bg-white/60 border border-slate-200 focus:bg-white text-slate-950 font-bold transition-all appearance-none pr-8 cursor-pointer text-sm"
@@ -540,6 +648,7 @@ export default function CustomerSignup({ onBack }) {
                         setServiceArea(e.target.value);
                         const zone = SERVICE_ZONES.find(z => z.name === e.target.value);
                         if (zone) setPincode(zone.pincode);
+                        else setPincode('');
                       }}
                       required
                     >
@@ -564,7 +673,7 @@ export default function CustomerSignup({ onBack }) {
                     type="submit" 
                     className="w-full bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3.5 rounded-xl shadow-md transition-all uppercase tracking-widest flex items-center justify-center space-x-1"
                   >
-                    <span>Check Service Area</span>
+                    <span>CHECK SERVICE AVAILABILITY</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -582,18 +691,19 @@ export default function CustomerSignup({ onBack }) {
                         <CheckCircle className="w-9 h-9 animate-bounce" />
                       </div>
                       <div className="space-y-1.5">
-                        <h4 className="font-poppins font-black text-base text-slate-900">✅ Great News!</h4>
+                        <h4 className="font-poppins font-black text-base text-slate-900">Service Available</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-semibold max-w-[270px] mx-auto">
-                          JK Enterprises services are fully active in <strong className="text-slate-950">{serviceArea}</strong>.
+                          JK Enterprises services are available in your area.
                         </p>
                       </div>
 
                       <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-left max-w-sm mx-auto shadow-inner space-y-1">
-                        <h5 className="font-poppins font-extrabold text-[10px] text-slate-400 uppercase tracking-widest">Service Zone Parameters</h5>
+                        <h5 className="font-poppins font-extrabold text-[10px] text-slate-400 uppercase tracking-widest">Detected Location</h5>
                         <div className="text-xs text-slate-600 font-bold space-y-1 pt-1">
-                          <p>📍 Sector: <span className="text-slate-900">{serviceArea}</span></p>
-                          <p>📮 Pincode: <span className="text-slate-900">{pincode}</span></p>
-                          <p>⚡ Status: <span className="text-emerald-600">Priority Active</span></p>
+                          <p>📍 Detected Area: <span className="text-brand font-black">{serviceArea}</span></p>
+                          {latitude && longitude && (
+                            <p className="text-[10px] text-slate-400 font-mono">🌐 GPS: {latitude.toFixed(6)}, {longitude.toFixed(6)}</p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -614,18 +724,32 @@ export default function CustomerSignup({ onBack }) {
                   /* --- UNAVAILABLE WAITLIST FLOW --- */
                   <form onSubmit={handleWaitlistSubmit} className="flex flex-col h-full justify-between animate-scale-up">
                     <div className="flex-1 overflow-y-auto pr-1 pb-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                      <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-2xl space-y-2">
-                        <div className="flex items-center space-x-2 text-amber-700">
+                      <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl space-y-2">
+                        <div className="flex items-center space-x-2 text-rose-700">
                           <AlertTriangle className="w-4.5 h-4.5 flex-shrink-0" />
-                          <h4 className="font-poppins font-black text-xs uppercase tracking-wider leading-none">🚧 Not Available Yet</h4>
+                          <h4 className="font-poppins font-black text-xs uppercase tracking-wider leading-none">Service Currently Unavailable</h4>
                         </div>
-                        <p className="text-[10.5px] text-amber-800/80 leading-relaxed font-semibold">
-                          We are currently not delivering in <strong className="text-slate-900">{serviceArea}</strong>. Join our priority waitlist below to get notified when we launch nearby!
+                        <p className="text-[10.5px] text-rose-800/80 leading-relaxed font-semibold">
+                          JK Enterprises is currently available only in selected areas.
                         </p>
+                        
+                        <div className="text-[10px] text-slate-500 font-bold mt-2">
+                          Supported Areas:
+                          <ul className="list-disc pl-4 mt-1 space-y-0.5 font-semibold text-slate-600">
+                            <li>Nagasandra</li>
+                            <li>Bagalagunte</li>
+                            <li>Anchepalya</li>
+                            <li>Peenya Industrial Area</li>
+                            <li>Peenya</li>
+                            <li>Madavara</li>
+                            <li>Chikkabidarakallu</li>
+                            <li>Doddabidarakallu</li>
+                          </ul>
+                        </div>
                       </div>
 
                       <div className="text-left mt-1 space-y-3">
-                        <h5 className="font-poppins font-extrabold text-[10px] text-slate-400 uppercase tracking-widest">Waitlist Fields</h5>
+                        <h5 className="font-poppins font-extrabold text-[10px] text-slate-400 uppercase tracking-widest">Join Priority Waitlist</h5>
                         
                         <div className="form-group">
                           <input 
@@ -678,7 +802,7 @@ export default function CustomerSignup({ onBack }) {
                         disabled={loading}
                         className="flex-grow bg-slate-900 hover:bg-slate-800 text-white font-poppins font-black text-xs py-3.5 rounded-xl shadow-md transition-all uppercase tracking-widest"
                       >
-                        {loading ? 'Joining waitlist...' : 'Join Priority Waitlist'}
+                        {loading ? 'Joining waitlist...' : 'Join Waitlist'}
                       </button>
                     </div>
                   </form>

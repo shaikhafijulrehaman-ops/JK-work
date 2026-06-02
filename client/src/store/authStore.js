@@ -211,14 +211,14 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Phone OTP dispatch simulation
-  sendOtp: async (phone) => {
+  // Email OTP dispatch simulation
+  sendOtp: async (email) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/auth/otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ email })
       });
       const data = await res.json();
       if (data.success) {
@@ -234,11 +234,11 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Verify Phone OTP log
-  verifyOtp: async (phone, code) => {
+  // Verify Email OTP log
+  verifyOtp: async (email, code) => {
     set({ loading: true });
     if (parseInt(code) === get().simulatedOtp) {
-      const mockUser = { id: 'user-cust', email: 'customer@gmail.com', name: 'Aravind Swamy', phone, role: 'USER' };
+      const mockUser = { id: 'user-cust', email: email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
       localStorage.setItem('jk_user', JSON.stringify(mockUser));
       set({ user: mockUser, isAuthenticated: true, otpSent: false, loading: false });
       return { success: true, user: mockUser };
@@ -248,13 +248,13 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // Join Waitlist
-  joinWaitlist: async (name, mobile, email, selectedArea, pincode) => {
+  joinWaitlist: async (name, mobile, email, selectedArea, pincode, location = null, latitude = null, longitude = null) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/auth/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mobile, email, selectedArea, pincode })
+        body: JSON.stringify({ name, mobile, email, selectedArea, pincode, location, latitude, longitude })
       });
       const data = await res.json();
       set({ loading: false });

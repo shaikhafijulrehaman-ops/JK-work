@@ -2,6 +2,26 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 
+// Helper to send mock WhatsApp notification to Admin
+const sendAdminWhatsAppNotification = (name, mobile, email, action) => {
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  console.log(`
+==================================================
+💬 [WhatsApp Dispatch mock to ADMIN]
+New Customer Activity
+
+Name: ${name || 'N/A'}
+Mobile: ${mobile || 'N/A'}
+Email: ${email || 'N/A'}
+
+Action: ${action}
+
+Time: ${time}
+==================================================
+`);
+};
+
+
 // Helper to sign JWT tokens
 const signTokens = (userId, email, role) => {
   const accessToken = jwt.sign(
@@ -70,8 +90,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 exports.register = async (req, res) => {
   try {
     const { 
-      email, password, name, phone, role, pincode, serviceArea,
-      aadhaar, experience, profilePhoto, address, bankDetails, emergencyContact, availability, category 
+      email, password, name, phone, pincode, serviceArea
     } = req.body;
 
     if (!email || !password || !name || !phone) {
@@ -102,15 +121,14 @@ exports.register = async (req, res) => {
     // Encrypt password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create User record
-    const userRole = role === 'WORKER' ? 'WORKER' : 'USER';
+    // Create User record as USER (customer)
     const user = await db.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
         phone,
-        role: userRole,
+        role: 'USER',
         isEmailVerified: true,
         isPhoneVerified: true,
         pincode: pincode || null,
@@ -118,39 +136,8 @@ exports.register = async (req, res) => {
       }
     });
 
-    // If role is WORKER, instantiate worker profile with pending status
-    if (userRole === 'WORKER') {
-      const worker = await db.worker.create({
-        data: {
-          userId: user.id,
-          status: 'AVAILABLE', // Still AVAILABLE technically if they are online, but approvalStatus prevents bookings
-          approvalStatus: 'PENDING',
-          aadhaar: aadhaar || null,
-          experienceYears: experience ? parseInt(experience) : null,
-          profilePhoto: profilePhoto || null,
-          address: address || null,
-          bankDetails: bankDetails ? JSON.stringify(bankDetails) : null,
-          emergencyContact: emergencyContact || null,
-          availability: availability ? JSON.stringify(availability) : null,
-          rating: 5.0,
-          commissionRate: 0.70 // Default 70% commission
-        }
-      });
-
-      // Default to Electrician if category is not mapped, or try to find by name
-      let defaultSkill = await db.service.findFirst({ where: { name: { contains: category || 'Electrician', mode: 'insensitive' } } });
-      if (!defaultSkill) {
-        defaultSkill = await db.service.findFirst();
-      }
-      if (defaultSkill) {
-        await db.workerSkill.create({
-          data: {
-            workerId: worker.id,
-            serviceId: defaultSkill.id
-          }
-        });
-      }
-    }
+    // WhatsApp Notification
+    sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Registration');
 
     sendTokenResponse(user, 201, res);
   } catch (error) {
@@ -163,126 +150,10 @@ exports.register = async (req, res) => {
  * Register a Service Partner (role = WORKER, approvalStatus = PENDING)
  */
 exports.registerPartner = async (req, res) => {
-  try {
-    const { 
-      name, email, password, phone, 
-      category, experience, employmentType,
-      pincode, address, serviceArea,
-      aadhaarFront, aadhaarBack, selfiePhoto, profilePhoto,
-      bankDetails
-    } = req.body;
-
-    if (!email || !password || !name || !phone) {
-      return res.status(400).json({ success: false, message: 'Please provide all basic details.' });
-    }
-
-    // Check if user already exists
-    const existingUser = await db.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already registered.' });
-    }
-
-    const existingPhone = await db.user.findUnique({ where: { phone } });
-    if (existingPhone) {
-      return res.status(400).json({ success: false, message: 'Mobile number already registered.' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create User record with WORKER role
-    const user = await db.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        phone,
-        role: 'WORKER',
-        isEmailVerified: true,
-        isPhoneVerified: true,
-        pincode: pincode || null,
-        serviceArea: serviceArea || null
-      }
-    });
-
-    // Serialize documents & bank details
-    const serializedAadhaar = JSON.stringify({ front: aadhaarFront, back: aadhaarBack });
-    const serializedPhotos = JSON.stringify({ profile: profilePhoto, selfie: selfiePhoto });
-    const serializedBank = JSON.stringify(bankDetails);
-
-    // Create Worker Profile
-    const worker = await db.worker.create({
-      data: {
-        userId: user.id,
-        status: 'AVAILABLE',
-        approvalStatus: 'PENDING',
-        aadhaar: serializedAadhaar,
-        experienceYears: experience ? parseInt(experience) : null,
-        profilePhoto: serializedPhotos,
-        address: address || null,
-        bankDetails: serializedBank,
-        rating: 5.0,
-        commissionRate: 0.70
-      }
-    });
-
-    console.log("Service Partner Registration Success");
-    console.log("Application Saved");
-    console.log("Approval Request Created");
-    console.log("Full Database Response:", JSON.stringify(worker, null, 2));
-
-    // Live Database Admin Onboarding Notification
-    const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' } });
-    if (adminUser) {
-      await db.notification.create({
-        data: {
-          userId: adminUser.id,
-          type: 'ADMIN_UPDATE',
-          title: '🔔 New Partner Application',
-          message: `New partner application received from ${user.name} for ${category || 'brochure category'}.`
-        }
-      }).catch(() => {});
-    }
-
-    // Map skill
-    if (category) {
-      // Normalization helper for fuzzy categories
-      let queryCategory = category;
-      if (queryCategory === 'Full House Cleaning') queryCategory = 'Full House Deep Cleaning';
-      else if (queryCategory === 'Bathroom Cleaning') queryCategory = 'Bathroom Deep Cleaning';
-      else if (queryCategory === 'Kitchen Cleaning') queryCategory = 'Full Kitchen Cleaning';
-      else if (queryCategory === 'Electrician') queryCategory = 'Electrician Service';
-
-      let skillService = await db.service.findFirst({
-        where: { name: { contains: queryCategory, mode: 'insensitive' } }
-      });
-      if (!skillService) {
-        skillService = await db.service.findFirst();
-      }
-      if (skillService) {
-        await db.workerSkill.create({
-          data: {
-            workerId: worker.id,
-            serviceId: skillService.id
-          }
-        });
-      }
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Service Partner application submitted successfully.',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        role: user.role
-      }
-    });
-  } catch (error) {
-    console.error('Partner registration error:', error);
-    res.status(500).json({ success: false, message: 'Server error during partner registration.' });
-  }
+  return res.status(400).json({ 
+    success: false, 
+    message: 'Service Partner registration is no longer supported on this platform.' 
+  });
 };
 
 
@@ -300,14 +171,13 @@ exports.login = async (req, res) => {
     console.log('--- BEFORE findUnique Call ---');
     console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
     console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { email }, include: { workerProfile: true } }, null, 2));
+    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
     console.log('------------------------------');
     const user = await db.user.findUnique({ 
-      where: { email },
-      include: { workerProfile: true }
+      where: { email }
     });
 
-    if (!user) {
+    if (!user || user.role === 'WORKER') {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
@@ -317,11 +187,8 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // Allow all service partners to log in so the client portal can render role-isolated status screens (Pending, Review, Rejected)
-    if (user.role === 'WORKER' && user.workerProfile) {
-      // Just log status for debug
-      console.log(`Service Partner "${user.name}" logging in with status: ${user.workerProfile.approvalStatus}`);
-    }
+    // WhatsApp Notification
+    sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Login');
 
     sendTokenResponse(user, 200, res);
   } catch (error) {
@@ -448,18 +315,18 @@ exports.getMe = async (req, res) => {
 };
 
 /**
- * Mock Phone OTP Login Simulation
+ * Mock Email OTP Login Simulation
  */
 exports.sendOTP = async (req, res) => {
   try {
-    const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Please provide phone number.' });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Please provide email address.' });
     }
 
-    // Simulated SMS dispatch
+    // Simulated Email dispatch
     const otp = Math.floor(100000 + Math.random() * 900000);
-    console.log(`💬 [SMS Gateway mock] To: ${phone} - OTP Code: ${otp} (JK Enterprises Booking Gateway verification)`);
+    console.log(`✉️ [Mail Gateway mock] To: ${email} - OTP Code: ${otp} (JK Enterprises Email OTP Verification)`);
 
     res.status(200).json({
       success: true,
@@ -509,9 +376,9 @@ exports.forgotPassword = async (req, res) => {
  */
 exports.joinWaitlist = async (req, res) => {
   try {
-    const { name, mobile, email, selectedArea, pincode } = req.body;
-    if (!name || !mobile || !email || !selectedArea || !pincode) {
-      return res.status(400).json({ success: false, message: 'Please provide all waitlist fields.' });
+    const { name, mobile, email, selectedArea, pincode, location, latitude, longitude } = req.body;
+    if (!name || !mobile || !email) {
+      return res.status(400).json({ success: false, message: 'Please provide name, mobile, and email.' });
     }
 
     const waitlistEntry = await db.waitlist.create({
@@ -519,8 +386,11 @@ exports.joinWaitlist = async (req, res) => {
         name,
         mobile,
         email,
-        selected_area: selectedArea,
-        pincode
+        selected_area: selectedArea || location || '',
+        pincode: pincode || '',
+        location: location || selectedArea || '',
+        latitude: latitude !== undefined && latitude !== null ? parseFloat(latitude) : null,
+        longitude: longitude !== undefined && longitude !== null ? parseFloat(longitude) : null
       }
     });
 
@@ -630,6 +500,9 @@ exports.syncSupabase = async (req, res) => {
         ipAddress: req.ip
       }
     }).catch(e => {});
+
+    // WhatsApp Notification
+    sendAdminWhatsAppNotification(customer.name, customer.phone, customer.email, 'Registration / Login');
 
     res.status(200).json({
       success: true,

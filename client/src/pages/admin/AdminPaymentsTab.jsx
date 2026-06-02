@@ -124,28 +124,28 @@ const AdminPaymentsTab = React.memo(() => {
             <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
               <tr>
                 <th className="p-4">Booking Ref</th>
+                <th className="p-4">Customer</th>
                 <th className="p-4">Date</th>
-                <th className="p-4">Booking Amount</th>
-                <th className="p-4">Partner Share (70%)</th>
-                <th className="p-4">Platform Share (30%)</th>
+                <th className="p-4">Method</th>
+                <th className="p-4">Transaction ID</th>
+                <th className="p-4">Amount</th>
                 <th className="p-4 text-right">Payment Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
               {paymentData.paymentList.map(pay => {
-                const partnerShare = (pay.amount * 0.70).toFixed(2);
-                const platformShare = (pay.amount * 0.30).toFixed(2);
                 return (
                   <tr key={pay.id} className="hover:bg-slate-50/50">
                     <td className="p-4 font-mono font-bold text-brand">{pay.id.substring(0,8)}</td>
+                    <td className="p-4 font-bold text-slate-800">{pay.customerName || 'Customer'}</td>
                     <td className="p-4 text-slate-500">{new Date(pay.createdAt).toLocaleDateString()}</td>
-                    <td className="p-4 font-bold text-slate-800">Rs. {pay.amount}</td>
-                    <td className="p-4 text-emerald-600 font-bold">Rs. {partnerShare}</td>
-                    <td className="p-4 text-brand font-bold">Rs. {platformShare}</td>
+                    <td className="p-4 font-bold text-slate-600 uppercase">{pay.method || 'UPI'}</td>
+                    <td className="p-4 font-mono text-[10px] text-slate-500">{pay.transactionId || 'N/A'}</td>
+                    <td className="p-4 font-black text-slate-900">Rs. {pay.amount.toLocaleString()}</td>
                     <td className="p-4 text-right">
                       <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                        pay.status === 'PAID' ? 'bg-emerald-50 text-emerald-700' :
-                        pay.status === 'FAILED' ? 'bg-rose-50 text-rose-700' :
+                        pay.status.toUpperCase() === 'PAID' || pay.status.toUpperCase() === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' :
+                        pay.status.toUpperCase() === 'FAILED' ? 'bg-rose-50 text-rose-700' :
                         'bg-amber-50 text-amber-700'
                       }`}>
                         {pay.status}
@@ -156,7 +156,7 @@ const AdminPaymentsTab = React.memo(() => {
               })}
               {paymentData.paymentList.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-400 font-medium">No payments recorded yet</td>
+                  <td colSpan="7" className="p-8 text-center text-slate-400 font-medium">No payments recorded yet</td>
                 </tr>
               )}
             </tbody>

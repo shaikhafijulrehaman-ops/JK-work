@@ -197,7 +197,7 @@ model Booking {
   id            String        @id @default(uuid())
   userId        String
   workerId      String?
-  serviceAreaId String
+  serviceAreaId String?       // Make serviceAreaId optional for direct payments
   status        BookingStatus @default(PENDING)
   scheduledAt   DateTime
   timeSlot      String        // e.g., "09:00 AM - 10:00 AM"
@@ -215,10 +215,22 @@ model Booking {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  // Booking Flow Redesign fields
+  customer_name  String?
+  email          String?
+  service_name   String?
+  amount         Float?
+  area           String?
+  pincode        String?
+  notes          String?
+  payment_status String?       @default("Pending")
+  transaction_id String?
+  booking_status String?       @default("New Booking")
+
   // Relations
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   worker        Worker?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  serviceArea   ServiceArea   @relation(fields: [serviceAreaId], references: [id])
+  serviceArea   ServiceArea?  @relation(fields: [serviceAreaId], references: [id])
   items         BookingItem[]
   review        Review?
 
@@ -299,9 +311,12 @@ model Waitlist {
   name          String
   mobile        String
   email         String
-  selected_area String
-  pincode       String
-  createdAt     DateTime @default(now())
+  selected_area String?  @default("")
+  pincode       String?  @default("")
+  location      String?
+  latitude      Float?
+  longitude     Float?
+  createdAt     DateTime @default(now()) @map("created_at")
 }
 
 model Customer {
