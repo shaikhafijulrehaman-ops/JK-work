@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Global Fetch Timeout & Retry Wrapper (Maximum 2 seconds total execution guarantee)
+// Global Fetch Timeout & Retry Wrapper (5s per attempt, 3 attempts max = 15s total)
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
   // If the request is not to our backend API, or explicitly skipped, bypass

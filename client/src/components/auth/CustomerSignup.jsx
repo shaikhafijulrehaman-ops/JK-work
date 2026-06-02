@@ -308,11 +308,11 @@ export default function CustomerSignup({ onBack }) {
           navigate('/services');
         }, 3000);
       } else {
-        setErrorMsg(result.error || 'Account creation failed. Please check the console for details.');
+        setErrorMsg(result.error || 'Unable to create your account right now. Please try again.');
       }
     } catch (err) {
       console.error('Unexpected error during registration:', err);
-      setErrorMsg(err.message || 'An unexpected error occurred during account creation.');
+      setErrorMsg('Something went wrong. Please check your connection and try again.');
     }
   };
 
