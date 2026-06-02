@@ -355,7 +355,7 @@ ${formattedDate}`;
         setTimeout(() => {
           const encodedText = encodeURIComponent(waMessage);
           window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
-        }, 2000);
+        }, 1500);
 
       } else {
         setErrorMsg(data.message || 'Payment capture failed. Please contact support.');
@@ -531,7 +531,7 @@ ${formattedDate}`;
             <div className="pt-4 flex flex-col items-center space-y-3.5">
               <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
-                Redirecting to WhatsApp in 2s...
+                Redirecting to WhatsApp in 1.5s...
               </p>
             </div>
           </div>
