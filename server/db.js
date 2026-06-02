@@ -257,6 +257,22 @@ try {
   console.warn('⚠️ [JK Enterprises DB] Prisma client failed to initialize. Falling back to In-Memory Sandbox.');
 }
 
+// Helper to safely execute a live Prisma query with instant sandbox fallback if the database is offline, slow, or times out
+async function safeQuery(prismaPromise, sandboxFallback) {
+  if (useSandbox || !isPrismaConnected) {
+    return await sandboxFallback();
+  }
+  try {
+    return await prismaPromise;
+  } catch (err) {
+    console.error('⚠️ [JK Enterprises DB] Live query failed, falling back to local In-Memory Sandbox:', err.message);
+    // Dynamically toggle offline mode to bypass database timeouts instantly for subsequent requests
+    isPrismaConnected = false;
+    useSandbox = true;
+    return await sandboxFallback();
+  }
+}
+
 // 3. Relational API Query Interface that acts exactly like Prisma
 const db = {
   // Check active mode
@@ -266,7 +282,7 @@ const db = {
   // --- USER CONTROLLER MOCK API ---
   user: {
     findFirst: async (args = {}) => {
-      if (db.isSandbox()) {
+      const fallback = async () => {
         if (!args.where) return sandbox.users[0] || null;
         const match = sandbox.users.find(u => {
           if (args.where.role && u.role !== args.where.role) return false;
@@ -275,11 +291,11 @@ const db = {
           return true;
         });
         return match || null;
-      }
-      return await prisma.user.findFirst(args);
+      };
+      return safeQuery(prisma.user.findFirst(args), fallback);
     },
     findMany: async (args = {}) => {
-      if (db.isSandbox()) {
+      const fallback = async () => {
         let list = sandbox.users;
         if (args && args.where) {
           if (args.where.role) {
@@ -287,11 +303,11 @@ const db = {
           }
         }
         return list;
-      }
-      return await prisma.user.findMany(args);
+      };
+      return safeQuery(prisma.user.findMany(args), fallback);
     },
     findUnique: async (args) => {
-      if (db.isSandbox()) {
+      const fallback = async () => {
         if (args.where.email) {
           return sandbox.users.find(u => u.email === args.where.email) || null;
         }
@@ -309,11 +325,11 @@ const db = {
           return sandbox.users.find(u => u.phone === args.where.phone) || null;
         }
         return null;
-      }
-      return await prisma.user.findUnique(args);
+      };
+      return safeQuery(prisma.user.findUnique(args), fallback);
     },
     create: async (args) => {
-      if (db.isSandbox()) {
+      const fallback = async () => {
         const newUser = {
           id: `user-${Date.now()}`,
           createdAt: new Date(),
@@ -325,19 +341,19 @@ const db = {
         };
         sandbox.users.push(newUser);
         return newUser;
-      }
-      return await prisma.user.create(args);
+      };
+      return safeQuery(prisma.user.create(args), fallback);
     },
     update: async (args) => {
-      if (db.isSandbox()) {
+      const fallback = async () => {
         const index = sandbox.users.findIndex(u => u.id === args.where.id);
         if (index !== -1) {
           sandbox.users[index] = { ...sandbox.users[index], ...args.data, updatedAt: new Date() };
           return sandbox.users[index];
         }
         throw new Error('User not found in Sandbox');
-      }
-      return await prisma.user.update(args);
+      };
+      return safeQuery(prisma.user.update(args), fallback);
     }
   },
 
