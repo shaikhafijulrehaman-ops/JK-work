@@ -353,8 +353,12 @@ Booking Time:
 ${formattedDate}`;
 
         setTimeout(() => {
-          const encodedText = encodeURIComponent(waMessage);
-          window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
+          try {
+            const encodedText = encodeURIComponent(waMessage);
+            window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
+          } catch (waError) {
+            console.error('[JK Booking Monitoring] WhatsApp redirect failure:', waError);
+          }
         }, 1500);
 
       } else {

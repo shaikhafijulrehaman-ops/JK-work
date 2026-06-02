@@ -24,6 +24,7 @@ export const useBookingStore = create((set, get) => ({
         set({ loading: false });
       }
     } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: fetchBookings failed', e);
       // Offline fallback lists
       const localBookings = JSON.parse(localStorage.getItem('jk_bookings')) || [];
       set({ bookings: localBookings, loading: false });
@@ -55,6 +56,7 @@ export const useBookingStore = create((set, get) => ({
         return { success: false, error: data.message };
       }
     } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: createBooking failed', e);
       // Local fallback mock order execution
       const mockOrder = {
         id: `booking-mock-${Date.now()}`,
@@ -119,7 +121,9 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: updateJobStatus failed', e);
+    }
 
     // Sandbox Local Mutation for live countdown preview
     const current = get().bookings;
@@ -153,7 +157,9 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: assignWorker failed', e);
+    }
 
     // Sandbox Local Assignment
     const current = get().bookings;
@@ -192,7 +198,9 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: submitReview failed', e);
+    }
 
     // Sandbox Local Review
     const current = get().bookings;
@@ -222,7 +230,9 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[JK Booking Monitoring] Payment failure: simulatePayment failed', e);
+    }
 
     // Sandbox Payout Mutation
     const current = get().bookings;
@@ -255,7 +265,9 @@ export const useBookingStore = create((set, get) => ({
         set({ bookings: updated });
         return { success: true, booking: data.booking };
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: fetchBookingDetails failed', e);
+    }
 
     // Offline fallback: find in local state
     const current = get().bookings;

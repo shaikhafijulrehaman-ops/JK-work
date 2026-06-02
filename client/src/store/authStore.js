@@ -138,7 +138,7 @@ export const useAuthStore = create((set, get) => ({
         set({ user: mockUser, isAuthenticated: true, loading: false });
         return { success: true, user: mockUser };
       }
-      
+      console.error('[JK Auth Monitoring] Login failure:', e);
       set({ error: 'Database network timeout. Supply details or use demo credentials.', loading: false });
       return { success: false, error: 'Database timeout.' };
     }
