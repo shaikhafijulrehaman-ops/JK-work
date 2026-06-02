@@ -54,17 +54,22 @@ export const useAuthStore = create((set, get) => ({
 
   // Log in user / admin / worker
   login: async (email, password) => {
+    console.log("Step 1: Login Started");
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        timeout: 10000 // 10 seconds safety timeout
       });
+      console.log("Step 2: Auth Response");
       const data = await res.json();
 
       if (data.success) {
+        console.log("Step 3: Fetch User Profile");
+        console.log("Step 4: Session Created");
         localStorage.setItem('jk_user', JSON.stringify(data.user));
         if (data.token) {
           localStorage.setItem('jk_token', data.token);
@@ -74,6 +79,9 @@ export const useAuthStore = create((set, get) => ({
       } else {
         // Dynamic offline sandboxed login backup for zero-configuration local runs
         if (email === 'admin@jkenterprises.com' && password === 'admin123') {
+          console.log("Step 2: Auth Response");
+          console.log("Step 3: Fetch User Profile");
+          console.log("Step 4: Session Created");
           const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
           localStorage.setItem('jk_user', JSON.stringify(mockUser));
           localStorage.setItem('jk_token', 'mock-token-admin');
@@ -81,6 +89,9 @@ export const useAuthStore = create((set, get) => ({
           return { success: true, user: mockUser };
         }
         if (email === 'customer@gmail.com' && password === 'customer123') {
+          console.log("Step 2: Auth Response");
+          console.log("Step 3: Fetch User Profile");
+          console.log("Step 4: Session Created");
           const mockUser = { id: 'user-cust', email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
           localStorage.setItem('jk_user', JSON.stringify(mockUser));
           localStorage.setItem('jk_token', 'mock-token-customer');
@@ -88,6 +99,9 @@ export const useAuthStore = create((set, get) => ({
           return { success: true, user: mockUser };
         }
         if (email === 'vijay@jkenterprises.com' && password === 'worker123') {
+          console.log("Step 2: Auth Response");
+          console.log("Step 3: Fetch User Profile");
+          console.log("Step 4: Session Created");
           const mockUser = { id: 'user-worker-w-2', email, name: 'Vijay Kumar', phone: '8877665544', role: 'WORKER' };
           localStorage.setItem('jk_user', JSON.stringify(mockUser));
           localStorage.setItem('jk_token', 'mock-token-worker');
@@ -99,10 +113,16 @@ export const useAuthStore = create((set, get) => ({
         return { success: false, error: data.message, approvalStatus: data.approvalStatus, workerName: data.workerName };
       }
     } catch (e) {
+      console.error('[JK Auth Monitoring] Login failure:', e);
+      const isTimeout = e.name === 'AbortError' || e.message?.toLowerCase().includes('timeout') || e.message?.toLowerCase().includes('abort');
+      
       // Dynamic local preview bypass - Local Storage custom registrations check
       const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
       const localUserMatch = localUsers.find(u => u.email === email);
       if (localUserMatch) {
+        console.log("Step 2: Auth Response");
+        console.log("Step 3: Fetch User Profile");
+        console.log("Step 4: Session Created");
         const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
         const workerProfile = localWorkers.find(w => w.userId === localUserMatch.id);
         
@@ -118,6 +138,9 @@ export const useAuthStore = create((set, get) => ({
       }
 
       if (email === 'admin@jkenterprises.com' && password === 'admin123') {
+        console.log("Step 2: Auth Response");
+        console.log("Step 3: Fetch User Profile");
+        console.log("Step 4: Session Created");
         const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
         localStorage.setItem('jk_user', JSON.stringify(mockUser));
         localStorage.setItem('jk_token', 'mock-token-admin');
@@ -125,6 +148,9 @@ export const useAuthStore = create((set, get) => ({
         return { success: true, user: mockUser };
       }
       if (email === 'customer@gmail.com' && password === 'customer123') {
+        console.log("Step 2: Auth Response");
+        console.log("Step 3: Fetch User Profile");
+        console.log("Step 4: Session Created");
         const mockUser = { id: 'user-cust', email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
         localStorage.setItem('jk_user', JSON.stringify(mockUser));
         localStorage.setItem('jk_token', 'mock-token-customer');
@@ -132,15 +158,21 @@ export const useAuthStore = create((set, get) => ({
         return { success: true, user: mockUser };
       }
       if (email === 'vijay@jkenterprises.com' && password === 'worker123') {
+        console.log("Step 2: Auth Response");
+        console.log("Step 3: Fetch User Profile");
+        console.log("Step 4: Session Created");
         const mockUser = { id: 'user-worker-w-2', email, name: 'Vijay Kumar', phone: '8877665544', role: 'WORKER' };
         localStorage.setItem('jk_user', JSON.stringify(mockUser));
         localStorage.setItem('jk_token', 'mock-token-worker');
         set({ user: mockUser, isAuthenticated: true, loading: false });
         return { success: true, user: mockUser };
       }
-      console.error('[JK Auth Monitoring] Login failure:', e);
-      set({ error: 'Connection problem or slow database cold start. Please try again.', loading: false });
-      return { success: false, error: 'Connection problem. Please try again.' };
+
+      const errMessage = isTimeout 
+        ? 'Unable to sign in right now. Please try again.' 
+        : 'Connection problem or slow database cold start. Please try again.';
+      set({ error: errMessage, loading: false });
+      return { success: false, error: errMessage };
     }
   },
 

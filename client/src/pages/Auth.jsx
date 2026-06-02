@@ -42,8 +42,10 @@ export default function Auth() {
     e.preventDefault();
     setLocalErr(null);
     setPartnerStatus(null);
+    console.log("Step 1: Login Started");
     const res = await login(email, password);
     if (res.success) {
+      console.log("Step 5: Redirect");
       if (res.user.role === 'ADMIN') navigate('/admin');
       else if (res.user.role === 'WORKER') navigate('/worker/dashboard');
       else navigate('/services');
