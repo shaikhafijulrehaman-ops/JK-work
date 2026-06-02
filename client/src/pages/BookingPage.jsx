@@ -41,7 +41,7 @@ export default function BookingPage() {
     const fetchService = async () => {
       if (!serviceId) return;
       try {
-        const res = await fetch(`http://localhost:5000/api/services/${serviceId}`);
+        const res = await fetch(`/api/services/${serviceId}`);
         const data = await res.json();
         if (data.success) {
           setService(data.service);
@@ -294,7 +294,7 @@ export default function BookingPage() {
         transaction_id: payId
       };
 
-      const res = await fetch('http://localhost:5000/api/bookings/payment-success', {
+      const res = await fetch('/api/bookings/payment-success', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

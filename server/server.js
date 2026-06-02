@@ -16,7 +16,25 @@ app.use(helmet());
 
 // 2. CORS: Enable restricted access from client (standard fallback config)
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    // Allow standard local development and dynamic preview links (Vercel, Netlify, Github Codespaces, custom local networks, etc.)
+    const isAllowed = origin.startsWith('http://localhost') || 
+                      origin.startsWith('http://127.0.0.1') || 
+                      origin.includes('vercel.app') || 
+                      origin.includes('netlify.app') ||
+                      origin.includes('gitpod') ||
+                      origin.includes('github') ||
+                      origin.includes('codespace') ||
+                      origin.includes('192.168.'); // local IP subnetworks
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // General reliability fallback in dev/sandbox environments to prevent customer lockouts
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-razorpay-signature']

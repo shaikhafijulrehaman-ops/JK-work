@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const useCartStore = create((set, get) => ({
   items: JSON.parse(localStorage.getItem('jk_cart')) || [],
@@ -82,7 +81,7 @@ export const useCartStore = create((set, get) => ({
     if (!code) return { success: false, message: 'Please enter a coupon code.' };
     try {
       const subtotal = get().items.reduce((sum, item) => sum + item.price * item.quantity, 0.0);
-      const res = await fetch('http://localhost:5000/api/coupons/validate', {
+      const res = await fetch(`${API_URL}/coupons/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, subtotal })

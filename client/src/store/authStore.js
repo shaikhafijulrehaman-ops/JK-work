@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 
 // Safe helper for API fetch endpoints
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const useAuthStore = create((set, get) => ({
   user: null,

@@ -32,7 +32,7 @@ export default function ServicesPage() {
   useEffect(() => {
     const fetchServices = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/services');
+        const res = await fetch('/api/services');
         const data = await res.json();
         if (data.success) {
           // Filter only active services
