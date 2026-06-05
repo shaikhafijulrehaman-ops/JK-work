@@ -1,6 +1,12 @@
 const crypto = require('crypto');
+const Razorpay = require('razorpay');
 const db = require('../db');
 const { logActivity } = require('../utils/auditLogger');
+
+const razorpayClient = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'HaYBx1S0DaA1fmDdV2rtgyrQ'
+});
 
 /**
  * Simulate payment initialization (generates mock Razorpay order ID / UPI QR payload)
@@ -196,5 +202,117 @@ exports.simulatePaymentSuccess = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to simulate payment.' });
+  }
+};
+
+/**
+ * Standard Razorpay Order Creation
+ */
+exports.createOrder = async (req, res) => {
+  try {
+    const { amount, currency = 'INR', receipt } = req.body;
+
+    if (!amount || amount < 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid amount. Minimum amount is 100 paise (Rs. 1).'
+      });
+    }
+
+    const options = {
+      amount: Math.round(amount), // in paise
+      currency,
+      receipt: receipt || `receipt_order_${Date.now()}`
+    };
+
+    const order = await razorpayClient.orders.create(options);
+
+    res.status(200).json({
+      success: true,
+      order_id: order.id,
+      amount: order.amount,
+      currency: order.currency
+    });
+  } catch (error) {
+    console.error('Error creating Razorpay order:', error);
+    if (error.statusCode === 401) {
+      return res.status(401).json({ success: false, message: 'Razorpay authentication failed.' });
+    }
+    res.status(500).json({ success: false, message: 'Failed to create payment order.' });
+  }
+};
+
+/**
+ * Standard Razorpay Signature Verification
+ */
+exports.verifyPayment = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, bookingId } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment verification fields.'
+      });
+    }
+
+    const secret = process.env.RAZORPAY_KEY_SECRET || 'HaYBx1S0DaA1fmDdV2rtgyrQ';
+    const bodyStr = razorpay_order_id + '|' + razorpay_payment_id;
+
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(bodyStr)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      console.warn('⚠️ [Payment Verification] Signature verification failed.');
+      return res.status(400).json({
+        success: false,
+        message: 'Payment signature mismatch. Transaction is not verified.'
+      });
+    }
+
+    console.log('✅ [Payment Verification] Payment signature verified successfully!');
+
+    // Update booking if bookingId is provided
+    if (bookingId) {
+      const booking = await db.booking.findUnique({ where: { id: bookingId } });
+      if (booking) {
+        await db.booking.update({
+          where: { id: booking.id },
+          data: {
+            paymentStatus: 'PAID',
+            paymentId: razorpay_payment_id,
+            paymentMethod: 'CARD'
+          }
+        });
+
+        // Audit Log
+        logActivity(req, {
+          userId: booking.userId,
+          eventType: 'PAYMENT',
+          action: 'PAYMENT_SUCCESS',
+          details: { bookingId: booking.id, amount: booking.finalPrice, paymentId: razorpay_payment_id }
+        });
+
+        // Notify User
+        await db.notification.create({
+          data: {
+            userId: booking.userId,
+            type: 'PAYMENT_SUCCESS',
+            title: 'Payment Confirmed!',
+            message: `Your payment of Rs. ${booking.finalPrice} has been verified successfully. Ref: ${razorpay_payment_id}.`
+          }
+        }).catch(() => {});
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment verified and captured successfully.'
+    });
+  } catch (error) {
+    console.error('Error verifying Razorpay payment:', error);
+    res.status(500).json({ success: false, message: 'Failed to verify payment.' });
   }
 };

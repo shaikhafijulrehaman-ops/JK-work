@@ -256,40 +256,106 @@ export default function BookingPage() {
     }
 
     const amountInINR = getFinalTotal();
-    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_jkenterprises2026';
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn';
 
-    const options = {
-      key: razorpayKey,
-      amount: Math.round(amountInINR * 100),
-      currency: 'INR',
-      name: 'JK Enterprises',
-      description: `Payment for ${service.name}`,
-      image: '/favicon.svg',
-      handler: async function (response) {
-        const paymentId = response.razorpay_payment_id;
-        setTransactionId(paymentId);
-        await handlePaymentSuccess(paymentId);
-      },
-      prefill: {
-        name: fullName,
-        email: email,
-        contact: phone
-      },
-      notes: {
-        bookingId: tempBookingId
-      },
-      theme: {
-        color: '#0891b2'
-      },
-      modal: {
-        ondismiss: function () {
-          setIsProcessingPayment(false);
-        }
+    try {
+      // Step 1: Create Order on Backend
+      const orderRes = await fetch('/api/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        body: JSON.stringify({
+          amount: Math.round(amountInINR * 100), // in paise
+          currency: 'INR',
+          receipt: tempBookingId
+        })
+      });
+
+      if (!orderRes.ok) {
+        const errData = await orderRes.json();
+        throw new Error(errData.message || 'Failed to create payment order from server.');
       }
-    };
 
-    const rzp = new window.Razorpay(options);
-    rzp.open();
+      const orderData = await orderRes.json();
+      const orderId = orderData.order_id;
+
+      // Step 2: Open Razorpay Checkout Modal
+      const options = {
+        key: razorpayKey,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'JK Enterprises',
+        description: `Payment for ${service.name}`,
+        image: '/favicon.svg',
+        order_id: orderId,
+        handler: async function (response) {
+          try {
+            setIsProcessingPayment(true);
+            // Step 3: Verify Signature on Backend
+            const verifyRes = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                bookingId: tempBookingId
+              })
+            });
+
+            if (!verifyRes.ok) {
+              const verifyErr = await verifyRes.json();
+              throw new Error(verifyErr.message || 'Signature verification failed.');
+            }
+
+            const paymentId = response.razorpay_payment_id;
+            setTransactionId(paymentId);
+            await handlePaymentSuccess(paymentId);
+          } catch (verifyError) {
+            console.error('Payment verification error:', verifyError);
+            setErrorMsg(verifyError.message || 'Failed to verify transaction signature.');
+            setIsProcessingPayment(false);
+          }
+        },
+        prefill: {
+          name: fullName,
+          email: email,
+          contact: phone
+        },
+        notes: {
+          bookingId: tempBookingId
+        },
+        theme: {
+          color: '#0891b2'
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessingPayment(false);
+            setErrorMsg('Payment was cancelled by the user.');
+          }
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      
+      // Handle payment.failed event
+      rzp.on('payment.failed', function (response) {
+        console.error('Razorpay payment failed:', response.error);
+        setErrorMsg(response.error.description || 'Payment transaction failed.');
+        setIsProcessingPayment(false);
+      });
+
+      rzp.open();
+    } catch (orderError) {
+      console.error('Order creation error:', orderError);
+      setErrorMsg(orderError.message || 'Failed to initialize payment transaction.');
+      setIsProcessingPayment(false);
+    }
   };
 
   const handlePaymentSuccess = async (payId) => {

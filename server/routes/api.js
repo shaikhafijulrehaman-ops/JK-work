@@ -71,6 +71,8 @@ router.get('/reviews/worker/:workerId', reviewCtrl.getWorkerReviews);
 router.post('/payments/initialize', protect, paymentCtrl.initializePayment);
 router.post('/payments/simulate-success', protect, paymentCtrl.simulatePaymentSuccess);
 router.post('/payments/webhook', paymentCtrl.razorpayWebhook); // Secure signature check
+router.post('/create-order', protect, paymentCtrl.createOrder);
+router.post('/verify-payment', protect, paymentCtrl.verifyPayment);
 
 // ==================== AI CALL AGENT (MICROSERVICE ENDPOINT) ====================
 router.post('/ai-agent/simulate', protect, aiAgentCtrl.simulateCallInput);
