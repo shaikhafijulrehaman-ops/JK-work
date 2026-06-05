@@ -79,6 +79,16 @@ exports.razorpayWebhook = async (req, res) => {
             }
           });
 
+          // Audit Log
+          await db.auditLog.create({
+            data: {
+              userId: booking.userId,
+              action: 'PAYMENT_SUCCESS',
+              details: JSON.stringify({ bookingId: booking.id, amount, paymentId }),
+              ipAddress: req.ip
+            }
+          }).catch(() => {});
+
           // Dispatch Notification to customer
           await db.notification.create({
             data: {
@@ -86,6 +96,44 @@ exports.razorpayWebhook = async (req, res) => {
               type: 'PAYMENT_SUCCESS',
               title: 'Payment Received Securely!',
               message: `Rs. ${amount} captured under Reference #${paymentId}. Your service call is active.`
+            }
+          }).catch(() => {});
+        }
+      }
+    } else if (event === 'payment.failed') {
+      const paymentEntity = req.body.payload.payment.entity;
+      const amount = paymentEntity.amount / 100;
+      const paymentId = paymentEntity.id;
+      const notes = paymentEntity.notes;
+      const bookingId = notes ? notes.bookingId : null;
+
+      if (bookingId) {
+        const booking = await db.booking.findUnique({ where: { id: bookingId } });
+        if (booking) {
+          await db.booking.update({
+            where: { id: booking.id },
+            data: {
+              paymentStatus: 'FAILED'
+            }
+          }).catch(() => {});
+
+          // Audit Log
+          await db.auditLog.create({
+            data: {
+              userId: booking.userId,
+              action: 'PAYMENT_FAILED',
+              details: JSON.stringify({ bookingId: booking.id, amount, paymentId }),
+              ipAddress: req.ip
+            }
+          }).catch(() => {});
+
+          // Dispatch Notification to customer
+          await db.notification.create({
+            data: {
+              userId: booking.userId,
+              type: 'SYSTEM_ALERT',
+              title: 'Payment Failed',
+              message: `Your payment of Rs. ${amount} for booking #${booking.id.substring(0,8)} failed. Reference #${paymentId}.`
             }
           }).catch(() => {});
         }
@@ -124,6 +172,16 @@ exports.simulatePaymentSuccess = async (req, res) => {
         paymentMethod: paymentMethod || 'UPI'
       }
     });
+
+    // Audit Log
+    await db.auditLog.create({
+      data: {
+        userId: booking.userId,
+        action: 'PAYMENT_SUCCESS',
+        details: JSON.stringify({ bookingId: booking.id, amount: booking.finalPrice, paymentId: simPaymentId }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
 
     // Notify User
     await db.notification.create({

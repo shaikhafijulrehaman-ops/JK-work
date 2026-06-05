@@ -91,6 +91,17 @@ exports.updateJobStatus = async (req, res) => {
       data: updateData
     });
 
+    if (status === 'CANCELLED') {
+      await db.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'BOOKING_CANCELLED',
+          details: JSON.stringify({ bookingId: booking.id }),
+          ipAddress: req.ip
+        }
+      }).catch(() => {});
+    }
+
     // Notify Customer about state shift
     await db.notification.create({
       data: {

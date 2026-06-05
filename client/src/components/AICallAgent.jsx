@@ -47,7 +47,7 @@ export default function AICallAgent() {
 
     try {
       const token = localStorage.getItem('jk_token');
-      const res = await fetch('http://localhost:5000/api/ai-agent/simulate', {
+      const res = await fetch('/api/ai-agent/simulate', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

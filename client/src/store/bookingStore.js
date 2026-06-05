@@ -7,8 +7,13 @@ export const useBookingStore = create((set, get) => ({
   error: null,
 
   // Load user / admin bookings
-  fetchBookings: async () => {
-    set({ loading: true, error: null });
+  fetchBookings: async (silent = false) => {
+    const hasCached = get().bookings.length > 0;
+    if (!hasCached && !silent) {
+      set({ loading: true, error: null });
+    } else {
+      set({ error: null });
+    }
     try {
       const res = await fetch(`${API_URL}/bookings`, { 
         method: 'GET',

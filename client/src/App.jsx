@@ -11,18 +11,20 @@ import CartDrawer from './components/CartDrawer';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginRequiredModal from './components/LoginRequiredModal';
 
-// Pages
-const LandingPage = React.lazy(() => import('./pages/LandingPage'));
-const ServicesPage = React.lazy(() => import('./pages/ServicesPage'));
-const BookingPage = React.lazy(() => import('./pages/BookingPage'));
-const Auth = React.lazy(() => import('./pages/Auth'));
-const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+// Core Pages (Statically imported for instant navigation)
+import LandingPage from './pages/LandingPage';
+import ServicesPage from './pages/ServicesPage';
+import BookingPage from './pages/BookingPage';
+import Auth from './pages/Auth';
+import Dashboard from './pages/Dashboard';
+import BookingsPage from './pages/BookingsPage';
+import AccountPage from './pages/AccountPage';
+
+// Secondary Pages (Lazy loaded in background)
 const WorkerPortal = React.lazy(() => import('./pages/WorkerPortal'));
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
-const AccountPage = React.lazy(() => import('./pages/AccountPage'));
 const ManageAddresses = React.lazy(() => import('./pages/ManageAddresses'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
-const BookingsPage = React.lazy(() => import('./pages/BookingsPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const HelpPage = React.lazy(() => import('./pages/HelpPage'));
 const PartnerRegister = React.lazy(() => import('./pages/PartnerRegister'));
@@ -43,6 +45,7 @@ export default function App() {
   // Sync user credentials on client mount
   useEffect(() => {
     checkSession();
+    document.title = 'JK Home Care';
   }, []);
 
   // Fetch notifications once logged in

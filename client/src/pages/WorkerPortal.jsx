@@ -118,7 +118,7 @@ export default function WorkerPortal() {
     const fetchMatchedRequests = async () => {
       if (approvalStatus === 'APPROVED' && isOnline) {
         try {
-          const res = await fetch('http://localhost:5000/api/workers/requests', {
+          const res = await fetch('/api/workers/requests', {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('jk_token')}`
             }

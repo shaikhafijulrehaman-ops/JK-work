@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 
+const otps = {};
+
 // Helper to send mock WhatsApp notification to Admin
 const sendAdminWhatsAppNotification = (name, mobile, email, action) => {
   const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -67,7 +69,7 @@ const sendTokenResponse = (user, statusCode, res) => {
   db.auditLog.create({
     data: {
       userId: user.id,
-      action: 'USER_LOGIN',
+      action: 'ACCOUNT_LOGIN',
       details: JSON.stringify({ email: user.email, role: user.role }),
       ipAddress: res.req.ip
     }
@@ -138,6 +140,15 @@ exports.register = async (req, res) => {
 
     // WhatsApp Notification
     sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Registration');
+
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'ACCOUNT_CREATED',
+        details: JSON.stringify({ email: user.email, name: user.name, phone: user.phone }),
+        ipAddress: req.ip
+      }
+    }).catch(e => {});
 
     sendTokenResponse(user, 201, res);
   } catch (error) {
@@ -266,6 +277,19 @@ exports.logout = async (req, res) => {
     const token = req.cookies.refreshToken;
 
     if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026');
+        if (decoded && decoded.userId) {
+          await db.auditLog.create({
+            data: {
+              userId: decoded.userId,
+              action: 'ACCOUNT_LOGOUT',
+              details: JSON.stringify({ email: decoded.email }),
+              ipAddress: req.ip
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {}
       // Remove session from DB
       await db.session.delete({ where: { refreshToken: token } }).catch(() => {});
     }
@@ -326,6 +350,7 @@ exports.sendOTP = async (req, res) => {
 
     // Simulated Email dispatch
     const otp = Math.floor(100000 + Math.random() * 900000);
+    otps[email] = otp;
     console.log(`✉️ [Mail Gateway mock] To: ${email} - OTP Code: ${otp} (JK Enterprises Email OTP Verification)`);
 
     res.status(200).json({
@@ -444,6 +469,14 @@ exports.syncSupabase = async (req, res) => {
         }
       });
       console.log('USER INSERT RESPONSE: User created successfully in db.user', user);
+      await db.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'ACCOUNT_CREATED',
+          details: JSON.stringify({ email: user.email, name: user.name, phone: user.phone }),
+          ipAddress: req.ip
+        }
+      }).catch(e => {});
     } else {
       console.log('USER INSERT RESPONSE: User already exists in db.user', user);
     }
@@ -495,7 +528,7 @@ exports.syncSupabase = async (req, res) => {
     await db.auditLog.create({
       data: {
         userId: customer.id,
-        action: 'USER_LOGIN',
+        action: 'ACCOUNT_LOGIN',
         details: JSON.stringify({ email: customer.email, role: 'USER' }),
         ipAddress: req.ip
       }
@@ -515,4 +548,156 @@ exports.syncSupabase = async (req, res) => {
     res.status(500).json({ success: false, message: error.message || 'Server error during supabase sync.' });
   }
 };
+
+/**
+ * Verify OTP Code and login or proceed
+ */
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, message: 'Please provide email and OTP code.' });
+    }
+
+    const cachedOtp = otps[email];
+    if (!cachedOtp || String(cachedOtp) !== String(code)) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
+    }
+
+    // Clear OTP code from cache
+    delete otps[email];
+
+    // Check if user exists
+    const user = await db.user.findUnique({
+      where: { email },
+      include: { workerProfile: true }
+    });
+
+    if (!user) {
+      // User doesn't exist yet (this is the signup flow)
+      await db.auditLog.create({
+        data: {
+          userId: null,
+          action: 'OTP_VERIFICATION',
+          details: JSON.stringify({ email, success: true, message: 'OTP verified for new user signup' }),
+          ipAddress: req.ip
+        }
+      }).catch(() => {});
+
+      return res.status(200).json({
+        success: true,
+        userExists: false,
+        message: 'OTP verification successful.'
+      });
+    }
+
+    // User exists (this is the login flow)
+    const { accessToken, refreshToken } = signTokens(user.id, user.email, user.role);
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
+
+    await db.session.create({
+      data: {
+        userId: user.id,
+        refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      }
+    }).catch(e => console.warn('Prisma session creation log:', e.message));
+
+    res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'OTP_VERIFICATION',
+        details: JSON.stringify({ email: user.email, role: user.role, method: 'OTP' }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
+
+    // Remove password from response
+    const userResponse = { ...user };
+    delete userResponse.password;
+
+    return res.status(200).json({
+      success: true,
+      userExists: true,
+      user: userResponse,
+      token: accessToken
+    });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: 'Server error during OTP verification.' });
+  }
+};
+
+/**
+ * Update User Profile
+ */
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, email, phone, password, pincode, serviceArea } = req.body;
+
+    const user = await db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (email && email !== user.email) {
+      const existingEmail = await db.user.findUnique({ where: { email } });
+      if (existingEmail) {
+        return res.status(400).json({ success: false, message: 'Email already in use.' });
+      }
+      updateData.email = email;
+    }
+    if (phone && phone !== user.phone) {
+      const existingPhone = await db.user.findUnique({ where: { phone } });
+      if (existingPhone) {
+        return res.status(400).json({ success: false, message: 'Phone number already in use.' });
+      }
+      updateData.phone = phone;
+    }
+    if (password) {
+      updateData.password = bcrypt.hashSync(password, 10);
+    }
+    if (pincode) updateData.pincode = pincode;
+    if (serviceArea) updateData.serviceArea = serviceArea;
+
+    const updatedUser = await db.user.update({
+      where: { id: userId },
+      data: updateData
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: userId,
+        action: 'PROFILE_UPDATED',
+        details: JSON.stringify({
+          updatedFields: Object.keys(updateData).filter(k => k !== 'password')
+        }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
+
+    const userResponse = { ...updatedUser };
+    delete userResponse.password;
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully.',
+      user: userResponse
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ success: false, message: 'Server error during profile update.' });
+  }
+};
+
 

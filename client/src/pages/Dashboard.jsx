@@ -18,8 +18,41 @@ import {
   Smartphone
 } from 'lucide-react';
 
+const DashboardSkeleton = () => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-pulse text-left">
+    <div className="lg:col-span-1 space-y-4">
+      <div className="h-3.5 w-32 bg-slate-200 rounded"></div>
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="bg-white border border-slate-100 p-4 rounded-xl space-y-3">
+            <div className="flex justify-between">
+              <div className="h-3 w-16 bg-slate-200 rounded"></div>
+              <div className="h-3 w-12 bg-slate-200 rounded"></div>
+            </div>
+            <div className="h-4 w-3/4 bg-slate-200 rounded"></div>
+            <div className="h-3 w-1/2 bg-slate-200 rounded"></div>
+            <div className="border-t border-slate-50 pt-2 flex justify-between">
+              <div className="h-3 w-12 bg-slate-200 rounded"></div>
+              <div className="h-3 w-16 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+    <div className="lg:col-span-2 bg-white border border-slate-100 rounded-xl p-6 space-y-6">
+      <div className="space-y-2">
+        <div className="h-5 w-1/3 bg-slate-200 rounded"></div>
+        <div className="h-3 w-1/4 bg-slate-200 rounded"></div>
+      </div>
+      <div className="h-12 w-full bg-slate-200 rounded-xl"></div>
+      <div className="h-32 w-full bg-slate-200 rounded-xl"></div>
+      <div className="h-24 w-full bg-slate-200 rounded-xl"></div>
+    </div>
+  </div>
+);
+
 export default function Dashboard() {
-  const { bookings, fetchBookings, updateJobStatus, submitReview, simulatePayment } = useBookingStore();
+  const { bookings, fetchBookings, updateJobStatus, submitReview, simulatePayment, loading } = useBookingStore();
   const { user } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
@@ -109,7 +142,9 @@ export default function Dashboard() {
           <p className="text-xs text-slate-500 mt-1">Monitor active instant bookings and dispatch timelines</p>
         </div>
 
-        {bookings.length === 0 ? (
+        {loading && bookings.length === 0 ? (
+          <DashboardSkeleton />
+        ) : bookings.length === 0 ? (
           <div className="bg-white border border-slate-100 rounded-xl p-12 text-center shadow-sm">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <h3 className="font-poppins font-bold text-sm text-slate-700">No Service Bookings Yet</h3>

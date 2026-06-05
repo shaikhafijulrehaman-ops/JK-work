@@ -55,6 +55,15 @@ exports.createAddress = async (req, res) => {
       }
     });
 
+    await db.auditLog.create({
+      data: {
+        userId,
+        action: 'ADDRESS_ADDED',
+        details: JSON.stringify({ addressId: newAddress.id, houseFlat: newAddress.houseFlat, street: newAddress.street }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
+
     res.status(201).json({
       success: true,
       message: 'Address added successfully.',

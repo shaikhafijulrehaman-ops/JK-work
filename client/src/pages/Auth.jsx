@@ -100,7 +100,7 @@ export default function Auth() {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setLocalErr(null);
-    const res = await verifyOtp(email, otpCode);
+    const res = await verifyOtp(email, otpCode, true);
     if (res.success) {
       navigate('/services');
     } else {

@@ -429,7 +429,7 @@ export default function PartnerRegister() {
         }
       };
 
-      const res = await fetch('http://localhost:5000/api/auth/register-partner', {
+      const res = await fetch('/api/auth/register-partner', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

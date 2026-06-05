@@ -13,7 +13,7 @@ import {
   CreditCard, CheckCircle, XCircle, Settings, Award, 
   ShieldCheck, BarChart3, Landmark, Grid, HelpCircle, 
   ArrowUpRight, Download, Maximize2, LogOut, Plus, Sparkles,
-  ArrowDownRight, Edit, Bell, Trash2
+  ArrowDownRight, Edit, Bell, Trash2, Menu
 } from 'lucide-react';
 
 const AdminAnalyticsTab = React.lazy(() => import('./AdminAnalyticsTab'));
@@ -27,6 +27,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   // Selected view: dashboard, bookings, partner-approvals, partners, customers, payments, services, analytics, settings, coupons
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // Database States
   const [bookings, setBookings] = useState([]);
@@ -112,92 +113,74 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   };
 
   const liveActivityFeed = useMemo(() => {
-    const feed = [];
+    return auditLogs.map(log => {
+      let text = '';
+      let color = 'text-slate-600 bg-slate-50 border-slate-100';
+      let details = {};
+      try {
+        details = log.details ? JSON.parse(log.details) : {};
+      } catch (err) {}
+      const userName = log.user?.name || details.name || details.email || 'System';
 
-    // 1. Registrations
-    customers.forEach(c => {
-      feed.push({
-        id: `reg-${c.id}`,
-        text: `Customer ${c.name} registered`,
-        timestamp: new Date(c.createdAt),
-        type: 'REGISTRATION',
-        color: 'text-indigo-600 bg-indigo-50 border-indigo-100'
-      });
+      switch (log.action) {
+        case 'ACCOUNT_CREATED':
+          text = `Account created for ${userName} (${details.email || ''})`;
+          color = 'text-indigo-600 bg-indigo-50 border-indigo-100';
+          break;
+        case 'ACCOUNT_LOGIN':
+          text = `${userName} logged in successfully`;
+          color = 'text-emerald-600 bg-emerald-50 border-emerald-100';
+          break;
+        case 'ACCOUNT_LOGOUT':
+          text = `${userName} logged out`;
+          color = 'text-slate-500 bg-slate-50 border-slate-100';
+          break;
+        case 'OTP_VERIFICATION':
+          text = `OTP verified for ${userName}`;
+          color = 'text-purple-600 bg-purple-50 border-purple-100';
+          break;
+        case 'BOOKING_CREATED':
+          text = `Booking #${details.bookingId?.substring(0, 8).toUpperCase() || ''} created for Rs. ${details.finalPrice || details.amount || ''}`;
+          color = 'text-cyan-600 bg-cyan-50 border-cyan-100';
+          break;
+        case 'COUPON_APPLIED':
+          text = `Coupon ${details.couponCode || ''} applied to Booking #${details.bookingId?.substring(0, 8).toUpperCase() || ''}`;
+          color = 'text-rose-600 bg-rose-50 border-rose-100';
+          break;
+        case 'PAYMENT_SUCCESS':
+          text = `Payment of Rs. ${details.amount || ''} succeeded. Ref: ${details.paymentId || ''}`;
+          color = 'text-teal-600 bg-teal-50 border-teal-100';
+          break;
+        case 'PAYMENT_FAILED':
+          text = `Payment of Rs. ${details.amount || ''} failed. Ref: ${details.paymentId || ''}`;
+          color = 'text-red-600 bg-red-50 border-red-100';
+          break;
+        case 'BOOKING_CANCELLED':
+          text = `Booking #${details.bookingId?.substring(0, 8).toUpperCase() || ''} was cancelled`;
+          color = 'text-amber-600 bg-amber-50 border-amber-100';
+          break;
+        case 'ADDRESS_ADDED':
+          text = `${userName} added address: ${details.houseFlat || ''}, ${details.street || ''}`;
+          color = 'text-sky-600 bg-sky-50 border-sky-100';
+          break;
+        case 'PROFILE_UPDATED':
+          text = `${userName} updated profile details (${(details.updatedFields || []).join(', ')})`;
+          color = 'text-pink-600 bg-pink-50 border-pink-100';
+          break;
+        default:
+          text = `${log.action}: ${log.details}`;
+          color = 'text-slate-600 bg-slate-50 border-slate-100';
+      }
+
+      return {
+        id: log.id,
+        type: log.action,
+        text,
+        timestamp: new Date(log.createdAt),
+        color
+      };
     });
-
-    // 2. Logins
-    auditLogs.forEach(log => {
-      if (log.action === 'USER_LOGIN') {
-        const details = log.details ? JSON.parse(log.details) : {};
-        feed.push({
-          id: `login-${log.id}`,
-          text: `${log.user?.name || details.email || 'User'} logged in`,
-          timestamp: new Date(log.createdAt),
-          type: 'LOGIN',
-          color: 'text-emerald-600 bg-emerald-50 border-emerald-100'
-        });
-      }
-    });
-
-    // 3. Bookings
-    bookings.forEach(b => {
-      feed.push({
-        id: `book-create-${b.id}`,
-        text: `Booking #${b.id.substring(0, 8).toUpperCase()} created for Rs. ${b.finalPrice}`,
-        timestamp: new Date(b.createdAt),
-        type: 'BOOKING_CREATE',
-        color: 'text-cyan-600 bg-cyan-50 border-cyan-100'
-      });
-
-      // 4. Assignments
-      if (b.workerId && b.worker?.user?.name) {
-        feed.push({
-          id: `book-assign-${b.id}`,
-          text: `Booking #${b.id.substring(0, 8).toUpperCase()} assigned to Partner ${b.worker.user.name}`,
-          timestamp: new Date(b.updatedAt || b.createdAt),
-          type: 'BOOKING_ASSIGN',
-          color: 'text-amber-600 bg-amber-50 border-amber-100'
-        });
-      }
-
-      // 5. Payments
-      if (b.paymentStatus === 'PAID') {
-        feed.push({
-          id: `pay-recv-${b.id}`,
-          text: `Payment received ₹${b.finalPrice} via ${b.paymentMethod || 'UPI'}`,
-          timestamp: new Date(b.updatedAt || b.createdAt),
-          type: 'PAYMENT',
-          color: 'text-teal-600 bg-teal-50 border-teal-100'
-        });
-      }
-
-      // 6. Coupons
-      if (b.couponCode) {
-        feed.push({
-          id: `coupon-${b.id}`,
-          text: `Coupon ${b.couponCode} applied to Booking #${b.id.substring(0, 8).toUpperCase()}`,
-          timestamp: new Date(b.createdAt),
-          type: 'COUPON',
-          color: 'text-rose-600 bg-rose-50 border-rose-100'
-        });
-      }
-    });
-
-    // 7. Partner Approvals
-    workers.forEach(w => {
-      if (w.approvalStatus === 'APPROVED') {
-        feed.push({
-          id: `worker-app-${w.id}`,
-          text: `Partner ${w.user?.name || 'Worker'} approved`,
-          timestamp: new Date(w.updatedAt || w.createdAt),
-          type: 'PARTNER_APPROVAL',
-          color: 'text-purple-600 bg-purple-50 border-purple-100'
-        });
-      }
-    });
-
-    return feed.sort((a, b) => b.timestamp - a.timestamp);
-  }, [bookings, workers, customers, auditLogs]);
+  }, [auditLogs]);
 
   // Logout handler
   const handleLogout = async () => {
@@ -229,14 +212,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       let res;
       if (editingServiceId) {
-        res = await fetch(`http://localhost:5000/api/services/${editingServiceId}`, {
+        res = await fetch(`/api/services/${editingServiceId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(body)
         });
       } else {
-        res = await fetch('http://localhost:5000/api/services', {
+        res = await fetch('/api/services', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -296,7 +279,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       return;
     }
     try {
-      const res = await fetch(`http://localhost:5000/api/services/${serviceId}`, {
+      const res = await fetch(`/api/services/${serviceId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -337,14 +320,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       let res;
       if (couponForm.id) {
-        res = await fetch(`http://localhost:5000/api/admin/coupons/${couponForm.id}`, {
+        res = await fetch(`/api/admin/coupons/${couponForm.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(body)
         });
       } else {
-        res = await fetch('http://localhost:5000/api/admin/coupons', {
+        res = await fetch('/api/admin/coupons', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -410,7 +393,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleDeleteCoupon = async (id, code) => {
     if (!confirm(`Are you sure you want to delete coupon ${code}?`)) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/coupons/${id}`, {
+      const res = await fetch(`/api/admin/coupons/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -431,7 +414,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleToggleCouponStatus = async (id, code, currentStatus) => {
     const nextStatus = !currentStatus;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/coupons/${id}`, {
+      const res = await fetch(`/api/admin/coupons/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -628,13 +611,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       if (tab === 'dashboard') {
         const [analyticsRes, workersRes] = await Promise.all([
-          fetchWithTimeout('http://localhost:5000/api/admin/analytics', { credentials: 'include' }),
-          fetchWithTimeout('http://localhost:5000/api/admin/workers?status=PENDING', { credentials: 'include' })
+          fetchWithTimeout('/api/admin/analytics', { credentials: 'include' }),
+          fetchWithTimeout('/api/admin/workers?status=PENDING', { credentials: 'include' })
         ]);
         
         const analyticsData = await analyticsRes.json();
         const workersData = await workersRes.json();
-
         if (analyticsData.success && workersData.success) {
           const stats = analyticsData.analytics;
           const pendingList = workersData.workers || [];
@@ -645,7 +627,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve dashboard analytics');
         }
       } else if (tab === 'bookings') {
-        const res = await fetchWithTimeout('http://localhost:5000/api/admin/bookings', { credentials: 'include' });
+        const res = await fetchWithTimeout('/api/admin/bookings', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setBookings(data.bookings || []);
@@ -654,7 +636,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve bookings.');
         }
       } else if (tab === 'customers') {
-        const res = await fetchWithTimeout('http://localhost:5000/api/admin/customers', { credentials: 'include' });
+        const res = await fetchWithTimeout('/api/admin/customers', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setCustomers(data.customers || []);
@@ -663,7 +645,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve customers.');
         }
       } else if (tab === 'services') {
-        const res = await fetchWithTimeout('http://localhost:5000/api/admin/services', { credentials: 'include' });
+        const res = await fetchWithTimeout('/api/admin/services', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setServices(data.services || []);
@@ -672,7 +654,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve services.');
         }
       } else if (tab === 'coupons') {
-        const res = await fetchWithTimeout('http://localhost:5000/api/admin/coupons', { credentials: 'include' });
+        const res = await fetchWithTimeout('/api/admin/coupons', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setCoupons(data.coupons || []);
@@ -681,7 +663,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve coupons.');
         }
       } else if (tab === 'audit-logs') {
-        const res = await fetchWithTimeout('http://localhost:5000/api/admin/dashboard-data', { credentials: 'include' });
+        const res = await fetchWithTimeout('/api/admin/dashboard-data', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setBookings(data.bookings || []);
@@ -743,7 +725,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   // Actions
   const handleApprovePartner = async (id) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/approve`, { 
+      const res = await fetch(`/api/admin/workers/${id}/approve`, { 
         method: 'PUT',
         credentials: 'include'
       });
@@ -768,7 +750,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     const reason = prompt('Please enter the reason for rejecting this application:', 'Document details mismatch.');
     if (reason === null) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/reject`, {
+      const res = await fetch(`/api/admin/workers/${id}/reject`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -793,7 +775,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const handleMoveToReview = async (id) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/status`, {
+      const res = await fetch(`/api/admin/workers/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -818,7 +800,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const handleAssignWorker = async (bookingId, workerId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/bookings/${bookingId}/assign`, {
+      const res = await fetch(`/api/bookings/${bookingId}/assign`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -837,7 +819,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const handleChangeBookingStatus = async (bookingId, status) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/bookings/${bookingId}/status`, {
+      const res = await fetch(`/api/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1048,8 +1030,109 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 font-inter">
       
+      {/* ==================== MOBILE SIDEBAR DRAWER ==================== */}
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="fixed inset-0 bg-black z-40 lg:hidden"
+            />
+            {/* Drawer */}
+            <motion.aside 
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 left-0 bottom-0 w-64 bg-white z-50 lg:hidden flex flex-col justify-between py-6 px-4 shadow-2xl border-r border-slate-200"
+            >
+              <div>
+                {/* Brand Logo & Close Button */}
+                <div className="px-2 mb-8 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-brand w-9 h-9 rounded-xl flex items-center justify-center font-poppins font-black text-white text-lg shadow-md shadow-brand/20">JK</div>
+                    <div>
+                      <h1 className="font-poppins font-black text-sm tracking-tight leading-none text-slate-800">JK ENTERPRISES</h1>
+                      <span className="text-[9px] font-black text-brand tracking-widest uppercase">Admin Mobile</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsMobileSidebarOpen(false)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors border border-slate-200/50"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Navigation Items */}
+                <nav className="space-y-1">
+                  {[
+                    { id: 'dashboard', label: 'Dashboard', icon: Grid },
+                    { id: 'audit-logs', label: 'Audit Center', icon: ShieldCheck },
+                    { id: 'bookings', label: 'Bookings', icon: Calendar },
+                    { id: 'customers', label: 'Customers', icon: Award },
+                    { id: 'payments', label: 'Payments', icon: Landmark },
+                    { id: 'services', label: 'Services', icon: Layers },
+                    { id: 'coupons', label: 'Coupons', icon: Percent },
+                    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+                    { id: 'settings', label: 'Settings', icon: Settings }
+                  ].map(item => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setIsMobileSidebarOpen(false);
+                          const newPath = item.id === 'dashboard' ? '/admin' : `/admin/${item.id === 'partner-approvals' ? 'workers' : item.id === 'services' ? 'services' : item.id === 'bookings' ? 'bookings' : item.id}`;
+                          window.history.pushState(null, '', newPath);
+                        }}
+                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
+                          isActive 
+                            ? 'bg-brand text-white shadow-md shadow-brand/10' 
+                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              {/* Footer */}
+              <div className="px-2 border-t border-slate-100 pt-4 flex flex-col space-y-3.5">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-600 border border-slate-200">AD</div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">System Admin</h4>
+                    <p className="text-[9px] text-slate-400">Mobile Panel</p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleLogout}
+                  className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-extrabold text-[10px] uppercase py-2.5 rounded-xl tracking-wider transition-all flex items-center justify-center space-x-2 shadow-sm"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Logout Account</span>
+                </button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* ==================== LEFT SIDEBAR ==================== */}
-      <aside className="w-64 bg-white border-r border-slate-200/80 shrink-0 sticky top-0 h-screen flex flex-col justify-between py-6 shadow-sm">
+      <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200/80 shrink-0 sticky top-0 h-screen flex-col justify-between py-6 shadow-sm">
         <div>
           {/* Brand Logo */}
           <div className="px-6 mb-8 flex items-center space-x-3">
@@ -1109,8 +1192,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-600 border border-slate-200">AD</div>
             <div>
-              <h4 className="text-xs font-bold text-slate-800">System Admin</h4>
-              <p className="text-[9px] text-slate-400">Live Database Connected</p>
+              <h4 className="text-xs font-bold text-slate-800">Administrator</h4>
+              <p className="text-[9px] text-slate-400">Administrator Mode</p>
             </div>
           </div>
 
@@ -1129,10 +1212,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       <main className="flex-1 min-w-0 flex flex-col min-h-screen">
         
         {/* Header bar */}
-        <header className="h-16 border-b border-slate-200/60 bg-white sticky top-0 z-10 px-8 flex items-center justify-between shadow-sm">
+        <header className="h-16 border-b border-slate-200/60 bg-white sticky top-0 z-10 px-4 sm:px-8 flex items-center justify-between shadow-sm">
           <div className="flex items-center space-x-3">
-            <Database className="w-4 h-4 text-brand" />
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 font-mono">SUPABASE DB SYNC ACTIVE</span>
+            <button 
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors border border-slate-200/50 cursor-pointer"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -1206,12 +1293,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               </AnimatePresence>
             </div>
 
-            <button 
-              onClick={fetchAllData} 
-              className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase px-4 py-2 rounded-xl tracking-wider transition-all shadow-sm shadow-brand/10"
-            >
-              Sync Database
-            </button>
             <button 
               onClick={handleLogout} 
               className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-extrabold text-[10px] uppercase px-4 py-2.5 rounded-xl tracking-wider transition-all shadow-sm flex items-center space-x-1.5"
@@ -1896,7 +1977,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Category *</label>
                               <select
@@ -1929,7 +2010,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Duration</label>
                               <input 
@@ -2261,7 +2342,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Discount Type *</label>
                               <select
@@ -2289,7 +2370,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Min Order Value (₹)</label>
                               <input 
@@ -2315,7 +2396,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Usage Limit (Total)</label>
                               <input 
@@ -2653,7 +2734,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
                   <h4 className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-brand" />
-                    <span>Database Verification Checklist</span>
+                    <span>Verification Checklist</span>
                   </h4>
                   
                   <div className="space-y-2.5">

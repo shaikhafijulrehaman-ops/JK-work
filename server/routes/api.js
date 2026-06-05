@@ -27,6 +27,8 @@ router.post('/auth/otp', authCtrl.sendOTP);
 router.post('/auth/forgot-password', authCtrl.forgotPassword);
 router.post('/auth/waitlist', authCtrl.joinWaitlist);
 router.post('/auth/sync-supabase', authCtrl.syncSupabase);
+router.post('/auth/verify-otp', authCtrl.verifyOTP);
+router.put('/auth/update-profile', protect, authCtrl.updateProfile);
 
 // ==================== ADDRESS BOOK CRUD ====================
 router.get('/addresses', protect, addressCtrl.getAddresses);

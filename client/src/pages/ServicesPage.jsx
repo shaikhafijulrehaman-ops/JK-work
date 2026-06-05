@@ -19,6 +19,31 @@ import {
   Paintbrush
 } from 'lucide-react';
 import { catalog as staticCatalog } from '../store/catalog';
+import { getCache, setCache } from '../utils/cache';
+
+const ServiceSkeleton = () => (
+  <div className="bg-white border border-slate-100 rounded-xl sm:rounded-2xl overflow-hidden shadow-xs p-3 sm:p-5 space-y-4 animate-pulse flex flex-col justify-between h-full col-span-1">
+    <div>
+      <div className="h-16 sm:h-32 md:h-48 w-full bg-slate-200 rounded-lg sm:rounded-xl"></div>
+      <div className="p-1.5 sm:p-3 space-y-2 text-left">
+        <div className="h-3.5 w-16 bg-slate-200 rounded-full"></div>
+        <div className="h-4 w-3/4 bg-slate-200 rounded"></div>
+        <div className="h-3 w-full bg-slate-200 rounded hidden md:block"></div>
+        <div className="h-3 w-5/6 bg-slate-200 rounded hidden md:block"></div>
+      </div>
+    </div>
+    <div className="p-1.5 sm:p-3 border-t border-slate-50 pt-3 flex justify-between items-center">
+      <div className="space-y-1">
+        <div className="h-2.5 w-12 bg-slate-200 rounded"></div>
+        <div className="h-4.5 w-20 bg-slate-200 rounded"></div>
+      </div>
+      <div className="flex space-x-1.5">
+        <div className="w-8 h-8 rounded-lg bg-slate-200"></div>
+        <div className="w-20 h-8 rounded-lg bg-slate-200"></div>
+      </div>
+    </div>
+  </div>
+);
 
 export default function ServicesPage() {
   const { addItem, items } = useCartStore();
@@ -26,24 +51,27 @@ export default function ServicesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [catalog, setCatalog] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [catalog, setCatalog] = useState(() => getCache('services_catalog') || []);
+  const [loading, setLoading] = useState(() => !getCache('services_catalog'));
 
   useEffect(() => {
     const fetchServices = async () => {
+      const cached = getCache('services_catalog');
       try {
         const res = await fetch('/api/services');
         const data = await res.json();
         if (data.success) {
-          // Filter only active services
           const activeServices = data.services.filter(s => s.isActive !== false);
           setCatalog(activeServices);
-        } else {
+          setCache('services_catalog', activeServices);
+        } else if (!cached || cached.length === 0) {
           setCatalog(staticCatalog);
         }
       } catch (err) {
         console.warn('Backend services offline. Falling back to static catalog...', err);
-        setCatalog(staticCatalog);
+        if (!cached || cached.length === 0) {
+          setCatalog(staticCatalog);
+        }
       } finally {
         setLoading(false);
       }
@@ -136,11 +164,8 @@ export default function ServicesPage() {
 
         {/* Grid List with elegant card design & subtle shadows */}
         <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
-          {loading ? (
-            <div className="col-span-full text-center py-20 text-slate-400 font-medium">
-              <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <span>Fetching premium home services...</span>
-            </div>
+          {loading && catalog.length === 0 ? (
+            Array.from({ length: 6 }).map((_, i) => <ServiceSkeleton key={i} />)
           ) : filtered.length === 0 ? (
             <div className="col-span-full text-center py-20 text-slate-400 font-medium">
               No matching services found in our catalog. Try searching another package.
@@ -159,6 +184,7 @@ export default function ServicesPage() {
                         <img 
                           src={s.imageUrl} 
                           alt={s.name}
+                          loading="lazy"
                           onError={(e) => {
                             e.target.style.display = 'none';
                             const fallback = e.target.parentNode.querySelector('.image-fallback');

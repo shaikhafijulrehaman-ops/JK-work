@@ -25,10 +25,38 @@ export const fetchWithTimeout = async (url, options = {}) => {
     return response;
   } catch (error) {
     if (error.name === 'AbortError' || error.message?.toLowerCase().includes('abort')) {
-      throw new Error('Unable to load data. Retry.');
+      if (options.signal?.aborted) {
+        const parentAbort = new Error('Request aborted by caller');
+        parentAbort.name = 'AbortError';
+        throw parentAbort;
+      }
+      throw new Error('Request timed out');
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
   }
+};
+
+export const fetchWithRetry = async (url, options = {}) => {
+  const { retries = 3, backoff = 1000, ...rest } = options;
+  
+  let lastError;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await fetchWithTimeout(url, { ...rest });
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (error.name === 'AbortError' || options.signal?.aborted) {
+        // Immediately fail without retrying if request was aborted by caller/unmount
+        throw error;
+      }
+      console.warn(`⚠️ Request failed (Attempt ${i + 1}/${retries + 1}): ${error.message || 'Error'}. Retrying in ${backoff}ms...`);
+      if (i < retries) {
+        await new Promise(resolve => setTimeout(resolve, backoff));
+      }
+    }
+  }
+  throw lastError;
 };

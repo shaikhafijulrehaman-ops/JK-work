@@ -59,18 +59,6 @@ enum NotificationType {
   SYSTEM_ALERT
 }
 
-enum AuditAction {
-  USER_LOGIN
-  SERVICE_CREATE
-  SERVICE_UPDATE
-  SERVICE_DELETE
-  WORKER_CREATE
-  WORKER_STATUS_CHANGE
-  BOOKING_CANCEL
-  PRICING_CHANGE
-  COUPON_CREATE
-}
-
 // ==================== MODELS ====================
 
 model User {
@@ -95,6 +83,8 @@ model User {
   auditLogs         AuditLog[]
   reviewsLeft       Review[]       @relation("UserReviews")
   addresses         Address[]
+
+  @@index([role])
 }
 
 model Session {
@@ -236,6 +226,8 @@ model Booking {
 
   @@index([status])
   @@index([createdAt])
+  @@index([userId])
+  @@index([workerId])
 }
 
 model BookingItem {
@@ -282,13 +274,17 @@ model Notification {
 model AuditLog {
   id         String      @id @default(uuid())
   userId     String?
-  action     AuditAction
+  action     String
   details    String      // JSON string of changes
   ipAddress  String?
   createdAt  DateTime    @default(now())
 
   // Relations
   user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model Address {
@@ -304,6 +300,8 @@ model Address {
 
   // Relations
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Waitlist {

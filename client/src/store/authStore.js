@@ -1,12 +1,25 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
+import { fetchWithRetry } from '../utils/api';
 
 // Safe helper for API fetch endpoints
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Synchronous initial session check to avoid flash of loading state on page mount/reload
+const getInitialUser = () => {
+  try {
+    const saved = localStorage.getItem('jk_user');
+    return saved ? JSON.parse(saved) : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+const initialUser = getInitialUser();
+
 export const useAuthStore = create((set, get) => ({
-  user: null,
-  isAuthenticated: false,
+  user: initialUser,
+  isAuthenticated: !!initialUser,
   loading: false,
   error: null,
   otpSent: false,
@@ -17,7 +30,12 @@ export const useAuthStore = create((set, get) => ({
 
   // Check active session and refresh token
   checkSession: async () => {
-    set({ loading: true, error: null });
+    const isAlreadyAuthenticated = !!get().user;
+    if (!isAlreadyAuthenticated) {
+      set({ loading: true, error: null });
+    } else {
+      set({ error: null });
+    }
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       
@@ -57,7 +75,7 @@ export const useAuthStore = create((set, get) => ({
     console.log("Step 1: Login Started");
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const res = await fetchWithRetry(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -208,7 +226,7 @@ export const useAuthStore = create((set, get) => ({
 
       // 2. Sync customer profile data into the Customers table via Backend API
       console.log('CUSTOMER INSERT RESPONSE: Syncing to backend...');
-      const res = await fetch(`${API_URL}/auth/sync-supabase`, {
+      const res = await fetchWithRetry(`${API_URL}/auth/sync-supabase`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -266,7 +284,7 @@ export const useAuthStore = create((set, get) => ({
   sendOtp: async (email) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/auth/otp`, {
+      const res = await fetchWithRetry(`${API_URL}/auth/otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -286,23 +304,59 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // Verify Email OTP log
-  verifyOtp: async (email, code) => {
-    set({ loading: true });
-    if (parseInt(code) === get().simulatedOtp) {
-      const mockUser = { id: 'user-cust', email: email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
-      localStorage.setItem('jk_user', JSON.stringify(mockUser));
-      set({ user: mockUser, isAuthenticated: true, otpSent: false, loading: false });
-      return { success: true, user: mockUser };
+  verifyOtp: async (email, code, isLogin = false) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await fetchWithRetry(`${API_URL}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code })
+      });
+      const data = await res.json();
+      set({ loading: false });
+
+      if (data.success) {
+        if (data.userExists) {
+          localStorage.setItem('jk_user', JSON.stringify(data.user));
+          if (data.token) {
+            localStorage.setItem('jk_token', data.token);
+          }
+          set({ user: data.user, isAuthenticated: true, otpSent: false });
+          return { success: true, userExists: true, user: data.user };
+        } else {
+          if (isLogin) {
+            set({ error: 'No user registered with this email. Please sign up first.' });
+            return { success: false, error: 'No user registered with this email. Please sign up first.' };
+          }
+          set({ otpSent: false });
+          return { success: true, userExists: false };
+        }
+      } else {
+        set({ error: data.message || 'Invalid verification code entered.' });
+        return { success: false, error: data.message || 'Invalid code.' };
+      }
+    } catch (e) {
+      if (parseInt(code) === get().simulatedOtp) {
+        if (isLogin) {
+          const mockUser = { id: 'user-cust', email: email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
+          localStorage.setItem('jk_user', JSON.stringify(mockUser));
+          set({ user: mockUser, isAuthenticated: true, otpSent: false, loading: false });
+          return { success: true, userExists: true, user: mockUser };
+        } else {
+          set({ otpSent: false, loading: false });
+          return { success: true, userExists: false };
+        }
+      }
+      set({ error: 'Failed to verify verification code. Please check your network.', loading: false });
+      return { success: false, error: 'Failed to verify OTP.' };
     }
-    set({ error: 'Invalid verification code entered.', loading: false });
-    return { success: false, error: 'Invalid code.' };
   },
 
   // Join Waitlist
   joinWaitlist: async (name, mobile, email, selectedArea, pincode, location = null, latitude = null, longitude = null) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/auth/waitlist`, {
+      const res = await fetchWithRetry(`${API_URL}/auth/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, mobile, email, selectedArea, pincode, location, latitude, longitude })
@@ -320,7 +374,7 @@ export const useAuthStore = create((set, get) => ({
   fetchAddresses: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/addresses`, { method: 'GET' });
+      const res = await fetchWithRetry(`${API_URL}/addresses`, { method: 'GET' });
       const data = await res.json();
       set({ loading: false });
       if (data.success) {
@@ -338,7 +392,7 @@ export const useAuthStore = create((set, get) => ({
   addAddress: async (addressData) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/addresses`, {
+      const res = await fetchWithRetry(`${API_URL}/addresses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(addressData)
@@ -370,7 +424,7 @@ export const useAuthStore = create((set, get) => ({
   editAddress: async (id, addressData) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/addresses/${id}`, {
+      const res = await fetchWithRetry(`${API_URL}/addresses/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(addressData)
@@ -400,7 +454,7 @@ export const useAuthStore = create((set, get) => ({
   removeAddress: async (id) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/addresses/${id}`, { method: 'DELETE' });
+      const res = await fetchWithRetry(`${API_URL}/addresses/${id}`, { method: 'DELETE' });
       const data = await res.json();
       set({ loading: false });
       return data;
@@ -422,7 +476,7 @@ export const useAuthStore = create((set, get) => ({
   setAddressDefault: async (id) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/addresses/${id}/default`, { method: 'PUT' });
+      const res = await fetchWithRetry(`${API_URL}/addresses/${id}/default`, { method: 'PUT' });
       const data = await res.json();
       set({ loading: false });
       return data;
@@ -442,7 +496,7 @@ export const useAuthStore = create((set, get) => ({
   // Clear Session
   logout: async () => {
     try {
-      await fetch(`${API_URL}/auth/logout`, { 
+      await fetchWithRetry(`${API_URL}/auth/logout`, { 
         method: 'GET',
         credentials: 'include'
       });

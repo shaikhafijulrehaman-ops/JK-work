@@ -15,8 +15,11 @@ export const useNotificationStore = create((set, get) => ({
   loading: false,
 
   // Load user alerts
-  fetchNotifications: async () => {
-    set({ loading: true });
+  fetchNotifications: async (silent = false) => {
+    const hasCached = get().notifications.length > 1; // 'n-welcome' is seeded by default
+    if (!hasCached && !silent) {
+      set({ loading: true });
+    }
     try {
       const res = await fetch(`${API_URL}/notifications`, { 
         method: 'GET',

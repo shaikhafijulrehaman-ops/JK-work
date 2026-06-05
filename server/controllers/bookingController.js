@@ -114,6 +114,27 @@ exports.createBooking = async (req, res) => {
       }
     });
 
+    // Audit Logging
+    await db.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'BOOKING_CREATED',
+        details: JSON.stringify({ bookingId: booking.id, finalPrice: booking.finalPrice }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
+
+    if (couponCode) {
+      await db.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'COUPON_APPLIED',
+          details: JSON.stringify({ bookingId: booking.id, couponCode, discountApplied }),
+          ipAddress: req.ip
+        }
+      }).catch(() => {});
+    }
+
     // WhatsApp Notification
     sendAdminWhatsAppNotification(req.user?.name || 'Customer', phone, req.user?.email || 'N/A', 'Booking');
 
@@ -158,15 +179,44 @@ exports.getBookings = async (req, res) => {
   try {
     let bookings = [];
 
+    const includeOptions = {
+      items: {
+        include: {
+          service: true
+        }
+      },
+      worker: {
+        include: {
+          user: {
+            select: {
+              name: true,
+              phone: true
+            }
+          }
+        }
+      }
+    };
+
     if (req.user.role === 'ADMIN') {
-      bookings = await db.booking.findMany({});
+      bookings = await db.booking.findMany({
+        include: includeOptions,
+        orderBy: { createdAt: 'desc' }
+      });
     } else if (req.user.role === 'WORKER') {
       const worker = await db.worker.findUnique({ where: { userId: req.user.id } });
       if (worker) {
-        bookings = await db.booking.findMany({ where: { workerId: worker.id } });
+        bookings = await db.booking.findMany({
+          where: { workerId: worker.id },
+          include: includeOptions,
+          orderBy: { createdAt: 'desc' }
+        });
       }
     } else {
-      bookings = await db.booking.findMany({ where: { userId: req.user.id } });
+      bookings = await db.booking.findMany({
+        where: { userId: req.user.id },
+        include: includeOptions,
+        orderBy: { createdAt: 'desc' }
+      });
     }
 
     res.status(200).json({
@@ -430,6 +480,16 @@ exports.confirmPaymentSuccess = async (req, res) => {
         }
       }
     });
+
+    // Audit Logging
+    await db.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'BOOKING_CREATED',
+        details: JSON.stringify({ bookingId: booking.id, serviceName: service_name, amount: booking.finalPrice }),
+        ipAddress: req.ip
+      }
+    }).catch(() => {});
 
     // 4. Trigger simulated Admin WhatsApp Dispatch Log to Console
     console.log('\n==================================================');

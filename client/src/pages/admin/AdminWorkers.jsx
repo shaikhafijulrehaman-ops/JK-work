@@ -56,7 +56,7 @@ export default function AdminWorkers() {
         'REJECTED': 'REJECTED'
       };
 
-      const res = await fetch(`http://localhost:5000/api/admin/workers?status=${statusMap[activeTab]}`);
+      const res = await fetch(`/api/admin/workers?status=${statusMap[activeTab]}`);
       const data = await res.json();
       
       if (data.success) {
@@ -84,7 +84,7 @@ export default function AdminWorkers() {
   // Handle Approve Partner
   const handleApprove = async (id) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/approve`, {
+      const res = await fetch(`/api/admin/workers/${id}/approve`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -107,7 +107,7 @@ export default function AdminWorkers() {
     if (reason === null) return; // Admin cancelled the prompt
 
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/reject`, {
+      const res = await fetch(`/api/admin/workers/${id}/reject`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rejectionReason: reason })
@@ -128,7 +128,7 @@ export default function AdminWorkers() {
   // Handle manual Status Update (e.g. UNDER_REVIEW)
   const handleUpdateStatus = async (id, status) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/status`, {
+      const res = await fetch(`/api/admin/workers/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })

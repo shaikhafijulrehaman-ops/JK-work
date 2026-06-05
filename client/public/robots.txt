@@ -1,0 +1,13 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /dashboard
+Disallow: /dashboard/*
+Disallow: /account
+Disallow: /account/*
+Disallow: /worker
+Disallow: /worker/*
+
+Sitemap: https://jkhomecare.in/sitemap.xml

@@ -5,6 +5,11 @@ let prisma;
 let isPrismaConnected = false;
 let useSandbox = false;
 
+const fs = require('fs');
+const path = require('path');
+const sandboxFilePath = path.join(__dirname, 'sandbox_db.json');
+let isSeeded = false;
+
 // 1. In-Memory Sandbox Database State (Fallback)
 const sandbox = {
   users: [],
@@ -23,6 +28,55 @@ const sandbox = {
   addresses: [],
   customers: []
 };
+
+function saveSandbox() {
+  try {
+    fs.writeFileSync(sandboxFilePath, JSON.stringify(sandbox, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save sandbox data to file:', err.message);
+  }
+}
+
+function loadSandbox() {
+  try {
+    if (fs.existsSync(sandboxFilePath)) {
+      const data = fs.readFileSync(sandboxFilePath, 'utf8');
+      const parsed = JSON.parse(data);
+      Object.keys(parsed).forEach(key => {
+        if (sandbox[key]) {
+          sandbox[key].length = 0;
+          sandbox[key].push(...parsed[key]);
+        }
+      });
+      console.log('⚡ [JK Enterprises DB] Loaded persisted local Sandbox data from sandbox_db.json');
+    }
+  } catch (err) {
+    console.error('Failed to load sandbox data from file:', err.message);
+  }
+}
+
+// Automatically proxy all arrays in sandbox to auto-save on changes
+Object.keys(sandbox).forEach(key => {
+  if (Array.isArray(sandbox[key])) {
+    const originalArray = sandbox[key];
+    sandbox[key] = new Proxy(originalArray, {
+      set(target, prop, value) {
+        const result = Reflect.set(target, prop, value);
+        if (isSeeded) {
+          saveSandbox();
+        }
+        return result;
+      },
+      deleteProperty(target, prop) {
+        const result = Reflect.deleteProperty(target, prop);
+        if (isSeeded) {
+          saveSandbox();
+        }
+        return result;
+      }
+    });
+  }
+});
 
 // Seeding standard sandbox brochure data immediately on load
 async function seedSandbox() {
@@ -236,6 +290,8 @@ async function seedSandbox() {
 
 // Immediately Seed Sandbox so it is ready if Postgres is not connected
 seedSandbox();
+loadSandbox();
+isSeeded = true;
 
 // 2. Initialize Prisma Client & test connection
 try {
@@ -416,11 +472,17 @@ const db = {
         if (!args.where) return sandbox.services[0] || null;
         const match = sandbox.services.find(s => {
           if (args.where.name) {
-            if (args.where.name.contains) {
-              const queryStr = args.where.name.contains.toLowerCase();
-              return s.name.toLowerCase().includes(queryStr);
+            if (typeof args.where.name === 'object') {
+              if (args.where.name.contains) {
+                const queryStr = args.where.name.contains.toLowerCase();
+                return s.name.toLowerCase().includes(queryStr);
+              }
+              if (args.where.name.equals) {
+                return s.name.toLowerCase().trim() === args.where.name.equals.toLowerCase().trim();
+              }
+              return false;
             }
-            return s.name.toLowerCase() === args.where.name.toLowerCase();
+            return s.name.toLowerCase().trim() === args.where.name.toLowerCase().trim();
           }
           return true;
         });
@@ -436,7 +498,19 @@ const db = {
     },
     findUnique: async (args) => {
       if (db.isSandbox()) {
-        return sandbox.services.find(s => s.id === args.where.id || s.name === args.where.name) || null;
+        return sandbox.services.find(s => {
+          if (args.where.id && s.id === args.where.id) return true;
+          if (args.where.name) {
+            if (typeof args.where.name === 'object') {
+              if (args.where.name.equals) {
+                return s.name.toLowerCase().trim() === args.where.name.equals.toLowerCase().trim();
+              }
+              return false;
+            }
+            return s.name.toLowerCase().trim() === args.where.name.toLowerCase().trim();
+          }
+          return false;
+        }) || null;
       }
       return await prisma.service.findUnique(args);
     },

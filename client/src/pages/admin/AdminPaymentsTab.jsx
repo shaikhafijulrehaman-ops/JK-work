@@ -26,7 +26,7 @@ const AdminPaymentsTab = React.memo(() => {
     setError(null);
 
     try {
-      const res = await fetchWithTimeout('http://localhost:5000/api/admin/payments', { credentials: 'include' });
+      const res = await fetchWithTimeout('/api/admin/payments', { credentials: 'include' });
       const data = await res.json();
       
       if (data.success) {

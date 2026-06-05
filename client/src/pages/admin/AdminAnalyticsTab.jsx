@@ -23,8 +23,8 @@ const AdminAnalyticsTab = React.memo(() => {
     try {
       // Parallel fetch bookings and workers
       const [bookingsRes, workersRes] = await Promise.all([
-        fetchWithTimeout('http://localhost:5000/api/admin/bookings', { credentials: 'include' }),
-        fetchWithTimeout('http://localhost:5000/api/admin/workers', { credentials: 'include' })
+        fetchWithTimeout('/api/admin/bookings', { credentials: 'include' }),
+        fetchWithTimeout('/api/admin/workers', { credentials: 'include' })
       ]);
 
       const bookingsData = await bookingsRes.json();

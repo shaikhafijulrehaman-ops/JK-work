@@ -49,9 +49,24 @@ exports.createService = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please supply service name, category, pricing, and description.' });
     }
 
+    const trimmedName = name.trim();
+
+    // Check uniqueness of service name (case-insensitive and trimmed)
+    const existingName = await db.service.findFirst({
+      where: {
+        name: {
+          equals: trimmedName,
+          mode: 'insensitive'
+        }
+      }
+    });
+    if (existingName) {
+      return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
+    }
+
     const service = await db.service.create({
       data: {
-        name,
+        name: trimmedName,
         category,
         description,
         price: parseFloat(price),
@@ -79,6 +94,9 @@ exports.createService = async (req, res) => {
     });
   } catch (error) {
     console.error('Create service error:', error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
+    }
     res.status(500).json({ success: false, message: 'Failed to create new catalog service.' });
   }
 };
@@ -95,10 +113,26 @@ exports.updateService = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Service not found.' });
     }
 
+    let trimmedName = name ? name.trim() : undefined;
+
+    if (trimmedName && trimmedName.toLowerCase() !== existing.name.toLowerCase()) {
+      const existingName = await db.service.findFirst({
+        where: {
+          name: {
+            equals: trimmedName,
+            mode: 'insensitive'
+          }
+        }
+      });
+      if (existingName) {
+        return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
+      }
+    }
+
     const updated = await db.service.update({
       where: { id: req.params.id },
       data: {
-        name: name || existing.name,
+        name: trimmedName || existing.name,
         category: category || existing.category,
         price: price !== undefined ? parseFloat(price) : existing.price,
         description: description || existing.description,
@@ -127,6 +161,9 @@ exports.updateService = async (req, res) => {
     });
   } catch (error) {
     console.error('Update service error:', error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
+    }
     res.status(500).json({ success: false, message: 'Failed to update service.' });
   }
 };

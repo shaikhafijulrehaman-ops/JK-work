@@ -67,8 +67,8 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
 
     try {
       const [workersRes, bookingsRes] = await Promise.all([
-        fetchWithTimeout('http://localhost:5000/api/admin/workers', { credentials: 'include' }),
-        fetchWithTimeout('http://localhost:5000/api/admin/bookings', { credentials: 'include' })
+        fetchWithTimeout('/api/admin/workers', { credentials: 'include' }),
+        fetchWithTimeout('/api/admin/bookings', { credentials: 'include' })
       ]);
 
       const workersData = await workersRes.json();
@@ -105,7 +105,7 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
   // Actions
   const handleApprovePartner = async (id) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/approve`, { 
+      const res = await fetch(`/api/admin/workers/${id}/approve`, { 
         method: 'PUT',
         credentials: 'include'
       });
@@ -129,7 +129,7 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
     const reason = prompt('Please enter the reason for rejecting this application:', 'Document details mismatch.');
     if (reason === null) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/reject`, {
+      const res = await fetch(`/api/admin/workers/${id}/reject`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -153,7 +153,7 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
 
   const handleMoveToReview = async (id) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/workers/${id}/status`, {
+      const res = await fetch(`/api/admin/workers/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -493,7 +493,7 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
                   <h4 className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-brand" />
-                    <span>Database Verification Checklist</span>
+                    <span>Verification Checklist</span>
                   </h4>
                   
                   <div className="space-y-2.5">

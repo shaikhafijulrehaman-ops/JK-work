@@ -4,6 +4,7 @@ import { useBookingStore } from '../store/bookingStore';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
 import { catalog as staticCatalog } from '../store/catalog';
+import { getCache } from '../utils/cache';
 import { 
   X, 
   Clock, 
@@ -34,25 +35,39 @@ export default function BookingPage() {
   const { isAuthenticated, user } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
-  const [service, setService] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [service, setService] = useState(() => {
+    if (!serviceId) return null;
+    const cachedServices = getCache('services_catalog');
+    if (cachedServices) {
+      const match = cachedServices.find(s => s.id === serviceId);
+      if (match) return match;
+    }
+    return staticCatalog.find(s => s.id === serviceId) || null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (!serviceId) return false;
+    const cachedServices = getCache('services_catalog');
+    if (cachedServices && cachedServices.some(s => s.id === serviceId)) return false;
+    return true;
+  });
 
   useEffect(() => {
     const fetchService = async () => {
       if (!serviceId) return;
+      const matchedStatic = staticCatalog.find(s => s.id === serviceId);
       try {
         const res = await fetch(`/api/services/${serviceId}`);
         const data = await res.json();
         if (data.success) {
           setService(data.service);
-        } else {
-          const matched = staticCatalog.find(s => s.id === serviceId);
-          setService(matched);
+        } else if (!service) {
+          setService(matchedStatic);
         }
       } catch (err) {
         console.warn('Backend service offline. Falling back to static catalog...', err);
-        const matched = staticCatalog.find(s => s.id === serviceId);
-        setService(matched);
+        if (!service) {
+          setService(matchedStatic);
+        }
       } finally {
         setLoading(false);
       }
