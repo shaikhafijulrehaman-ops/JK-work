@@ -46,8 +46,9 @@ exports.razorpayWebhook = async (req, res) => {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET || 'jk_razorpay_webhook_secret_2026';
     
     // Hash request body using crypto HMAC-SHA256
+    const payload = req.rawBody || JSON.stringify(req.body);
     const shasum = crypto.createHmac('sha256', secret);
-    shasum.update(JSON.stringify(req.body));
+    shasum.update(payload);
     const digest = shasum.digest('hex');
 
     if (digest !== signature) {

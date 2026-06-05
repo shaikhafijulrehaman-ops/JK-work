@@ -7,6 +7,7 @@ import { useNotificationStore } from './store/notificationStore';
 
 // Components
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import CartDrawer from './components/CartDrawer';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginRequiredModal from './components/LoginRequiredModal';
@@ -29,6 +30,13 @@ const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const HelpPage = React.lazy(() => import('./pages/HelpPage'));
 const PartnerRegister = React.lazy(() => import('./pages/PartnerRegister'));
 const CustomerRegister = React.lazy(() => import('./pages/CustomerRegister'));
+
+// Razorpay Compliance Policy Pages
+const TermsPage = React.lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = React.lazy(() => import('./pages/PrivacyPage'));
+const RefundPage = React.lazy(() => import('./pages/RefundPage'));
+const ShippingPage = React.lazy(() => import('./pages/ShippingPage'));
+const ContactPage = React.lazy(() => import('./pages/ContactPage'));
 
 // Admin Pages
 const AdminOverview = React.lazy(() => import('./pages/admin/AdminOverview'));
@@ -80,6 +88,11 @@ export default function App() {
             <Route path="/book" element={<BookingPage />} />
             <Route path="/auth" element={isAuthenticated ? <Navigate to="/services" replace /> : <Auth />} />
             <Route path="/customer-register" element={<CustomerRegister />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/refund" element={<RefundPage />} />
+            <Route path="/shipping" element={<ShippingPage />} />
+            <Route path="/contact" element={<ContactPage />} />
 
             {/* ==================== USER PROTECTED DASHBOARD ==================== */}
             <Route path="/dashboard" element={
@@ -151,6 +164,9 @@ export default function App() {
           </Routes>
           </React.Suspense>
         </main>
+
+        {/* Global Footer (Razorpay Compliance & Policy Links) */}
+        <Footer />
 
         {/* Global Login Required Modal */}
         <LoginRequiredModal />

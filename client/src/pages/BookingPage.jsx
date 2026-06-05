@@ -256,7 +256,7 @@ export default function BookingPage() {
     }
 
     const amountInINR = getFinalTotal();
-    const razorpayKey = 'rzp_test_jkenterprises2026';
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_jkenterprises2026';
 
     const options = {
       key: razorpayKey,
