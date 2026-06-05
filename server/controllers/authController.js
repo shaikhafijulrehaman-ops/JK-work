@@ -515,17 +515,29 @@ exports.joinWaitlist = async (req, res) => {
  */
 exports.syncSupabase = async (req, res) => {
   try {
-    const { id, email, name, phone, role, pincode, serviceArea } = req.body;
+    const { id, email, name, phone, role, pincode, serviceArea, password } = req.body;
     
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email is required for syncing.' });
     }
 
+    // Check if phone already registered by another account to prevent unique constraint crashes
+    if (phone) {
+      const existingPhoneUser = await db.user.findUnique({ where: { phone } });
+      const existingPhoneCustomer = await db.customer.findUnique({ where: { phone } });
+      if ((existingPhoneUser && existingPhoneUser.email !== email) || 
+          (existingPhoneCustomer && existingPhoneCustomer.email !== email)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Phone number is already registered under another account. Please use a different number or log in.' 
+        });
+      }
+    }
+
     // Check if user already exists in User table to avoid foreign key violations
     let user = await db.user.findUnique({ where: { email } });
     if (!user) {
-      const bcrypt = require('bcryptjs');
-      const hashedPassword = bcrypt.hashSync(Math.random().toString(36), 10);
+      const hashedPassword = password ? bcrypt.hashSync(password, 10) : bcrypt.hashSync(Math.random().toString(36), 10);
       
       // Avoid phone constraint violations by checking existence
       let userPhone = phone || '0000000000';

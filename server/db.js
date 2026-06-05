@@ -107,18 +107,7 @@ async function seedSandbox() {
     createdAt: new Date()
   });
 
-  // User: Customer
-  sandbox.users.push({
-    id: 'user-cust',
-    email: 'customer@gmail.com',
-    password: hashPassword('customer123'),
-    name: 'Aravind Swamy',
-    phone: '9876543210',
-    role: 'USER',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: new Date()
-  });
+
 
   // Services (11 Brochure items)
   const servicesList = [
@@ -228,49 +217,11 @@ async function seedSandbox() {
     }
   }
 
-  // Pre-seed a sample active booking in Sandbox for tracking visibility
-  sandbox.bookings.push({
-    id: 'booking-sample',
-    userId: 'user-cust',
-    workerId: 'w-2',
-    serviceAreaId: 'sa-1',
-    status: 'ASSIGNED',
-    scheduledAt: new Date(Date.now() + 86400000), // tomorrow
-    timeSlot: '10:00 AM - 11:00 AM',
-    address: 'Flat 402, Block A, Prestige Jindal City, Anchepalya, Bengaluru',
-    phone: '9876543210',
-    totalPrice: 499.0,
-    discountApplied: 0.0,
-    finalPrice: 499.0,
-    paymentStatus: 'PAID',
-    paymentMethod: 'UPI',
-    paymentId: 'pay_sim_98761234',
-    createdAt: new Date(),
-    updatedAt: new Date()
-  });
 
-  sandbox.bookingItems.push({
-    id: 'bi-sample',
-    bookingId: 'booking-sample',
-    serviceId: 's-9', // Electrician
-    quantity: 1,
-    price: 499.0
-  });
 
   // Seed Audit Logs representing real seed user interactions
   sandbox.auditLogs.push(
-    {
-      id: 'al-seed-1',
-      userId: 'user-cust',
-      userName: 'Aravind Swamy',
-      userEmail: 'customer@gmail.com',
-      userRole: 'USER',
-      eventType: 'LOGIN',
-      action: 'ACCOUNT_LOGIN',
-      details: JSON.stringify({ email: 'customer@gmail.com', role: 'USER' }),
-      ipAddress: '127.0.0.1',
-      createdAt: new Date(Date.now() - 3600000 * 2) // 2 hours ago
-    },
+
     {
       id: 'al-seed-2',
       userId: 'user-worker-w-2',
@@ -327,24 +278,13 @@ try {
 
 // Helper to safely execute a live Prisma query with instant sandbox fallback if the database is offline, slow, or times out
 async function safeQuery(prismaPromise, sandboxFallback) {
-  if (useSandbox || !isPrismaConnected) {
-    return await sandboxFallback();
-  }
-  try {
-    return await prismaPromise;
-  } catch (err) {
-    console.error('⚠️ [JK Enterprises DB] Live query failed, falling back to local In-Memory Sandbox:', err.message);
-    // Dynamically toggle offline mode to bypass database timeouts instantly for subsequent requests
-    isPrismaConnected = false;
-    useSandbox = true;
-    return await sandboxFallback();
-  }
+  return await prismaPromise;
 }
 
 // 3. Relational API Query Interface that acts exactly like Prisma
 const db = {
   // Check active mode
-  isSandbox: () => useSandbox || !isPrismaConnected,
+  isSandbox: () => false,
   getPrisma: () => prisma,
 
   // --- USER CONTROLLER MOCK API ---

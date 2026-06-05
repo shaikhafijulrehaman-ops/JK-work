@@ -82,6 +82,8 @@ exports.razorpayWebhook = async (req, res) => {
             where: { id: booking.id },
             data: {
               paymentStatus: 'PAID',
+              payment_status: 'Paid',
+              transaction_id: paymentId,
               paymentId,
               paymentMethod: 'CARD'
             }
@@ -172,6 +174,8 @@ exports.simulatePaymentSuccess = async (req, res) => {
       where: { id: booking.id },
       data: {
         paymentStatus: 'PAID',
+        payment_status: 'Paid',
+        transaction_id: simPaymentId,
         paymentId: simPaymentId,
         paymentMethod: paymentMethod || 'UPI'
       }
@@ -282,6 +286,8 @@ exports.verifyPayment = async (req, res) => {
           where: { id: booking.id },
           data: {
             paymentStatus: 'PAID',
+            payment_status: 'Paid',
+            transaction_id: razorpay_payment_id,
             paymentId: razorpay_payment_id,
             paymentMethod: 'CARD'
           }

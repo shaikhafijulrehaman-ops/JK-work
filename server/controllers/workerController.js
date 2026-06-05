@@ -63,6 +63,7 @@ exports.updateJobStatus = async (req, res) => {
       const workerEarnings = parseFloat((booking.finalPrice * commissionRate).toFixed(2));
       updateData.workerEarnings = workerEarnings;
       updateData.paymentStatus = 'PAID'; // Mark auto paid on completion if not already
+      updateData.payment_status = 'Paid';
 
       // Free worker and increment count
       if (activeWorker) {

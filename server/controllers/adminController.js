@@ -90,11 +90,11 @@ exports.getAnalytics = async (req, res) => {
       prisma.promoCode.count({ where: { isActive: true } }),
       prisma.promoCode.count(),
       prisma.booking.aggregate({
-        where: { status: 'COMPLETED', createdAt: { gte: todayStart, lte: todayEnd } },
+        where: { paymentStatus: 'PAID', createdAt: { gte: todayStart, lte: todayEnd } },
         _sum: { finalPrice: true }
       }),
       prisma.booking.aggregate({
-        where: { status: 'COMPLETED', createdAt: { gte: firstDayOfMonth } },
+        where: { paymentStatus: 'PAID', createdAt: { gte: firstDayOfMonth } },
         _sum: { finalPrice: true }
       })
     ]);
@@ -154,9 +154,30 @@ exports.getDashboardData = async (req, res) => {
     // Fetch other lists
     const workers = [];
 
-    const customers = await db.user.findMany({
+    const dbCustomers = await db.user.findMany({
       where: { role: 'USER' },
-      select: { id: true, name: true, email: true, phone: true, pincode: true, serviceArea: true, createdAt: true }
+      include: {
+        bookings: {
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+
+    const customers = dbCustomers.map(c => {
+      const bookingsCount = c.bookings.length;
+      const lastBooking = bookingsCount > 0 ? c.bookings[0].createdAt : null;
+      return {
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        phone: c.phone,
+        pincode: c.pincode,
+        serviceArea: c.serviceArea,
+        createdAt: c.createdAt,
+        bookingsCount,
+        lastBooking
+      };
     });
 
     const services = await db.service.findMany({});
@@ -299,10 +320,32 @@ exports.getBookings = async (req, res) => {
 // Get all customers (User with role='USER')
 exports.getCustomers = async (req, res) => {
   try {
-    const customers = await db.user.findMany({
+    const dbCustomers = await db.user.findMany({
       where: { role: 'USER' },
-      select: { id: true, name: true, email: true, phone: true, pincode: true, serviceArea: true, createdAt: true }
+      include: {
+        bookings: {
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' }
+        }
+      }
     });
+
+    const customers = dbCustomers.map(c => {
+      const bookingsCount = c.bookings.length;
+      const lastBooking = bookingsCount > 0 ? c.bookings[0].createdAt : null;
+      return {
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        phone: c.phone,
+        pincode: c.pincode,
+        serviceArea: c.serviceArea,
+        createdAt: c.createdAt,
+        bookingsCount,
+        lastBooking
+      };
+    });
+
     res.status(200).json({ success: true, customers });
   } catch (error) {
     console.error('Error fetching admin customers:', error);

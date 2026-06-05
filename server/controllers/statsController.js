@@ -11,8 +11,9 @@ exports.getAdminStats = async (req, res) => {
 
     // 1. Calculate general stats
     const totalBookings = bookings.length;
+    const paidBookings = bookings.filter(b => b.paymentStatus === 'PAID' || b.payment_status === 'Paid');
     const completedBookings = bookings.filter(b => b.status === 'COMPLETED');
-    const totalSales = completedBookings.reduce((sum, b) => sum + b.finalPrice, 0.0);
+    const totalSales = paidBookings.reduce((sum, b) => sum + (b.finalPrice || 0), 0.0);
     
     const activeWorkersCount = workers.filter(w => w.status === 'AVAILABLE').length;
     const onJobWorkersCount = workers.filter(w => w.status === 'ON_JOB').length;
@@ -20,27 +21,42 @@ exports.getAdminStats = async (req, res) => {
       ? Math.round((onJobWorkersCount / workers.length) * 100) 
       : 0;
 
-    // 2. Formulate dynamic charts dataset (last 7 days simulation)
-    const dailySales = [
-      { day: 'Mon', bookings: 5, sales: 2450 },
-      { day: 'Tue', bookings: 7, sales: 3890 },
-      { day: 'Wed', bookings: 12, sales: 5200 },
-      { day: 'Thu', bookings: 9, sales: 4100 },
-      { day: 'Fri', bookings: 15, sales: 7490 },
-      { day: 'Sat', bookings: 22, sales: 12400 },
-      { day: 'Sun', bookings: 18, sales: 9800 }
-    ];
+    // 2. Formulate dynamic charts dataset (last 7 days dynamically from real data)
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      last7Days.push({
+        dateStr: d.toDateString(),
+        day: daysOfWeek[d.getDay()],
+        bookings: 0,
+        sales: 0
+      });
+    }
 
-    // Include the live sales from this session!
-    dailySales[6].sales += totalSales;
-    dailySales[6].bookings += completedBookings.length;
+    bookings.forEach(b => {
+      const bDateStr = new Date(b.createdAt).toDateString();
+      const dayObj = last7Days.find(d => d.dateStr === bDateStr);
+      if (dayObj) {
+        dayObj.bookings++;
+        if (b.paymentStatus === 'PAID' || b.payment_status === 'Paid') {
+          dayObj.sales += b.finalPrice || 0;
+        }
+      }
+    });
 
-    // Top services mapping
+    const dailySales = last7Days.map(d => ({
+      day: d.day,
+      bookings: d.bookings,
+      sales: d.sales
+    }));
+
+    // Top services mapping from real categories
     const categoryCounts = {};
     bookings.forEach(b => {
-      // Simulate category extraction or map standard cleaning
-      categoryCounts['Cleaning'] = (categoryCounts['Cleaning'] || 0) + 1;
-      categoryCounts['Technical'] = (categoryCounts['Technical'] || 0) + (Math.random() > 0.5 ? 1 : 0);
+      const cat = b.serviceCategory || 'General';
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     });
 
     const serviceDistribution = Object.keys(categoryCounts).map(cat => ({

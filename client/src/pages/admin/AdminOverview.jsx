@@ -545,65 +545,24 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
     const mockWorkers = [];
 
-    const mockCustomers = [
-      { id: 'c-1', name: 'Aravind Swamy', email: 'customer@gmail.com', phone: '9876543210', pincode: '560073', serviceArea: 'Anchepalya', createdAt: new Date(Date.now() - 10 * 86400000).toISOString() },
-      { id: 'c-2', name: 'Preeti Deshmukh', email: 'preeti@gmail.com', phone: '9123456789', pincode: '560074', serviceArea: 'Nagasandra', createdAt: new Date(Date.now() - 8 * 86400000).toISOString() }
-    ];
+    const mockCustomers = [];
 
-    const mockBookings = [
-      {
-        id: 'booking-sample-1',
-        status: 'ASSIGNED',
-        scheduledAt: new Date(Date.now() + 86400000).toISOString(),
-        timeSlot: '10:00 AM - 11:00 AM',
-        address: 'Prestige Jindal City, Anchepalya, Bengaluru',
-        phone: '9876543210',
-        totalPrice: 499.0,
-        discountApplied: 0.0,
-        finalPrice: 499.0,
-        paymentStatus: 'PAID',
-        paymentMethod: 'UPI',
-        createdAt: new Date().toISOString(),
-        user: mockCustomers[0],
-        worker: { id: 'w-approved-2', approvalStatus: 'APPROVED', experienceYears: 4, address: 'Peenya Industrial Area', rating: 4.9, user: { name: 'Vijay Kumar', phone: '8877665544', email: 'vijay@jkenterprises.com' } },
-        items: [{ service: mockServices[8], quantity: 1, price: 499.0 }]
-      },
-      {
-        id: 'booking-sample-2',
-        status: 'COMPLETED',
-        scheduledAt: new Date(Date.now() - 86400000).toISOString(),
-        timeSlot: '02:00 PM - 03:00 PM',
-        address: 'Nagasandra Metro Station Road, Bengaluru',
-        phone: '9123456789',
-        totalPrice: 749.0,
-        discountApplied: 0.0,
-        finalPrice: 749.0,
-        paymentStatus: 'PAID',
-        paymentMethod: 'CASH',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        user: mockCustomers[1],
-        worker: { id: 'w-approved-1', approvalStatus: 'APPROVED', experienceYears: 5, address: 'Anchepalya, Tumkur Road', rating: 4.8, user: { name: 'Ramesh Kumar', phone: '7766554433', email: 'ramesh@jkenterprises.com' } },
-        items: [{ service: mockServices[2], quantity: 1, price: 749.0 }]
-      }
-    ];
+    const mockBookings = [];
 
-    const mockCoupons = [
-      { id: 'cp-1', code: 'WELCOME50', discountType: 'FLAT', discountValue: 50.0, minOrderValue: 200.0, maxDiscount: 50.0, usageLimit: 100, perUserLimit: 1, usedCount: 0, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(), isActive: true },
-      { id: 'cp-2', code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, minOrderValue: 150.0, maxDiscount: 100.0, usageLimit: 500, perUserLimit: 1, usedCount: 0, expiresAt: new Date(Date.now() + 15 * 86400000).toISOString(), isActive: true }
-    ];
+    const mockCoupons = [];
 
     if (tab === 'dashboard') {
       const stats = {
-        todayCount: 1,
+        todayCount: 0,
         pendingCount: 0,
-        completedCount: 1,
+        completedCount: 0,
         cancelledCount: 0,
-        activePartnersCount: 2,
+        activePartnersCount: 0,
         pendingApprovalsCount: 0,
         todayRev: 0,
-        monthRev: 1248.0,
-        activeCouponsCount: 2,
-        totalCouponsCount: 2
+        monthRev: 0,
+        activeCouponsCount: 0,
+        totalCouponsCount: 0
       };
       setAnalytics(stats);
       setWorkers(mockWorkers);
@@ -622,35 +581,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       setServices(mockServices);
       setCoupons(mockCoupons);
       
-      const seedLogs = [
-        {
-          id: 'al-seed-1',
-          userId: 'user-cust',
-          action: 'USER_LOGIN',
-          details: JSON.stringify({ email: 'customer@gmail.com', role: 'USER' }),
-          ipAddress: '127.0.0.1',
-          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-          user: { id: 'user-cust', name: 'Aravind Swamy', email: 'customer@gmail.com', phone: '9876543210', role: 'USER' }
-        },
-        {
-          id: 'al-seed-2',
-          userId: 'user-worker-w-2',
-          action: 'USER_LOGIN',
-          details: JSON.stringify({ email: 'vijay@jkenterprises.com', role: 'WORKER' }),
-          ipAddress: '127.0.0.1',
-          createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-          user: { id: 'user-worker-w-2', name: 'Vijay Kumar', email: 'vijay@jkenterprises.com', phone: '8877665544', role: 'WORKER' }
-        },
-        {
-          id: 'al-seed-3',
-          userId: 'user-admin',
-          action: 'USER_LOGIN',
-          details: JSON.stringify({ email: 'admin@jkenterprises.com', role: 'ADMIN' }),
-          ipAddress: '127.0.0.1',
-          createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
-          user: { id: 'user-admin', name: 'JK Admin', email: 'admin@jkenterprises.com', phone: '8431588235', role: 'ADMIN' }
-        }
-      ];
+      const seedLogs = [];
       setAuditLogs(seedLogs);
     }
   };
@@ -1015,24 +946,26 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     const activeCoupons = coupons.filter(c => c.isActive);
 
     const todayRevenue = bookings
-      .filter(b => b.status === 'COMPLETED' && new Date(b.createdAt).toDateString() === today)
-      .reduce((sum, b) => sum + (b.finalPrice || 0), 0);
+      .filter(b => (b.paymentStatus === 'PAID' || b.payment_status === 'Paid') && new Date(b.createdAt).toDateString() === today)
+      .reduce((sum, b) => sum + (b.finalPrice || b.amount || 0), 0);
 
     const monthRevenue = bookings
-      .filter(b => b.status === 'COMPLETED' && new Date(b.createdAt).getMonth() === currentMonth && new Date(b.createdAt).getFullYear() === currentYear)
-      .reduce((sum, b) => sum + (b.finalPrice || 0), 0);
+      .filter(b => (b.paymentStatus === 'PAID' || b.payment_status === 'Paid') && new Date(b.createdAt).getMonth() === currentMonth && new Date(b.createdAt).getFullYear() === currentYear)
+      .reduce((sum, b) => sum + (b.finalPrice || b.amount || 0), 0);
+
+    const preferAnalytics = activeTab === 'dashboard';
 
     return {
-      todayCount: todayBookings.length,
-      pendingCount: pendingBookings.length,
-      completedCount: completedBookings.length,
-      cancelledCount: cancelledBookings.length,
-      activePartnersCount: activePartners.length,
-      pendingApprovalsCount: pendingApprovals.length,
-      todayRev: todayRevenue,
-      monthRev: monthRevenue,
-      activeCouponsCount: activeCoupons.length,
-      totalCouponsCount: coupons.length
+      todayCount: preferAnalytics ? (analytics?.todayCount || 0) : todayBookings.length,
+      pendingCount: preferAnalytics ? (analytics?.pendingCount || 0) : pendingBookings.length,
+      completedCount: preferAnalytics ? (analytics?.completedCount || 0) : completedBookings.length,
+      cancelledCount: preferAnalytics ? (analytics?.cancelledCount || 0) : cancelledBookings.length,
+      activePartnersCount: preferAnalytics ? (analytics?.activePartnersCount || 0) : activePartners.length,
+      pendingApprovalsCount: preferAnalytics ? (analytics?.pendingApprovalsCount || 0) : pendingApprovals.length,
+      todayRev: preferAnalytics ? (analytics?.todayRev || 0) : todayRevenue,
+      monthRev: preferAnalytics ? (analytics?.monthRev || 0) : monthRevenue,
+      activeCouponsCount: preferAnalytics ? (analytics?.activeCouponsCount || 0) : activeCoupons.length,
+      totalCouponsCount: preferAnalytics ? (analytics?.totalCouponsCount || 0) : coupons.length
     };
   };
 
@@ -1081,13 +1014,11 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   // Customer Management Data
   const getCustomerManagement = () => {
     return customers.map(c => {
-      const cBookings = bookings.filter(b => b.userId === c.id);
-      const lastBooking = cBookings.length > 0 ? new Date(cBookings[0].createdAt).toLocaleDateString() : 'No bookings yet';
-
+      const lastBookingText = c.lastBooking ? new Date(c.lastBooking).toLocaleDateString() : 'No bookings yet';
       return {
         ...c,
-        bookingsCount: cBookings.length,
-        lastBooking
+        bookingsCount: c.bookingsCount || 0,
+        lastBooking: lastBookingText
       };
     });
   };
@@ -3094,8 +3025,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               <div className="space-y-4 text-xs text-slate-650">
                 <div>
                   <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Customer Profile</span>
-                  <h4 className="font-bold text-slate-800 mt-0.5">{selectedBooking.user?.name}</h4>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedBooking.user?.phone} • {selectedBooking.user?.email}</p>
+                  <h4 className="font-bold text-slate-800 mt-0.5">{selectedBooking.customer_name || selectedBooking.user?.name || 'Customer'}</h4>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedBooking.phone || selectedBooking.user?.phone || 'N/A'} • {selectedBooking.email || selectedBooking.user?.email || 'N/A'}</p>
                 </div>
 
                 <div>
@@ -3108,7 +3039,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   <div className="bg-slate-50 border border-slate-150 rounded-xl p-3.5 mt-1 space-y-1.5 shadow-inner">
                     {selectedBooking.items?.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[10px]">
-                        <span className="font-bold text-slate-800">{item.service?.name} x {item.quantity}</span>
+                        <span className="font-bold text-slate-800">{item.service?.name || selectedBooking.service_name || 'General Service'} x {item.quantity}</span>
                         <span className="font-extrabold text-emerald-600">Rs. {item.price * item.quantity}</span>
                       </div>
                     ))}

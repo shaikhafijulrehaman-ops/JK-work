@@ -171,18 +171,6 @@ async function main() {
     },
   });
 
-  const customer = await prisma.user.create({
-    data: {
-      email: 'customer@gmail.com',
-      password: customerPassword,
-      name: 'Aravind Swamy',
-      phone: '9876543210',
-      role: 'USER',
-      isEmailVerified: true,
-      isPhoneVerified: true,
-    },
-  });
-
   console.log('Base accounts seeded.');
 
   // 7. Create Workers & Associate relational skills
@@ -263,6 +251,24 @@ async function main() {
       }
     }
   }
+
+  // 8. Seed Audit Logs for logins
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        userId: admin.id,
+        userName: admin.name,
+        userEmail: admin.email,
+        userRole: admin.role,
+        eventType: 'LOGIN',
+        action: 'ACCOUNT_LOGIN',
+        details: JSON.stringify({ email: admin.email, role: admin.role }),
+        ipAddress: '127.0.0.1',
+        createdAt: new Date(Date.now() - 3600000 * 12)
+      }
+    ]
+  });
+  console.log('Audit logs seeded.');
 
   console.log('Workers and skills seeded successfully.');
   console.log('Seeding complete!');

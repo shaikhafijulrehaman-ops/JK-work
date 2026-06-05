@@ -106,26 +106,7 @@ export const useAuthStore = create((set, get) => ({
           set({ user: mockUser, isAuthenticated: true, loading: false });
           return { success: true, user: mockUser };
         }
-        if (email === 'customer@gmail.com' && password === 'customer123') {
-          console.log("Step 2: Auth Response");
-          console.log("Step 3: Fetch User Profile");
-          console.log("Step 4: Session Created");
-          const mockUser = { id: 'user-cust', email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
-          localStorage.setItem('jk_user', JSON.stringify(mockUser));
-          localStorage.setItem('jk_token', 'mock-token-customer');
-          set({ user: mockUser, isAuthenticated: true, loading: false });
-          return { success: true, user: mockUser };
-        }
-        if (email === 'vijay@jkenterprises.com' && password === 'worker123') {
-          console.log("Step 2: Auth Response");
-          console.log("Step 3: Fetch User Profile");
-          console.log("Step 4: Session Created");
-          const mockUser = { id: 'user-worker-w-2', email, name: 'Vijay Kumar', phone: '8877665544', role: 'WORKER' };
-          localStorage.setItem('jk_user', JSON.stringify(mockUser));
-          localStorage.setItem('jk_token', 'mock-token-worker');
-          set({ user: mockUser, isAuthenticated: true, loading: false });
-          return { success: true, user: mockUser };
-        }
+
         
         set({ error: data.message, loading: false });
         return { success: false, error: data.message, approvalStatus: data.approvalStatus, workerName: data.workerName };
@@ -165,26 +146,7 @@ export const useAuthStore = create((set, get) => ({
         set({ user: mockUser, isAuthenticated: true, loading: false });
         return { success: true, user: mockUser };
       }
-      if (email === 'customer@gmail.com' && password === 'customer123') {
-        console.log("Step 2: Auth Response");
-        console.log("Step 3: Fetch User Profile");
-        console.log("Step 4: Session Created");
-        const mockUser = { id: 'user-cust', email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
-        localStorage.setItem('jk_user', JSON.stringify(mockUser));
-        localStorage.setItem('jk_token', 'mock-token-customer');
-        set({ user: mockUser, isAuthenticated: true, loading: false });
-        return { success: true, user: mockUser };
-      }
-      if (email === 'vijay@jkenterprises.com' && password === 'worker123') {
-        console.log("Step 2: Auth Response");
-        console.log("Step 3: Fetch User Profile");
-        console.log("Step 4: Session Created");
-        const mockUser = { id: 'user-worker-w-2', email, name: 'Vijay Kumar', phone: '8877665544', role: 'WORKER' };
-        localStorage.setItem('jk_user', JSON.stringify(mockUser));
-        localStorage.setItem('jk_token', 'mock-token-worker');
-        set({ user: mockUser, isAuthenticated: true, loading: false });
-        return { success: true, user: mockUser };
-      }
+
 
       const errMessage = isTimeout 
         ? 'Unable to sign in right now. Please try again.' 
@@ -232,6 +194,7 @@ export const useAuthStore = create((set, get) => ({
         body: JSON.stringify({ 
           id: authData.user?.id, 
           email, 
+          password,
           name, 
           phone, 
           role, 
@@ -338,10 +301,15 @@ export const useAuthStore = create((set, get) => ({
     } catch (e) {
       if (parseInt(code) === get().simulatedOtp) {
         if (isLogin) {
-          const mockUser = { id: 'user-cust', email: email, name: 'Aravind Swamy', phone: '9876543210', role: 'USER' };
-          localStorage.setItem('jk_user', JSON.stringify(mockUser));
-          set({ user: mockUser, isAuthenticated: true, otpSent: false, loading: false });
-          return { success: true, userExists: true, user: mockUser };
+          const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+          const localUserMatch = localUsers.find(u => u.email === email);
+          if (localUserMatch) {
+            localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
+            set({ user: localUserMatch, isAuthenticated: true, otpSent: false, loading: false });
+            return { success: true, userExists: true, user: localUserMatch };
+          }
+          set({ error: 'No user registered with this email. Please sign up first.', loading: false });
+          return { success: false, error: 'No user registered.' };
         } else {
           set({ otpSent: false, loading: false });
           return { success: true, userExists: false };
