@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { logActivity } = require('../utils/auditLogger');
 
 const otps = {};
 
@@ -66,14 +67,15 @@ const sendTokenResponse = (user, statusCode, res) => {
   res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7 days
 
   // Log user audit log
-  db.auditLog.create({
-    data: {
-      userId: user.id,
-      action: 'ACCOUNT_LOGIN',
-      details: JSON.stringify({ email: user.email, role: user.role }),
-      ipAddress: res.req.ip
-    }
-  }).catch(e => {});
+  logActivity(res.req, {
+    userId: user.id,
+    userName: user.name,
+    userEmail: user.email,
+    userRole: user.role,
+    eventType: 'LOGIN',
+    action: 'ACCOUNT_LOGIN',
+    details: { email: user.email, role: user.role }
+  });
 
   // Remove password from response
   const userResponse = { ...user };
@@ -141,14 +143,15 @@ exports.register = async (req, res) => {
     // WhatsApp Notification
     sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Registration');
 
-    await db.auditLog.create({
-      data: {
-        userId: user.id,
-        action: 'ACCOUNT_CREATED',
-        details: JSON.stringify({ email: user.email, name: user.name, phone: user.phone }),
-        ipAddress: req.ip
-      }
-    }).catch(e => {});
+    logActivity(req, {
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      eventType: 'REGISTRATION',
+      action: 'ACCOUNT_CREATED',
+      details: { email: user.email, name: user.name, phone: user.phone }
+    });
 
     sendTokenResponse(user, 201, res);
   } catch (error) {
@@ -280,14 +283,14 @@ exports.logout = async (req, res) => {
       try {
         const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026');
         if (decoded && decoded.userId) {
-          await db.auditLog.create({
-            data: {
-              userId: decoded.userId,
-              action: 'ACCOUNT_LOGOUT',
-              details: JSON.stringify({ email: decoded.email }),
-              ipAddress: req.ip
-            }
-          }).catch(() => {});
+          logActivity(req, {
+            userId: decoded.userId,
+            userEmail: decoded.email,
+            userRole: decoded.role,
+            eventType: 'LOGIN',
+            action: 'ACCOUNT_LOGOUT',
+            details: { email: decoded.email }
+          });
         }
       } catch (err) {}
       // Remove session from DB
@@ -546,14 +549,15 @@ exports.syncSupabase = async (req, res) => {
         }
       });
       console.log('USER INSERT RESPONSE: User created successfully in db.user', user);
-      await db.auditLog.create({
-        data: {
-          userId: user.id,
-          action: 'ACCOUNT_CREATED',
-          details: JSON.stringify({ email: user.email, name: user.name, phone: user.phone }),
-          ipAddress: req.ip
-        }
-      }).catch(e => {});
+      logActivity(req, {
+        userId: user.id,
+        userName: user.name,
+        userEmail: user.email,
+        userRole: user.role,
+        eventType: 'REGISTRATION',
+        action: 'ACCOUNT_CREATED',
+        details: { email: user.email, name: user.name, phone: user.phone }
+      });
     } else {
       console.log('USER INSERT RESPONSE: User already exists in db.user', user);
     }
@@ -602,14 +606,15 @@ exports.syncSupabase = async (req, res) => {
     res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
-    await db.auditLog.create({
-      data: {
-        userId: customer.id,
-        action: 'ACCOUNT_LOGIN',
-        details: JSON.stringify({ email: customer.email, role: 'USER' }),
-        ipAddress: req.ip
-      }
-    }).catch(e => {});
+    logActivity(req, {
+      userId: customer.id,
+      userName: customer.name,
+      userEmail: customer.email,
+      userRole: 'USER',
+      eventType: 'LOGIN',
+      action: 'ACCOUNT_LOGIN',
+      details: { email: customer.email, role: 'USER' }
+    });
 
     // WhatsApp Notification
     sendAdminWhatsAppNotification(customer.name, customer.phone, customer.email, 'Registration / Login');
@@ -652,14 +657,13 @@ exports.verifyOTP = async (req, res) => {
 
     if (!user) {
       // User doesn't exist yet (this is the signup flow)
-      await db.auditLog.create({
-        data: {
-          userId: null,
-          action: 'OTP_VERIFICATION',
-          details: JSON.stringify({ email, success: true, message: 'OTP verified for new user signup' }),
-          ipAddress: req.ip
-        }
-      }).catch(() => {});
+      logActivity(req, {
+        userId: null,
+        userEmail: email,
+        eventType: 'LOGIN',
+        action: 'OTP_VERIFICATION',
+        details: { email, success: true, message: 'OTP verified for new user signup' }
+      });
 
       return res.status(200).json({
         success: true,
@@ -687,14 +691,15 @@ exports.verifyOTP = async (req, res) => {
     res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
-    await db.auditLog.create({
-      data: {
-        userId: user.id,
-        action: 'OTP_VERIFICATION',
-        details: JSON.stringify({ email: user.email, role: user.role, method: 'OTP' }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      eventType: 'LOGIN',
+      action: 'OTP_VERIFICATION',
+      details: { email: user.email, role: user.role, method: 'OTP' }
+    });
 
     // Remove password from response
     const userResponse = { ...user };
@@ -752,16 +757,14 @@ exports.updateProfile = async (req, res) => {
       data: updateData
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: userId,
-        action: 'PROFILE_UPDATED',
-        details: JSON.stringify({
-          updatedFields: Object.keys(updateData).filter(k => k !== 'password')
-        }),
-        ipAddress: req.ip
+    logActivity(req, {
+      userId: userId,
+      eventType: 'USER',
+      action: 'PROFILE_UPDATED',
+      details: {
+        updatedFields: Object.keys(updateData).filter(k => k !== 'password')
       }
-    }).catch(() => {});
+    });
 
     const userResponse = { ...updatedUser };
     delete userResponse.password;

@@ -20,9 +20,65 @@ const AdminAnalyticsTab = React.lazy(() => import('./AdminAnalyticsTab'));
 const AdminPaymentsTab = React.lazy(() => import('./AdminPaymentsTab'));
 const AdminWorkersTab = React.lazy(() => import('./AdminWorkersTab'));
 
+const formatLogDetails = (log) => {
+  let details = {};
+  try {
+    details = log.details ? JSON.parse(log.details) : (log.metadata ? JSON.parse(log.metadata) : {});
+  } catch (e) {
+    return typeof log.details === 'string' ? log.details : 'N/A';
+  }
+  
+  if (log.action === 'BOOKING_CREATED') {
+    return `Booking #${details.bookingId?.substring(0,8).toUpperCase() || ''} created for Rs. ${details.finalPrice || details.amount || ''}`;
+  }
+  if (log.action === 'COUPON_APPLIED') {
+    return `Coupon "${details.couponCode || ''}" applied (discount: Rs. ${details.discountApplied || 0})`;
+  }
+  if (log.action === 'PAYMENT_SUCCESS') {
+    return `Payment of Rs. ${details.amount || ''} captured. ID: ${details.paymentId || ''}`;
+  }
+  if (log.action === 'PAYMENT_FAILED') {
+    return `Payment of Rs. ${details.amount || ''} failed. ID: ${details.paymentId || ''}`;
+  }
+  if (log.action === 'BOOKING_CANCELLED') {
+    return `Booking #${details.bookingId?.substring(0,8).toUpperCase() || ''} cancelled`;
+  }
+  if (log.action === 'PROFILE_UPDATED') {
+    return `Profile fields updated: ${(details.updatedFields || []).join(', ')}`;
+  }
+  if (log.action === 'SERVICE_CREATE') {
+    return `Service "${details.name}" added at Rs. ${details.price}`;
+  }
+  if (log.action === 'SERVICE_UPDATE') {
+    return `Service "${details.name}" modified (price: Rs. ${details.oldPrice} -> Rs. ${details.newPrice})`;
+  }
+  if (log.action === 'SERVICE_DELETE') {
+    return `Service "${details.name}" deleted`;
+  }
+  if (log.action === 'WORKER_STATUS_CHANGE') {
+    return `Worker #${details.workerId?.substring(0,8)} status updated to ${details.status}`;
+  }
+  if (log.action === 'ACCOUNT_LOGIN') {
+    return `Logged in (Role: ${details.role || 'USER'})`;
+  }
+  if (log.action === 'ACCOUNT_CREATED') {
+    return `Account registered (Email: ${details.email})`;
+  }
+  if (log.action === 'OTP_VERIFICATION') {
+    return `OTP verified successfully`;
+  }
+
+  if (Object.keys(details).length > 0) {
+    return Object.entries(details)
+      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .join(', ');
+  }
+  return log.details || 'No details';
+};
+
 export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const navigate = useNavigate();
-  const { logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { addNotification, notifications, fetchNotifications, markAsRead } = useNotificationStore();
 
   // Selected view: dashboard, bookings, partner-approvals, partners, customers, payments, services, analytics, settings, coupons
@@ -41,7 +97,18 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [error, setError] = useState(null);
 
   // Sub-tabs for Audit Center
-  const [auditSubTab, setAuditSubTab] = useState('feed'); // feed, logins, bookings, partners, payments
+  const [auditSubTab, setAuditSubTab] = useState('feed'); // feed, logins, registrations, bookings, payments, admin
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [auditTotalCount, setAuditTotalCount] = useState(0);
+  const [auditFilter, setAuditFilter] = useState('All');
+
+  // Strict authorization safety gate
+  useEffect(() => {
+    if (!user || user.role !== 'ADMIN') {
+      navigate('/auth');
+    }
+  }, [user, navigate]);
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,13 +185,13 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       let color = 'text-slate-600 bg-slate-50 border-slate-100';
       let details = {};
       try {
-        details = log.details ? JSON.parse(log.details) : {};
+        details = log.details ? JSON.parse(log.details) : (log.metadata ? JSON.parse(log.metadata) : {});
       } catch (err) {}
-      const userName = log.user?.name || details.name || details.email || 'System';
+      const userName = log.userName || log.user?.name || details.name || details.email || 'System';
 
       switch (log.action) {
         case 'ACCOUNT_CREATED':
-          text = `Account created for ${userName} (${details.email || ''})`;
+          text = `Account created for ${userName} (${log.userEmail || details.email || ''})`;
           color = 'text-indigo-600 bg-indigo-50 border-indigo-100';
           break;
         case 'ACCOUNT_LOGIN':
@@ -167,8 +234,24 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           text = `${userName} updated profile details (${(details.updatedFields || []).join(', ')})`;
           color = 'text-pink-600 bg-pink-50 border-pink-100';
           break;
+        case 'SERVICE_CREATE':
+          text = `Catalog service "${details.name || ''}" added by Admin`;
+          color = 'text-cyan-600 bg-cyan-50 border-cyan-100';
+          break;
+        case 'SERVICE_UPDATE':
+          text = `Catalog service "${details.name || ''}" updated by Admin`;
+          color = 'text-amber-600 bg-amber-50 border-amber-100';
+          break;
+        case 'SERVICE_DELETE':
+          text = `Catalog service "${details.name || ''}" deleted by Admin`;
+          color = 'text-rose-600 bg-rose-50 border-rose-100';
+          break;
+        case 'WORKER_STATUS_CHANGE':
+          text = `Worker status changed to ${details.status || ''}`;
+          color = 'text-purple-600 bg-purple-50 border-purple-100';
+          break;
         default:
-          text = `${log.action}: ${log.details}`;
+          text = `${log.action}: ${typeof log.details === 'string' ? log.details : JSON.stringify(details)}`;
           color = 'text-slate-600 bg-slate-50 border-slate-100';
       }
 
@@ -177,7 +260,9 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         type: log.action,
         text,
         timestamp: new Date(log.createdAt),
-        color
+        color,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent
       };
     });
   }, [auditLogs]);
@@ -570,6 +655,88 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     }
   };
 
+  const fetchAuditLogs = async (page = 1, eventType = 'All', force = false) => {
+    // If cache is present and we're not forcing refetch, load from cache
+    const cacheKey = `audit_logs_${eventType}_page_${page}`;
+    const cachedData = getCache(cacheKey);
+    if (cachedData && !force) {
+      setAuditLogs(cachedData.logs || []);
+      setAuditPage(cachedData.page || 1);
+      setAuditTotalPages(cachedData.totalPages || 1);
+      setAuditTotalCount(cachedData.totalCount || 0);
+      return;
+    }
+
+    setTabLoading(true);
+    try {
+      const url = `/api/admin/audit-logs?page=${page}&limit=50&eventType=${eventType}`;
+      const res = await fetchWithTimeout(url, { credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        setAuditLogs(data.logs || []);
+        setAuditPage(data.page || 1);
+        setAuditTotalPages(data.totalPages || 1);
+        setAuditTotalCount(data.totalCount || 0);
+        setCache(cacheKey, {
+          logs: data.logs || [],
+          page: data.page || 1,
+          totalPages: data.totalPages || 1,
+          totalCount: data.totalCount || 0
+        });
+        setError(null);
+      } else {
+        throw new Error(data.message || 'Failed to retrieve audit logs.');
+      }
+    } catch (err) {
+      console.warn('Backend offline or error loading audit logs. Loading offline sandbox...', err);
+      loadSandboxTab('audit-logs');
+    } finally {
+      setTabLoading(false);
+    }
+  };
+
+  const handleAuditSubTabChange = (subTabId) => {
+    setAuditSubTab(subTabId);
+    let filter = 'All';
+    if (subTabId === 'logins') filter = 'LOGIN';
+    else if (subTabId === 'registrations') filter = 'REGISTRATION';
+    else if (subTabId === 'bookings') filter = 'BOOKING';
+    else if (subTabId === 'payments') filter = 'PAYMENT';
+    else if (subTabId === 'admin') filter = 'ADMIN';
+    setAuditFilter(filter);
+    setAuditPage(1);
+  };
+
+  // Real-time polling for audit logs (5 seconds interval when tab is active)
+  useEffect(() => {
+    let intervalId;
+    if (activeTab === 'audit-logs') {
+      fetchAuditLogs(auditPage, auditFilter, true);
+
+      intervalId = setInterval(() => {
+        const silentFetch = async () => {
+          try {
+            const url = `/api/admin/audit-logs?page=${auditPage}&limit=50&eventType=${auditFilter}`;
+            const res = await fetchWithTimeout(url, { credentials: 'include' });
+            const data = await res.json();
+            if (data.success) {
+              setAuditLogs(data.logs || []);
+              setAuditPage(data.page || 1);
+              setAuditTotalPages(data.totalPages || 1);
+              setAuditTotalCount(data.totalCount || 0);
+            }
+          } catch (err) {
+            console.warn('Silent audit log polling failed:', err.message);
+          }
+        };
+        silentFetch();
+      }, 5000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeTab, auditPage, auditFilter]);
+
   // Fetch page specific data
   const fetchTabSpecificData = async (tab, forceRefetch = false) => {
     // If it's one of the extracted tabs, they handle their own data loading
@@ -593,12 +760,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       } else if (tab === 'coupons') {
         setCoupons(cached);
       } else if (tab === 'audit-logs') {
-        setBookings(cached.bookings);
-        setWorkers(cached.workers);
-        setCustomers(cached.customers);
-        setServices(cached.services);
-        setCoupons(cached.coupons);
-        setAuditLogs(cached.auditLogs);
+        // Handled by dedicated useEffect and state
       }
       setTabLoading(false);
       setLoading(false);
@@ -663,26 +825,17 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve coupons.');
         }
       } else if (tab === 'audit-logs') {
-        const res = await fetchWithTimeout('/api/admin/dashboard-data', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
-          setBookings(data.bookings || []);
-          setWorkers(data.workers || []);
-          setCustomers(data.customers || []);
-          setServices(data.services || []);
-          setCoupons(data.coupons || []);
-          setAuditLogs(data.auditLogs || []);
-          setCache(`tab_audit-logs`, {
-            bookings: data.bookings || [],
-            workers: data.workers || [],
-            customers: data.customers || [],
-            services: data.services || [],
-            coupons: data.coupons || [],
-            auditLogs: data.auditLogs || []
-          });
-        } else {
-          throw new Error('Failed to retrieve unified dashboard data.');
-        }
+        // Run background dashboard sync to populate other collections silently
+        fetchWithTimeout('/api/admin/dashboard-data', { credentials: 'include' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              setBookings(data.bookings || []);
+              setCustomers(data.customers || []);
+              setServices(data.services || []);
+              setCoupons(data.coupons || []);
+            }
+          }).catch(err => console.warn('Background dashboard data sync failed:', err.message));
       }
     } catch (err) {
       console.warn('Backend server offline. Simulating local Sandbox metrics...', err);
@@ -695,10 +848,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   };
 
   const fetchAllData = () => {
-    // Invalidate the cache for all tabs to ensure sync grabs latest data everywhere
-    ['dashboard', 'audit-logs', 'bookings', 'customers', 'services', 'coupons', 'analytics', 'payments', 'partner-approvals', 'partners'].forEach(tab => {
-      invalidateCache(`tab_${tab}`);
-    });
+    // Clear all caches
+    clearCache();
+    // Force sync audit logs if tab is active
+    if (activeTab === 'audit-logs') {
+      fetchAuditLogs(auditPage, auditFilter, true);
+    }
     fetchTabSpecificData(activeTab, true);
   };
 
@@ -1511,13 +1666,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                       {[
                         { id: 'feed', label: '🔔 Live Activity Feed' },
                         { id: 'logins', label: '📋 Recent Logins' },
+                        { id: 'registrations', label: '🔑 Registrations' },
                         { id: 'bookings', label: '📦 Booking Activity' },
-                        { id: 'partners', label: '🧑🔧 Partner Activity' },
-                        { id: 'payments', label: '💰 Payment Activity' }
+                        { id: 'payments', label: '💰 Payment Activity' },
+                        { id: 'admin', label: '🛡️ Admin Actions' }
                       ].map(tab => (
                         <button
                           key={tab.id}
-                          onClick={() => setAuditSubTab(tab.id)}
+                          onClick={() => handleAuditSubTabChange(tab.id)}
                           className={`px-4 py-2.5 rounded-xl font-poppins font-bold text-xs transition-all flex-shrink-0 ${
                             auditSubTab === tab.id
                               ? 'bg-brand text-white shadow-md shadow-brand/10'
@@ -1551,11 +1707,17 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                   </span>
 
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
-                                    <div className="flex items-center space-x-2.5">
-                                      <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${item.color}`}>
-                                        {item.type.replace('_', ' ')}
-                                      </span>
-                                      <span className="text-xs font-bold text-slate-700 font-poppins">{item.text}</span>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center space-x-2.5">
+                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${item.color}`}>
+                                          {item.type.replace('_', ' ')}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-700 font-poppins">{item.text}</span>
+                                      </div>
+                                      <div className="flex items-center space-x-2.5 mt-1 text-[9px] text-slate-400 font-mono pl-1">
+                                        {item.ipAddress && <span>IP: {item.ipAddress}</span>}
+                                        {item.userAgent && <span className="truncate max-w-[200px] sm:max-w-[350px]">UA: {item.userAgent}</span>}
+                                      </div>
                                     </div>
                                     <span className="text-[10px] text-slate-400 font-medium">
                                       {item.timestamp.toLocaleString()}
@@ -1578,34 +1740,34 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
                                   <tr>
                                     <th className="p-4">User Name</th>
-                                    <th className="p-4">Mobile</th>
                                     <th className="p-4">Email</th>
                                     <th className="p-4">Role</th>
                                     <th className="p-4">Login Time</th>
                                     <th className="p-4">IP Address</th>
+                                    <th className="p-4">Device / User Agent</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                  {auditLogs.filter(log => log.action === 'USER_LOGIN').map(log => {
+                                  {auditLogs.map(log => {
                                     const details = log.details ? JSON.parse(log.details) : {};
                                     return (
                                       <tr key={log.id} className="hover:bg-slate-50/50">
-                                        <td className="p-4 font-bold text-slate-800">{log.user?.name || 'JK Seed User'}</td>
-                                        <td className="p-4 font-mono">{log.user?.phone || 'N/A'}</td>
-                                        <td className="p-4 font-mono text-slate-500">{log.user?.email || details.email || 'N/A'}</td>
+                                        <td className="p-4 font-bold text-slate-800">{log.userName || log.user?.name || 'Guest/System'}</td>
+                                        <td className="p-4 font-mono text-slate-500">{log.userEmail || log.user?.email || details.email || 'N/A'}</td>
                                         <td className="p-4">
                                           <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                                            log.user?.role === 'ADMIN' ? 'bg-red-50 text-red-700' : log.user?.role === 'WORKER' ? 'bg-amber-50 text-amber-700' : 'bg-cyan-50 text-cyan-700'
+                                            (log.userRole || log.user?.role) === 'ADMIN' ? 'bg-red-50 text-red-700' : (log.userRole || log.user?.role) === 'WORKER' ? 'bg-amber-50 text-amber-700' : 'bg-cyan-50 text-cyan-700'
                                           }`}>
-                                            {log.user?.role || details.role || 'USER'}
+                                            {log.userRole || log.user?.role || details.role || 'USER'}
                                           </span>
                                         </td>
                                         <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
                                         <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                        <td className="p-4 font-mono text-slate-400 truncate max-w-[200px]" title={log.userAgent || 'N/A'}>{log.userAgent || 'N/A'}</td>
                                       </tr>
                                     );
                                   })}
-                                  {auditLogs.filter(log => log.action === 'USER_LOGIN').length === 0 && (
+                                  {auditLogs.length === 0 && (
                                     <tr>
                                       <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real login records available.</td>
                                     </tr>
@@ -1616,43 +1778,44 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           </div>
                         )}
 
-                        {/* 3. Booking Activity */}
-                        {auditSubTab === 'bookings' && (
+                        {/* 3. Registrations */}
+                        {auditSubTab === 'registrations' && (
                           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                             <div className="overflow-x-auto">
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
                                   <tr>
-                                    <th className="p-4">Booking ID</th>
-                                    <th className="p-4">Customer Name</th>
-                                    <th className="p-4">Service</th>
-                                    <th className="p-4">Amount</th>
-                                    <th className="p-4">Area</th>
-                                    <th className="p-4">Time</th>
-                                    <th className="p-4">Status</th>
+                                    <th className="p-4">User Name</th>
+                                    <th className="p-4">Email</th>
+                                    <th className="p-4">Role</th>
+                                    <th className="p-4">Registration Time</th>
+                                    <th className="p-4">IP Address</th>
+                                    <th className="p-4">Device / User Agent</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                  {bookings.map(b => (
-                                    <tr key={b.id} className="hover:bg-slate-50/50">
-                                      <td className="p-4 font-mono font-bold text-brand">{b.id.substring(0,8).toUpperCase()}</td>
-                                      <td className="p-4 font-bold text-slate-800">{b.user?.name || 'Customer'}</td>
-                                      <td className="p-4 font-bold text-slate-700">{b.items?.[0]?.service?.name || 'General Service'}</td>
-                                      <td className="p-4 font-bold text-slate-800">Rs. {b.finalPrice}</td>
-                                      <td className="p-4 text-slate-500">{b.address?.split('|')?.[0]?.split(',')?.[1] || 'Anchepalya'}</td>
-                                      <td className="p-4 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
-                                      <td className="p-4">
-                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                                          b.status === 'COMPLETED' ? 'bg-emerald-55 bg-emerald-50 text-emerald-700' : b.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-705 text-amber-700'
-                                        }`}>
-                                          {b.status.replace(/_/g, ' ')}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {bookings.length === 0 && (
+                                  {auditLogs.map(log => {
+                                    const details = log.details ? JSON.parse(log.details) : {};
+                                    return (
+                                      <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="p-4 font-bold text-slate-800">{log.userName || log.user?.name || 'Guest/System'}</td>
+                                        <td className="p-4 font-mono text-slate-500">{log.userEmail || log.user?.email || details.email || 'N/A'}</td>
+                                        <td className="p-4">
+                                          <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                            (log.userRole || log.user?.role) === 'ADMIN' ? 'bg-red-50 text-red-700' : (log.userRole || log.user?.role) === 'WORKER' ? 'bg-amber-50 text-amber-700' : 'bg-cyan-50 text-cyan-700'
+                                          }`}>
+                                            {log.userRole || log.user?.role || details.role || 'USER'}
+                                          </span>
+                                        </td>
+                                        <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                                        <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                        <td className="p-4 font-mono text-slate-400 truncate max-w-[200px]" title={log.userAgent || 'N/A'}>{log.userAgent || 'N/A'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {auditLogs.length === 0 && (
                                     <tr>
-                                      <td colSpan="7" className="text-center py-10 text-slate-405 font-poppins">No real booking activities recorded.</td>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real registration records available.</td>
                                     </tr>
                                   )}
                                 </tbody>
@@ -1661,41 +1824,41 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           </div>
                         )}
 
-                        {/* 4. Partner Activity */}
-                        {auditSubTab === 'partners' && (
+                        {/* 4. Booking Activity */}
+                        {auditSubTab === 'bookings' && (
                           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                             <div className="overflow-x-auto">
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
                                   <tr>
-                                    <th className="p-4">Partner Name</th>
-                                    <th className="p-4">Category Skills</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4">Approval Date</th>
-                                    <th className="p-4">Last Login</th>
+                                    <th className="p-4">Log ID</th>
+                                    <th className="p-4">Actor</th>
+                                    <th className="p-4">Action</th>
+                                    <th className="p-4">Activity details</th>
+                                    <th className="p-4">Timestamp</th>
+                                    <th className="p-4">IP Address</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                  {workers.map(w => (
-                                    <tr key={w.id} className="hover:bg-slate-50/50">
-                                      <td className="p-4 font-bold text-slate-800">{w.user?.name || 'Service Partner'}</td>
-                                      <td className="p-4 text-slate-600">
-                                        {w.skills?.map(s => s.service?.name).join(', ') || w.skills?.[0]?.service?.name || 'Relocation & Technical Support'}
-                                      </td>
-                                      <td className="p-4">
-                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                                          w.approvalStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : w.approvalStatus === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                                        }`}>
-                                          {w.approvalStatus}
-                                        </span>
-                                      </td>
-                                      <td className="p-4 text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</td>
-                                      <td className="p-4 text-slate-500 font-semibold">{getPartnerLastLogin(w.userId)}</td>
-                                    </tr>
-                                  ))}
-                                  {workers.length === 0 && (
+                                  {auditLogs.map(log => {
+                                    return (
+                                      <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="p-4 font-mono font-bold text-brand">{log.id.substring(0,8).toUpperCase()}</td>
+                                        <td className="p-4 font-bold text-slate-800">{log.userName || log.user?.name || 'System'}</td>
+                                        <td className="p-4">
+                                          <span className="text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-50 text-cyan-700">
+                                            {log.action.replace(/_/g, ' ')}
+                                          </span>
+                                        </td>
+                                        <td className="p-4 text-slate-600 font-semibold">{formatLogDetails(log)}</td>
+                                        <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                                        <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {auditLogs.length === 0 && (
                                     <tr>
-                                      <td colSpan="5" className="text-center py-10 text-slate-405 font-poppins">No real service partners registered.</td>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real booking events found.</td>
                                     </tr>
                                   )}
                                 </tbody>
@@ -1711,34 +1874,36 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
                                   <tr>
-                                    <th className="p-4">Payment ID</th>
-                                    <th className="p-4">Customer</th>
-                                    <th className="p-4">Amount</th>
-                                    <th className="p-4">Payment Method</th>
-                                    <th className="p-4">Payment Status</th>
-                                    <th className="p-4">Date</th>
+                                    <th className="p-4">Log ID</th>
+                                    <th className="p-4">Actor</th>
+                                    <th className="p-4">Action</th>
+                                    <th className="p-4">Activity details</th>
+                                    <th className="p-4">Timestamp</th>
+                                    <th className="p-4">IP Address</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                  {bookings.map(b => (
-                                    <tr key={b.id} className="hover:bg-slate-50/50">
-                                      <td className="p-4 font-mono font-bold text-slate-500">{b.paymentId || `PAY-${b.id.substring(0,8).toUpperCase()}`}</td>
-                                      <td className="p-4 font-bold text-slate-800">{b.user?.name || 'Customer'}</td>
-                                      <td className="p-4 font-bold text-slate-800">Rs. {b.finalPrice}</td>
-                                      <td className="p-4 font-mono uppercase font-bold text-slate-500">{b.paymentMethod || 'CASH'}</td>
-                                      <td className="p-4">
-                                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                                          b.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                                        }`}>
-                                          {b.paymentStatus || 'UNPAID'}
-                                        </span>
-                                      </td>
-                                      <td className="p-4 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
-                                    </tr>
-                                  ))}
-                                  {bookings.length === 0 && (
+                                  {auditLogs.map(log => {
+                                    return (
+                                      <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="p-4 font-mono font-bold text-slate-500">{log.id.substring(0,8).toUpperCase()}</td>
+                                        <td className="p-4 font-bold text-slate-800">{log.userName || log.user?.name || 'System'}</td>
+                                        <td className="p-4">
+                                          <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                            log.action === 'PAYMENT_SUCCESS' ? 'bg-emerald-55 bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                                          }`}>
+                                            {log.action.replace(/_/g, ' ')}
+                                          </span>
+                                        </td>
+                                        <td className="p-4 text-slate-600 font-semibold">{formatLogDetails(log)}</td>
+                                        <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                                        <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {auditLogs.length === 0 && (
                                     <tr>
-                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real payment records found.</td>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real payment events found.</td>
                                     </tr>
                                   )}
                                 </tbody>
@@ -1746,6 +1911,111 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                             </div>
                           </div>
                         )}
+
+                        {/* 6. Admin Actions */}
+                        {auditSubTab === 'admin' && (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="p-4">Log ID</th>
+                                    <th className="p-4">Admin Name</th>
+                                    <th className="p-4">Action</th>
+                                    <th className="p-4">Activity details</th>
+                                    <th className="p-4">Timestamp</th>
+                                    <th className="p-4">IP Address</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                  {auditLogs.map(log => {
+                                    return (
+                                      <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="p-4 font-mono font-bold text-slate-500">{log.id.substring(0,8).toUpperCase()}</td>
+                                        <td className="p-4 font-bold text-slate-800">{log.userName || log.user?.name || 'Admin'}</td>
+                                        <td className="p-4">
+                                          <span className="text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-purple-50 text-purple-700">
+                                            {log.action.replace(/_/g, ' ')}
+                                          </span>
+                                        </td>
+                                        <td className="p-4 text-slate-600 font-semibold">{formatLogDetails(log)}</td>
+                                        <td className="p-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                                        <td className="p-4 font-mono text-slate-400">{log.ipAddress || '127.0.0.1'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {auditLogs.length === 0 && (
+                                    <tr>
+                                      <td colSpan="6" className="text-center py-10 text-slate-405 font-poppins">No real admin action logs found.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pagination Controls */}
+                    {auditTotalPages > 1 && (
+                      <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6 rounded-2xl shadow-xs mt-4">
+                        <div className="flex flex-1 justify-between sm:hidden">
+                          <button
+                            onClick={() => setAuditPage(prev => Math.max(prev - 1, 1))}
+                            disabled={auditPage === 1}
+                            className={`relative inline-flex items-center rounded-xl border border-slate-350 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all ${
+                              auditPage === 1 ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            onClick={() => setAuditPage(prev => Math.min(prev + 1, auditTotalPages))}
+                            disabled={auditPage === auditTotalPages}
+                            className={`relative ml-3 inline-flex items-center rounded-xl border border-slate-350 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all ${
+                              auditPage === auditTotalPages ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            Next
+                          </button>
+                        </div>
+                        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium font-poppins">
+                              Showing <span className="font-extrabold text-slate-800">{(auditPage - 1) * 50 + 1}</span> to{' '}
+                              <span className="font-extrabold text-slate-800">
+                                {Math.min(auditPage * 50, auditTotalCount)}
+                              </span>{' '}
+                              of <span className="font-extrabold text-slate-800">{auditTotalCount}</span> records
+                            </p>
+                          </div>
+                          <div>
+                            <nav className="isolate inline-flex -space-x-px rounded-xl shadow-xs" aria-label="Pagination">
+                              <button
+                                onClick={() => setAuditPage(prev => Math.max(prev - 1, 1))}
+                                disabled={auditPage === 1}
+                                className={`relative inline-flex items-center rounded-l-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 focus:z-20 transition-all ${
+                                  auditPage === 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                Previous
+                              </button>
+                              <span className="relative inline-flex items-center border-y border-slate-200 bg-slate-50/50 px-4 py-2 text-xs font-black text-slate-700 font-poppins">
+                                Page {auditPage} of {auditTotalPages}
+                              </span>
+                              <button
+                                onClick={() => setAuditPage(prev => Math.min(prev + 1, auditTotalPages))}
+                                disabled={auditPage === auditTotalPages}
+                                className={`relative inline-flex items-center rounded-r-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 focus:z-20 transition-all ${
+                                  auditPage === auditTotalPages ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                Next
+                              </button>
+                            </nav>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

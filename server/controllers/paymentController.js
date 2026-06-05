@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const db = require('../db');
+const { logActivity } = require('../utils/auditLogger');
 
 /**
  * Simulate payment initialization (generates mock Razorpay order ID / UPI QR payload)
@@ -80,14 +81,12 @@ exports.razorpayWebhook = async (req, res) => {
           });
 
           // Audit Log
-          await db.auditLog.create({
-            data: {
-              userId: booking.userId,
-              action: 'PAYMENT_SUCCESS',
-              details: JSON.stringify({ bookingId: booking.id, amount, paymentId }),
-              ipAddress: req.ip
-            }
-          }).catch(() => {});
+          logActivity(req, {
+            userId: booking.userId,
+            eventType: 'PAYMENT',
+            action: 'PAYMENT_SUCCESS',
+            details: { bookingId: booking.id, amount, paymentId }
+          });
 
           // Dispatch Notification to customer
           await db.notification.create({
@@ -118,14 +117,12 @@ exports.razorpayWebhook = async (req, res) => {
           }).catch(() => {});
 
           // Audit Log
-          await db.auditLog.create({
-            data: {
-              userId: booking.userId,
-              action: 'PAYMENT_FAILED',
-              details: JSON.stringify({ bookingId: booking.id, amount, paymentId }),
-              ipAddress: req.ip
-            }
-          }).catch(() => {});
+          logActivity(req, {
+            userId: booking.userId,
+            eventType: 'PAYMENT',
+            action: 'PAYMENT_FAILED',
+            details: { bookingId: booking.id, amount, paymentId }
+          });
 
           // Dispatch Notification to customer
           await db.notification.create({
@@ -174,14 +171,12 @@ exports.simulatePaymentSuccess = async (req, res) => {
     });
 
     // Audit Log
-    await db.auditLog.create({
-      data: {
-        userId: booking.userId,
-        action: 'PAYMENT_SUCCESS',
-        details: JSON.stringify({ bookingId: booking.id, amount: booking.finalPrice, paymentId: simPaymentId }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: booking.userId,
+      eventType: 'PAYMENT',
+      action: 'PAYMENT_SUCCESS',
+      details: { bookingId: booking.id, amount: booking.finalPrice, paymentId: simPaymentId }
+    });
 
     // Notify User
     await db.notification.create({

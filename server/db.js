@@ -262,7 +262,11 @@ async function seedSandbox() {
     {
       id: 'al-seed-1',
       userId: 'user-cust',
-      action: 'USER_LOGIN',
+      userName: 'Aravind Swamy',
+      userEmail: 'customer@gmail.com',
+      userRole: 'USER',
+      eventType: 'LOGIN',
+      action: 'ACCOUNT_LOGIN',
       details: JSON.stringify({ email: 'customer@gmail.com', role: 'USER' }),
       ipAddress: '127.0.0.1',
       createdAt: new Date(Date.now() - 3600000 * 2) // 2 hours ago
@@ -270,7 +274,11 @@ async function seedSandbox() {
     {
       id: 'al-seed-2',
       userId: 'user-worker-w-2',
-      action: 'USER_LOGIN',
+      userName: 'Vijay Kumar',
+      userEmail: 'vijay@jkenterprises.com',
+      userRole: 'WORKER',
+      eventType: 'LOGIN',
+      action: 'ACCOUNT_LOGIN',
       details: JSON.stringify({ email: 'vijay@jkenterprises.com', role: 'WORKER' }),
       ipAddress: '127.0.0.1',
       createdAt: new Date(Date.now() - 3600000 * 5) // 5 hours ago
@@ -278,7 +286,11 @@ async function seedSandbox() {
     {
       id: 'al-seed-3',
       userId: 'user-admin',
-      action: 'USER_LOGIN',
+      userName: 'JK Admin',
+      userEmail: 'admin@jkenterprises.com',
+      userRole: 'ADMIN',
+      eventType: 'LOGIN',
+      action: 'ACCOUNT_LOGIN',
       details: JSON.stringify({ email: 'admin@jkenterprises.com', role: 'ADMIN' }),
       ipAddress: '127.0.0.1',
       createdAt: new Date(Date.now() - 3600000 * 12) // 12 hours ago
@@ -903,14 +915,44 @@ const db = {
     },
     findMany: async (args = {}) => {
       if (db.isSandbox()) {
-        return sandbox.auditLogs
-          .sort((a, b) => b.createdAt - a.createdAt)
-          .map(log => ({
-            ...log,
-            user: sandbox.users.find(u => u.id === log.userId) || null
-          }));
+        let list = [...sandbox.auditLogs];
+        
+        // Filter by eventType or userId
+        if (args.where) {
+          if (args.where.eventType) {
+            list = list.filter(log => log.eventType === args.where.eventType);
+          }
+          if (args.where.userId) {
+            list = list.filter(log => log.userId === args.where.userId);
+          }
+        }
+        
+        // Sort newest first
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        
+        // Paginate
+        const skip = args.skip || 0;
+        const take = args.take || list.length;
+        list = list.slice(skip, skip + take);
+        
+        return list.map(log => ({
+          ...log,
+          user: sandbox.users.find(u => u.id === log.userId) || null
+        }));
       }
       return await prisma.auditLog.findMany(args);
+    },
+    count: async (args = {}) => {
+      if (db.isSandbox()) {
+        let list = sandbox.auditLogs;
+        if (args.where) {
+          if (args.where.eventType) {
+            list = list.filter(log => log.eventType === args.where.eventType);
+          }
+        }
+        return list.length;
+      }
+      return await prisma.auditLog.count(args);
     }
   },
 

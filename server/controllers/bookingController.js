@@ -1,5 +1,6 @@
 const db = require('../db');
 const jwt = require('jsonwebtoken');
+const { logActivity } = require('../utils/auditLogger');
 
 // Helper to send mock WhatsApp notification to Admin
 const sendAdminWhatsAppNotification = (name, mobile, email, action) => {
@@ -115,24 +116,20 @@ exports.createBooking = async (req, res) => {
     });
 
     // Audit Logging
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'BOOKING_CREATED',
-        details: JSON.stringify({ bookingId: booking.id, finalPrice: booking.finalPrice }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'BOOKING',
+      action: 'BOOKING_CREATED',
+      details: { bookingId: booking.id, finalPrice: booking.finalPrice }
+    });
 
     if (couponCode) {
-      await db.auditLog.create({
-        data: {
-          userId: req.user.id,
-          action: 'COUPON_APPLIED',
-          details: JSON.stringify({ bookingId: booking.id, couponCode, discountApplied }),
-          ipAddress: req.ip
-        }
-      }).catch(() => {});
+      logActivity(req, {
+        userId: req.user.id,
+        eventType: 'BOOKING',
+        action: 'COUPON_APPLIED',
+        details: { bookingId: booking.id, couponCode, discountApplied }
+      });
     }
 
     // WhatsApp Notification
@@ -482,14 +479,12 @@ exports.confirmPaymentSuccess = async (req, res) => {
     });
 
     // Audit Logging
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'BOOKING_CREATED',
-        details: JSON.stringify({ bookingId: booking.id, serviceName: service_name, amount: booking.finalPrice }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'BOOKING',
+      action: 'BOOKING_CREATED',
+      details: { bookingId: booking.id, serviceName: service_name, amount: booking.finalPrice }
+    });
 
     // 4. Trigger simulated Admin WhatsApp Dispatch Log to Console
     console.log('\n==================================================');

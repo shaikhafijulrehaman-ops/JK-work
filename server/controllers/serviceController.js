@@ -1,4 +1,5 @@
 const db = require('../db');
+const { logActivity } = require('../utils/auditLogger');
 
 /**
  * Get all catalog services
@@ -78,14 +79,12 @@ exports.createService = async (req, res) => {
     });
 
     // Write Audit Log
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'SERVICE_CREATE',
-        details: JSON.stringify({ id: service.id, name: service.name, price: service.price }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'ADMIN',
+      action: 'SERVICE_CREATE',
+      details: { id: service.id, name: service.name, price: service.price }
+    });
 
     res.status(201).json({
       success: true,
@@ -144,14 +143,12 @@ exports.updateService = async (req, res) => {
     });
 
     // Write Audit Log
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'SERVICE_UPDATE',
-        details: JSON.stringify({ id: updated.id, name: updated.name, oldPrice: existing.price, newPrice: updated.price }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'ADMIN',
+      action: 'SERVICE_UPDATE',
+      details: { id: updated.id, name: updated.name, oldPrice: existing.price, newPrice: updated.price }
+    });
 
 
     res.status(200).json({
@@ -181,14 +178,12 @@ exports.deleteService = async (req, res) => {
     await db.service.delete({ where: { id: req.params.id } });
 
     // Write Audit Log
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'SERVICE_DELETE',
-        details: JSON.stringify({ id: existing.id, name: existing.name }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'ADMIN',
+      action: 'SERVICE_DELETE',
+      details: { id: existing.id, name: existing.name }
+    });
 
     res.status(200).json({
       success: true,

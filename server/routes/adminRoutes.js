@@ -32,6 +32,7 @@ router.get('/bookings', protect, restrictTo('ADMIN'), adminController.getBooking
 router.get('/customers', protect, restrictTo('ADMIN'), adminController.getCustomers);
 router.get('/services', protect, restrictTo('ADMIN'), adminController.getServices);
 router.get('/payments', protect, restrictTo('ADMIN'), adminController.getPayments);
+router.get('/audit-logs', protect, restrictTo('ADMIN'), adminController.getAuditLogs);
 
 module.exports = router;
 

@@ -126,7 +126,6 @@ exports.getAnalytics = async (req, res) => {
 exports.getDashboardData = async (req, res) => {
   try {
     let bookings;
-    let auditLogs;
 
     if (db.isSandbox()) {
       bookings = await db.booking.findMany({
@@ -136,33 +135,16 @@ exports.getDashboardData = async (req, res) => {
         }
       });
       bookings = bookings.slice(0, 100);
-
-      auditLogs = await db.auditLog.findMany({
-        include: {
-          user: { select: { id: true, name: true, email: true, phone: true, role: true } }
-        }
-      });
-      auditLogs = auditLogs.slice(0, 100);
     } else {
       const prisma = db.getPrisma();
       bookings = await prisma.booking.findMany({
-        take: 100,
+        take: 105,
         include: {
           user: {
             select: { id: true, name: true, email: true, phone: true }
           },
           items: {
             include: { service: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      auditLogs = await prisma.auditLog.findMany({
-        take: 100,
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true, role: true }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -188,7 +170,7 @@ exports.getDashboardData = async (req, res) => {
       customers,
       services,
       coupons,
-      auditLogs
+      auditLogs: []
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -392,6 +374,46 @@ exports.getPayments = async (req, res) => {
   } catch (error) {
     console.error('Error fetching admin payments:', error);
     res.status(500).json({ success: false, message: 'Server error fetching payments' });
+  }
+};
+
+// GET /api/admin/audit-logs
+exports.getAuditLogs = async (req, res) => {
+  try {
+    const { eventType, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {};
+    if (eventType && eventType !== 'All') {
+      where.eventType = eventType;
+    }
+
+    const [logs, totalCount] = await Promise.all([
+      db.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true, role: true }
+          }
+        }
+      }),
+      db.auditLog.count({ where })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      logs,
+      totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / take)
+    });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching audit logs.' });
   }
 };
 

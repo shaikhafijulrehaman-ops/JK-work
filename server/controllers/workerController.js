@@ -1,4 +1,5 @@
 const db = require('../db');
+const { logActivity } = require('../utils/auditLogger');
 
 /**
  * Worker Portal: Get all assigned jobs
@@ -92,14 +93,12 @@ exports.updateJobStatus = async (req, res) => {
     });
 
     if (status === 'CANCELLED') {
-      await db.auditLog.create({
-        data: {
-          userId: req.user.id,
-          action: 'BOOKING_CANCELLED',
-          details: JSON.stringify({ bookingId: booking.id }),
-          ipAddress: req.ip
-        }
-      }).catch(() => {});
+      logActivity(req, {
+        userId: req.user.id,
+        eventType: 'BOOKING',
+        action: 'BOOKING_CANCELLED',
+        details: { bookingId: booking.id }
+      });
     }
 
     // Notify Customer about state shift
@@ -171,14 +170,12 @@ exports.toggleWorkerStatus = async (req, res) => {
     });
 
     // Audit logs
-    await db.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'WORKER_STATUS_CHANGE',
-        details: JSON.stringify({ workerId: req.params.id, status }),
-        ipAddress: req.ip
-      }
-    }).catch(() => {});
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'ADMIN',
+      action: 'WORKER_STATUS_CHANGE',
+      details: { workerId: req.params.id, status }
+    });
 
     res.status(200).json({
       success: true,
