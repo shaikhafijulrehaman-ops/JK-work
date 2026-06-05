@@ -6,9 +6,21 @@
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
     "server": "npm run dev --prefix server",
     "client": "npm run dev --prefix client",
-    "dev": "concurrently \"npm run server\" \"npm run client\""
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "postinstall": "prisma generate --schema=server/prisma/schema.prisma"
   },
   "dependencies": {
-    "concurrently": "^8.2.2"
+    "@prisma/client": "^5.14.0",
+    "bcryptjs": "^2.4.3",
+    "concurrently": "^8.2.2",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "prisma": "^5.14.0"
   }
 }

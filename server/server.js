@@ -81,11 +81,16 @@ app.use((err, req, res, next) => {
 });
 
 // ==================== BIND SERVER PORT ====================
-app.listen(PORT, () => {
-  console.log('================================================================');
-  console.log(`🚀 [JK Enterprises Server] Service Booking Gateway Active!`);
-  console.log(`📍 Port: ${PORT}`);
-  console.log(`🎯 Brand: JK Enterprises (Anchepalya Instant Cleaning Usp)`);
-  console.log(`📅 Date: May 2026`);
-  console.log('================================================================');
-});
+if (process.env.NODE_ENV !== 'production' || require.main === module) {
+  app.listen(PORT, () => {
+    console.log('================================================================');
+    console.log(`🚀 [JK Enterprises Server] Service Booking Gateway Active!`);
+    console.log(`📍 Port: ${PORT}`);
+    console.log(`🎯 Brand: JK Enterprises (Anchepalya Instant Cleaning Usp)`);
+    console.log(`📅 Date: May 2026`);
+    console.log('================================================================');
+  });
+}
+
+module.exports = app;
+
