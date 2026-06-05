@@ -338,6 +338,80 @@ exports.getMe = async (req, res) => {
   }
 };
 
+// Helper to send real OTP email via Resend API
+const sendOTPEmail = async (email, otp) => {
+  const apiKey = process.env.RESEND_API_KEY || 're_PDsJCVRp_35jTcm1yNgt8PS7bCQerQ1PM';
+  if (!apiKey) {
+    console.warn('⚠️ [Mail Gateway] RESEND_API_KEY is not set. OTP email will only be mocked in logs.');
+    return false;
+  }
+
+  const fromEmail = process.env.RESEND_FROM || 'JK Home Care <no-reply@jkhomecare.in>';
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [email],
+        subject: 'JK Home Care - OTP Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+            <p>Hello,</p>
+            <p>Thank you for choosing JK Home Care. Use the following One-Time Password (OTP) to complete your verification:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background-color: #f1f5f9; padding: 10px 20px; border-radius: 4px; border: 1px dashed #cbd5e1;">${otp}</span>
+            </div>
+            <p style="color: #64748b; font-size: 14px;">This code is valid for 10 minutes. If you did not request this verification, please ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      console.log(`✉️ OTP email sent successfully to ${email} via Resend. ID: ${data.id}`);
+      return true;
+    } else {
+      console.warn('⚠️ Resend primary email send failed:', data.message || data);
+      
+      // Fallback to onboarding@resend.dev for developer testing if primary failed
+      if (fromEmail !== 'JK Home Care <onboarding@resend.dev>') {
+        console.log('🔄 Attempting fallback send via onboarding@resend.dev...');
+        const fallbackResponse = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: 'JK Home Care <onboarding@resend.dev>',
+            to: [email],
+            subject: 'JK Home Care - OTP Verification Code (Fallback)',
+            html: `<p>Your verification code is: <strong>${otp}</strong></p>`
+          })
+        });
+        
+        if (fallbackResponse.ok) {
+          console.log(`✉️ OTP email sent successfully via onboarding fallback.`);
+          return true;
+        }
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error sending OTP email via Resend:', error.message);
+    return false;
+  }
+};
+
 /**
  * Mock Email OTP Login Simulation
  */
@@ -348,17 +422,20 @@ exports.sendOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide email address.' });
     }
 
-    // Simulated Email dispatch
     const otp = Math.floor(100000 + Math.random() * 900000);
     otps[email] = otp;
-    console.log(`✉️ [Mail Gateway mock] To: ${email} - OTP Code: ${otp} (JK Enterprises Email OTP Verification)`);
+    console.log(`✉️ [Mail Gateway] Generating OTP for ${email}: ${otp}`);
+
+    // Trigger the actual email send asynchronously
+    sendOTPEmail(email, otp);
 
     res.status(200).json({
       success: true,
-      message: 'OTP Code sent successfully. Check console log for code.',
-      otp: otp // Exposed for local simulation convenience
+      message: 'OTP Code sent successfully. Please check your email.',
+      otp: process.env.NODE_ENV !== 'production' ? otp : undefined // Expose OTP only in development/test
     });
   } catch (error) {
+    console.error('Send OTP error:', error);
     res.status(500).json({ success: false, message: 'Failed to send OTP.' });
   }
 };
