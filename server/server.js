@@ -55,6 +55,24 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
+// ==================== TEMPORARY DB DEBUG ENDPOINT ====================
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const p = new PrismaClient();
+    const services = await p.service.findMany({ take: 1 });
+    res.status(200).json({ success: true, message: 'Database query succeeded!', services });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Database query failed!', 
+      errorName: err.name,
+      errorMessage: err.message, 
+      errorStack: err.stack 
+    });
+  }
+});
+
 // ==================== MOUNT API ROUTER ====================
 app.use('/api', apiRouter);
 
