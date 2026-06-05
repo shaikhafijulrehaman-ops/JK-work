@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.js"
+      "destination": "https://jk-work.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
