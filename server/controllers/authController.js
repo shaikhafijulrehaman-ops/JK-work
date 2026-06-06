@@ -803,4 +803,40 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+/**
+ * Google Login (checks if email exists in database, else returns error)
+ */
+exports.googleLogin = async (req, res) => {
+  const { email } = req.body;
+  console.log(`[GOOGLE LOGIN TRACE] 🛡️ Google login request initiated for email: ${email}`);
+
+  try {
+    if (!email) {
+      console.warn(`[GOOGLE LOGIN TRACE] ⚠️ Missing Google email.`);
+      return res.status(400).json({ success: false, message: 'Please provide email.' });
+    }
+
+    console.log(`[GOOGLE LOGIN TRACE] Step 1: Querying user from database...`);
+    const user = await db.user.findUnique({ 
+      where: { email }
+    });
+    console.log(`[GOOGLE LOGIN TRACE] Database query completed. User found: ${!!user}`);
+
+    if (!user) {
+      console.warn(`[GOOGLE LOGIN TRACE] ⚠️ Authentication failed: User email ${email} not found.`);
+      return res.status(404).json({ success: false, message: 'Account not found. Please register first.' });
+    }
+
+    console.log(`[GOOGLE LOGIN TRACE] Step 2: Triggering WhatsApp admin notification...`);
+    sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Google Login');
+
+    console.log(`[GOOGLE LOGIN TRACE] Step 3: Structuring token response...`);
+    sendTokenResponse(user, 200, res);
+    console.log(`[GOOGLE LOGIN TRACE] ✅ Google Login response sent successfully.`);
+  } catch (error) {
+    console.error('💥 [GOOGLE LOGIN ERROR] Exception caught:', error);
+    res.status(500).json({ success: false, message: 'Unable to complete Google login. Please try again shortly.' });
+  }
+};
+
 

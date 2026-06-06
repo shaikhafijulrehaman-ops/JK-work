@@ -40,16 +40,36 @@ export const useAuthStore = create((set, get) => ({
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (session) {
-        // Fetch user profile from our backend or use Supabase user metadata
-        // For now, we'll construct a user object from session.user
-        const user = {
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.name || 'User',
-          phone: session.user.user_metadata?.phone || '',
-          role: session.user.user_metadata?.role || 'USER',
-        };
-        set({ user, isAuthenticated: true, loading: false });
+        // Verify this Google user exists in our database
+        try {
+          const res = await fetch(`${API_URL}/auth/google-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: session.user.email })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem('jk_user', JSON.stringify(data.user));
+            if (data.token) {
+              localStorage.setItem('jk_token', data.token);
+            }
+            set({ user: data.user, isAuthenticated: true, loading: false });
+          } else {
+            // Email not in DB! We must sign out and clear session.
+            await supabase.auth.signOut();
+            localStorage.removeItem('jk_user');
+            localStorage.removeItem('jk_token');
+            set({ user: null, isAuthenticated: false, error: data.message || 'Account not found. Please register first.', loading: false });
+          }
+        } catch (e) {
+          // If connection fails, check if we can fall back to local stored user
+          const storedUser = localStorage.getItem('jk_user');
+          if (storedUser) {
+            set({ user: JSON.parse(storedUser), isAuthenticated: true, loading: false });
+          } else {
+            set({ user: null, isAuthenticated: false, loading: false });
+          }
+        }
       } else {
         // Offline preview safety fallback
         const storedUser = localStorage.getItem('jk_user');
@@ -67,6 +87,71 @@ export const useAuthStore = create((set, get) => ({
       } else {
         set({ user: null, isAuthenticated: false, loading: false });
       }
+    }
+  },
+
+  // Log in with Google OAuth (Supabase)
+  loginWithGoogle: async () => {
+    set({ loading: true, error: null });
+
+    // In local development, bypass the Supabase OAuth redirect to avoid "provider is not enabled" error.
+    if (import.meta.env.MODE !== 'production') {
+      const simulatedEmail = prompt("Enter Google Email to simulate Google Sign-In:", "admin@jkenterprises.com");
+      if (!simulatedEmail) {
+        set({ loading: false });
+        return { success: false, error: 'Google login cancelled.' };
+      }
+      
+      try {
+        const res = await fetch(`${API_URL}/auth/google-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: simulatedEmail })
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem('jk_user', JSON.stringify(data.user));
+          if (data.token) {
+            localStorage.setItem('jk_token', data.token);
+          }
+          set({ user: data.user, isAuthenticated: true, loading: false });
+          return { success: true, user: data.user };
+        } else {
+          set({ error: data.message, loading: false });
+          return { success: false, error: data.message };
+        }
+      } catch (err) {
+        // Local storage fallback for sandbox
+        const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+        const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
+        if (localUserMatch) {
+          localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
+          localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
+          set({ user: localUserMatch, isAuthenticated: true, loading: false });
+          return { success: true, user: localUserMatch };
+        } else {
+          const msg = 'Account not found. Please register first.';
+          set({ error: msg, loading: false });
+          return { success: false, error: msg };
+        }
+      }
+    }
+
+    // Production flow: Real Supabase OAuth Google Sign-In
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + '/auth?google_callback=true'
+        }
+      });
+      if (error) {
+        throw error;
+      }
+      return { success: true };
+    } catch (e) {
+      set({ error: e.message || 'Google Sign-In failed.', loading: false });
+      return { success: false, error: e.message };
     }
   },
 

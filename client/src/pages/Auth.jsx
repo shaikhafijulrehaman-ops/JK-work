@@ -6,7 +6,7 @@ import { Mail, Lock, User, Phone, CheckCircle, PhoneCall, Key } from 'lucide-rea
 import AuthSignupFlow from '../components/auth/AuthSignupFlow';
 
 export default function Auth() {
-  const { login, register, sendOtp, verifyOtp, simulatedOtp, error, loading } = useAuthStore();
+  const { login, register, sendOtp, verifyOtp, simulatedOtp, error, loading, loginWithGoogle } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -108,6 +108,18 @@ export default function Auth() {
     }
   };
 
+  // Handles Google login
+  const handleGoogleSignIn = async () => {
+    setLocalErr(null);
+    setMsg(null);
+    const res = await loginWithGoogle();
+    if (res && res.success) {
+      navigate('/dashboard');
+    } else if (res && res.error) {
+      setLocalErr(res.error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-0 md:p-4 font-inter">
       
@@ -137,23 +149,16 @@ export default function Auth() {
               <p className="text-xs text-slate-400 mb-4">Enter your credentials to book services</p>
 
               {/* Social Logins */}
-              <div className="flex space-x-3 mb-4">
-                <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M12.24 10.285V13.4h6.887c-.648 2.41-2.519 4.1-5.136 4.1A5.72 5.72 0 0 1 8.2 11.8a5.72 5.72 0 0 1 5.79-5.7 5.66 5.66 0 0 1 4.07 1.68l2.5-2.4a9.124 9.124 0 0 0-6.57-2.78 9.2 9.2 0 0 0-9.2 9.2 9.2 9.2 0 0 0 9.2 9.2c5.03 0 9.1-3.6 9.1-9.2a8.67 8.67 0 0 0-.17-1.84Z"/>
-                  </svg>
-                </button>
-                <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-.93 8-4.96 8-9.75Z"/>
-                  </svg>
-                </button>
-                <button type="button" className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-100 hover:bg-slate-50 text-slate-500 transition-colors">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77Z"/>
-                  </svg>
-                </button>
-              </div>
+              <button 
+                type="button" 
+                onClick={handleGoogleSignIn}
+                className="flex items-center justify-center w-full max-w-[220px] h-10 px-4 mb-4 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors font-semibold text-xs space-x-2 shadow-sm active:scale-[0.98]"
+              >
+                <svg className="w-4 h-4 fill-current text-slate-500" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V13.4h6.887c-.648 2.41-2.519 4.1-5.136 4.1A5.72 5.72 0 0 1 8.2 11.8a5.72 5.72 0 0 1 5.79-5.7 5.66 5.66 0 0 1 4.07 1.68l2.5-2.4a9.124 9.124 0 0 0-6.57-2.78 9.2 9.2 0 0 0-9.2 9.2 9.2 9.2 0 0 0 9.2 9.2c5.03 0 9.1-3.6 9.1-9.2a8.67 8.67 0 0 0-.17-1.84Z"/>
+                </svg>
+                <span>Continue with Google</span>
+              </button>
 
               <div className="w-full space-y-3 px-2 mb-2">
                 <div className="form-group">
@@ -620,16 +625,16 @@ export default function Auth() {
                 <div className="flex-grow border-t border-slate-200/80"></div>
               </div>
 
-              <div className="flex justify-center space-x-4">
-                <button type="button" className="flex items-center justify-center w-10 h-10 rounded-full border border-slate-200 bg-white/90 hover:bg-white text-slate-600 shadow-sm transition-all active:scale-95">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <div className="flex justify-center">
+                <button 
+                  type="button" 
+                  onClick={handleGoogleSignIn}
+                  className="flex items-center justify-center w-full max-w-[240px] h-11 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition-all active:scale-95 font-semibold text-xs space-x-2"
+                >
+                  <svg className="w-4 h-4 fill-current text-slate-500" viewBox="0 0 24 24">
                     <path d="M12.24 10.285V13.4h6.887c-.648 2.41-2.519 4.1-5.136 4.1A5.72 5.72 0 0 1 8.2 11.8a5.72 5.72 0 0 1 5.79-5.7 5.66 5.66 0 0 1 4.07 1.68l2.5-2.4a9.124 9.124 0 0 0-6.57-2.78 9.2 9.2 0 0 0-9.2 9.2 9.2 9.2 0 0 0 9.2 9.2c5.03 0 9.1-3.6 9.1-9.2a8.67 8.67 0 0 0-.17-1.84Z"/>
                   </svg>
-                </button>
-                <button type="button" className="flex items-center justify-center w-10 h-10 rounded-full border border-slate-200 bg-white/90 hover:bg-white text-slate-600 shadow-sm transition-all active:scale-95">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-9.3 8-4.96 8-9.75Z"/>
-                  </svg>
+                  <span>Continue with Google</span>
                 </button>
               </div>
 

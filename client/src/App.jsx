@@ -86,7 +86,11 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/services" element={<ServicesPage />} />
             <Route path="/book" element={<BookingPage />} />
-            <Route path="/auth" element={isAuthenticated ? <Navigate to="/services" replace /> : <Auth />} />
+            <Route path="/auth" element={
+              isAuthenticated ? (
+                window.location.search.includes('google_callback') ? <Navigate to="/dashboard" replace /> : <Navigate to="/services" replace />
+              ) : <Auth />
+            } />
             <Route path="/customer-register" element={<CustomerRegister />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />

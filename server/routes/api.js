@@ -20,6 +20,7 @@ const addressCtrl = require('../controllers/addressController');
 router.post('/auth/register', authCtrl.register);
 router.post('/auth/register-partner', authCtrl.registerPartner);
 router.post('/auth/login', authLimiter, authCtrl.login);
+router.post('/auth/google-login', authCtrl.googleLogin);
 router.get('/auth/refresh', authCtrl.refresh);
 router.get('/auth/logout', authCtrl.logout);
 router.get('/auth/me', protect, authCtrl.getMe);
