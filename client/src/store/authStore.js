@@ -90,51 +90,116 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Log in with Google OAuth (Supabase)
-  // Log in with Google OAuth (Simulated fallback)
+  // Log in with Google OAuth (Real popup + simulated fallback)
   loginWithGoogle: async () => {
-    set({ loading: true, error: null });
+    return new Promise((resolve) => {
+      set({ loading: true, error: null });
 
-    // Always use the simulated Google Sign-In to support sandbox/preview setups and bypass unconfigured Supabase OAuth
-    const simulatedEmail = prompt("Enter Google Email to continue:", "admin@jkenterprises.com");
-    if (!simulatedEmail) {
-      set({ loading: false });
-      return { success: false, error: 'Google login cancelled.' };
-    }
-    
-    try {
-      const res = await fetch(`${API_URL}/auth/google-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: simulatedEmail })
-      });
-      const data = await res.json();
-      if (data.success) {
-        localStorage.setItem('jk_user', JSON.stringify(data.user));
-        if (data.token) {
-          localStorage.setItem('jk_token', data.token);
+      try {
+        if (typeof google === 'undefined' || !google.accounts) {
+          throw new Error('Google Sign-In library failed to load or is not loaded yet.');
         }
-        set({ user: data.user, isAuthenticated: true, loading: false });
-        return { success: true, user: data.user };
-      } else {
-        set({ error: data.message, loading: false });
-        return { success: false, error: data.message };
+
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
+          scope: 'email profile',
+          callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              try {
+                // Fetch email from Google API using the access token
+                const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                });
+                
+                if (!userInfoRes.ok) {
+                  throw new Error('Failed to retrieve user info from Google.');
+                }
+                
+                const userInfo = await userInfoRes.json();
+                const email = userInfo.email;
+
+                // Send email to backend validation
+                const res = await fetch(`${API_URL}/auth/google-login`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                if (data.success) {
+                  localStorage.setItem('jk_user', JSON.stringify(data.user));
+                  if (data.token) {
+                    localStorage.setItem('jk_token', data.token);
+                  }
+                  set({ user: data.user, isAuthenticated: true, loading: false });
+                  resolve({ success: true, user: data.user });
+                } else {
+                  set({ error: data.message, loading: false });
+                  resolve({ success: false, error: data.message });
+                }
+              } catch (err) {
+                console.error("Google verify error:", err);
+                set({ error: err.message, loading: false });
+                resolve({ success: false, error: err.message });
+              }
+            } else {
+              set({ loading: false });
+              resolve({ success: false, error: 'Google login failed.' });
+            }
+          },
+          error_callback: (err) => {
+            console.error("Google token error:", err);
+            set({ error: err.message, loading: false });
+            resolve({ success: false, error: err.message });
+          }
+        });
+
+        client.requestAccessToken({ prompt: 'select_account' });
+      } catch (e) {
+        console.warn('Google SDK not loaded, falling back to mock prompt:', e);
+        
+        // Dynamic sandbox fallback if script is blocked or offline
+        const simulatedEmail = prompt("Enter Google Email to continue (SDK fallback):", "admin@jkenterprises.com");
+        if (!simulatedEmail) {
+          set({ loading: false });
+          resolve({ success: false, error: 'Google login cancelled.' });
+          return;
+        }
+
+        fetch(`${API_URL}/auth/google-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: simulatedEmail })
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              localStorage.setItem('jk_user', JSON.stringify(data.user));
+              if (data.token) {
+                localStorage.setItem('jk_token', data.token);
+              }
+              set({ user: data.user, isAuthenticated: true, loading: false });
+              resolve({ success: true, user: data.user });
+            } else {
+              set({ error: data.message, loading: false });
+              resolve({ success: false, error: data.message });
+            }
+          })
+          .catch(err => {
+            const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+            const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
+            if (localUserMatch) {
+              localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
+              localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
+              set({ user: localUserMatch, isAuthenticated: true, loading: false });
+              resolve({ success: true, user: localUserMatch });
+            } else {
+              const msg = 'Account not found. Please register first.';
+              set({ error: msg, loading: false });
+              resolve({ success: false, error: msg });
+            }
+          });
       }
-    } catch (err) {
-      // Local storage fallback for sandbox
-      const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-      const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
-      if (localUserMatch) {
-        localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-        localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
-        set({ user: localUserMatch, isAuthenticated: true, loading: false });
-        return { success: true, user: localUserMatch };
-      } else {
-        const msg = 'Account not found. Please register first.';
-        set({ error: msg, loading: false });
-        return { success: false, error: msg };
-      }
-    }
+    });
   },
 
   // Log in user / admin / worker
