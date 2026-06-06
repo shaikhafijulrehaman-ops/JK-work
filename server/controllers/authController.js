@@ -175,38 +175,49 @@ exports.registerPartner = async (req, res) => {
  * Login User / Worker / Admin
  */
 exports.login = async (req, res) => {
+  const { email, password } = req.body;
+  console.log(`[LOGIN TRACE] 🛡️ Login request initiated for email: ${email}`);
+  
   try {
-    const { email, password } = req.body;
-
     if (!email || !password) {
+      console.warn(`[LOGIN TRACE] ⚠️ Missing login credentials.`);
       return res.status(400).json({ success: false, message: 'Please provide email and password.' });
     }
 
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
-    console.log('------------------------------');
+    console.log(`[LOGIN TRACE] Step 1: Querying user from database...`);
     const user = await db.user.findUnique({ 
       where: { email }
     });
+    console.log(`[LOGIN TRACE] Database query completed. User found: ${!!user}`);
 
     if (!user || user.role === 'WORKER') {
+      console.warn(`[LOGIN TRACE] ⚠️ Authentication failed: User not found or role WORKER is restricted.`);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // Check password
+    console.log(`[LOGIN TRACE] Step 2: Comparing bcrypt passwords...`);
     const isMatch = await bcrypt.compare(password, user.password);
+    console.log(`[LOGIN TRACE] Bcrypt comparison completed. Match result: ${isMatch}`);
+    
     if (!isMatch) {
+      console.warn(`[LOGIN TRACE] ⚠️ Authentication failed: Password mismatch.`);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // WhatsApp Notification
+    console.log(`[LOGIN TRACE] Step 3: Triggering WhatsApp admin notification...`);
     sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Login');
 
+    console.log(`[LOGIN TRACE] Step 4: Structuring token response...`);
     sendTokenResponse(user, 200, res);
+    console.log(`[LOGIN TRACE] ✅ Login response sent successfully.`);
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('💥 [LOGIN AUDIT ERROR] Exception caught during user login flow:');
+    console.error('   Email:', email);
+    console.error('   Error Name:', error.name);
+    console.error('   Error Message:', error.message);
+    console.error('   Error Code:', error.code || 'N/A');
+    console.error('   Stack Trace:', error.stack);
+    
     res.status(500).json({ success: false, message: 'Unable to complete login. Please try again shortly.' });
   }
 };

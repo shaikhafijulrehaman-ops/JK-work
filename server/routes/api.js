@@ -86,30 +86,6 @@ router.put('/notifications/:id/read', protect, statsCtrl.markAsRead);
 // ==================== ADMIN DASHBOARD ====================
 router.use('/admin', require('./adminRoutes'));
 
-router.get('/debug-db-status', async (req, res) => {
-  try {
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
-    const count = await prisma.user.count();
-    await prisma.$disconnect();
-    res.status(200).json({
-      success: true,
-      message: 'Database query succeeded.',
-      userCount: count,
-      databaseUrl: process.env.DATABASE_URL ? (process.env.DATABASE_URL.substring(0, 40) + '...') : 'missing'
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: 'Database query failed.',
-      error: err.message,
-      stack: err.stack,
-      env: {
-        NODE_ENV: process.env.NODE_ENV,
-        PORT: process.env.PORT
-      }
-    });
-  }
-});
+// Debug routes cleaned up
 
 module.exports = router;

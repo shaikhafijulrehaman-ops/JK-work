@@ -268,11 +268,20 @@ try {
     })
     .catch((err) => {
       useSandbox = true;
+      console.error('💥 [DATABASE CONNECTION ERROR] Failed to connect to PostgreSQL database:');
+      console.error('   Error Name:', err.name);
+      console.error('   Error Message:', err.message);
+      console.error('   Error Code:', err.code || 'N/A');
+      console.error('   Stack Trace:', err.stack);
       console.warn('⚠️ [JK Enterprises DB] Neon PostgreSQL offline or invalid connection. Falling back to local In-Memory Sandbox.');
       console.warn('💡 Supply a valid DATABASE_URL in server/.env to run migrations on live PostgreSQL.');
     });
 } catch (e) {
   useSandbox = true;
+  console.error('💥 [DATABASE INITIALIZATION ERROR] Prisma client failed to initialize:');
+  console.error('   Error Name:', e.name);
+  console.error('   Error Message:', e.message);
+  console.error('   Stack Trace:', e.stack);
   console.warn('⚠️ [JK Enterprises DB] Prisma client failed to initialize. Falling back to In-Memory Sandbox.');
 }
 
@@ -1091,6 +1100,13 @@ Object.keys(db).forEach(modelKey => {
           try {
             return await originalMethod.apply(this, args);
           } catch (err) {
+            // Log the query failure in detail
+            console.error(`💥 [DATABASE QUERY ERROR] Exception during ${modelKey}.${methodKey} execution:`);
+            console.error(`   Error Name:`, err.name);
+            console.error(`   Error Message:`, err.message);
+            console.error(`   Error Code:`, err.code || 'N/A');
+            console.error(`   Stack Trace:`, err.stack);
+
             // Fail-fast / retry in production: propagate or retry any DB/query errors
             if (process.env.NODE_ENV === 'production') {
               const isTransient = err.message?.toLowerCase().includes('connection') || 
