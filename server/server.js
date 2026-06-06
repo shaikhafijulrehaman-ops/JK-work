@@ -92,32 +92,6 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/debug-db-status', async (req, res) => {
-  try {
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
-    const count = await prisma.user.count();
-    await prisma.$disconnect();
-    res.status(200).json({
-      success: true,
-      message: 'Database query succeeded.',
-      userCount: count,
-      databaseUrl: process.env.DATABASE_URL ? (process.env.DATABASE_URL.substring(0, 40) + '...') : 'missing'
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: 'Database query failed.',
-      error: err.message,
-      stack: err.stack,
-      env: {
-        NODE_ENV: process.env.NODE_ENV,
-        PORT: process.env.PORT
-      }
-    });
-  }
-});
-
 // ==================== 404 CATCHALL ====================
 app.use((req, res, next) => {
   res.status(404).json({
