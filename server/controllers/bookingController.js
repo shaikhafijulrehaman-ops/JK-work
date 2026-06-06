@@ -165,7 +165,7 @@ exports.createBooking = async (req, res) => {
     });
   } catch (error) {
     console.error('Create booking error:', error);
-    res.status(500).json({ success: false, message: 'Server error while submitting booking.' });
+    res.status(500).json({ success: false, message: 'Unable to complete booking. Please try again shortly.' });
   }
 };
 
@@ -523,6 +523,6 @@ exports.confirmPaymentSuccess = async (req, res) => {
 
   } catch (error) {
     console.error('Confirm Payment Success Error:', error);
-    res.status(500).json({ success: false, message: 'Server error during booking confirmation.' });
+    res.status(500).json({ success: false, message: 'Unable to confirm booking. Please try again shortly.' });
   }
 };

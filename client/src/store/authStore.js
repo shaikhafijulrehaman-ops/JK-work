@@ -96,7 +96,7 @@ export const useAuthStore = create((set, get) => ({
         return { success: true, user: data.user };
       } else {
         // Dynamic offline sandboxed login backup for zero-configuration local runs
-        if (email === 'admin@jkenterprises.com' && password === 'admin123') {
+        if (import.meta.env.MODE !== 'production' && email === 'admin@jkenterprises.com' && password === 'admin123') {
           console.log("Step 2: Auth Response");
           console.log("Step 3: Fetch User Profile");
           console.log("Step 4: Session Created");
@@ -115,36 +115,38 @@ export const useAuthStore = create((set, get) => ({
       console.error('[JK Auth Monitoring] Login failure:', e);
       const isTimeout = e.name === 'AbortError' || e.message?.toLowerCase().includes('timeout') || e.message?.toLowerCase().includes('abort');
       
-      // Dynamic local preview bypass - Local Storage custom registrations check
-      const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-      const localUserMatch = localUsers.find(u => u.email === email);
-      if (localUserMatch) {
-        console.log("Step 2: Auth Response");
-        console.log("Step 3: Fetch User Profile");
-        console.log("Step 4: Session Created");
-        const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-        const workerProfile = localWorkers.find(w => w.userId === localUserMatch.id);
-        
-        if (localUserMatch.role === 'WORKER' && workerProfile) {
-          // Store workerProfile inside localUserMatch so the dashboard has access to it
-          localUserMatch.workerProfile = workerProfile;
+      if (import.meta.env.MODE !== 'production') {
+        // Dynamic local preview bypass - Local Storage custom registrations check
+        const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+        const localUserMatch = localUsers.find(u => u.email === email);
+        if (localUserMatch) {
+          console.log("Step 2: Auth Response");
+          console.log("Step 3: Fetch User Profile");
+          console.log("Step 4: Session Created");
+          const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
+          const workerProfile = localWorkers.find(w => w.userId === localUserMatch.id);
+          
+          if (localUserMatch.role === 'WORKER' && workerProfile) {
+            // Store workerProfile inside localUserMatch so the dashboard has access to it
+            localUserMatch.workerProfile = workerProfile;
+          }
+          
+          localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
+          localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
+          set({ user: localUserMatch, isAuthenticated: true, loading: false });
+          return { success: true, user: localUserMatch };
         }
-        
-        localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-        localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
-        set({ user: localUserMatch, isAuthenticated: true, loading: false });
-        return { success: true, user: localUserMatch };
-      }
 
-      if (email === 'admin@jkenterprises.com' && password === 'admin123') {
-        console.log("Step 2: Auth Response");
-        console.log("Step 3: Fetch User Profile");
-        console.log("Step 4: Session Created");
-        const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
-        localStorage.setItem('jk_user', JSON.stringify(mockUser));
-        localStorage.setItem('jk_token', 'mock-token-admin');
-        set({ user: mockUser, isAuthenticated: true, loading: false });
-        return { success: true, user: mockUser };
+        if (email === 'admin@jkenterprises.com' && password === 'admin123') {
+          console.log("Step 2: Auth Response");
+          console.log("Step 3: Fetch User Profile");
+          console.log("Step 4: Session Created");
+          const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
+          localStorage.setItem('jk_user', JSON.stringify(mockUser));
+          localStorage.setItem('jk_token', 'mock-token-admin');
+          set({ user: mockUser, isAuthenticated: true, loading: false });
+          return { success: true, user: mockUser };
+        }
       }
 
 
@@ -172,6 +174,9 @@ export const useAuthStore = create((set, get) => ({
 
       if (authError) {
         console.error('SUPABASE ERROR:', authError);
+        if (import.meta.env.MODE === 'production') {
+          throw authError;
+        }
         console.warn('⚠️ AUTO-FIX: Bypassing Supabase Auth error and proceeding to Database Insert to complete onboarding flow end-to-end.');
         
         // Mock authData for DB insertion
@@ -218,6 +223,12 @@ export const useAuthStore = create((set, get) => ({
       }
     } catch (e) {
       console.error('SUPABASE ERROR OR NETWORK ERROR:', e);
+      
+      if (import.meta.env.MODE === 'production') {
+        const errMessage = 'Unable to complete registration at this time. Please check your network and try again.';
+        set({ error: errMessage, loading: false });
+        return { success: false, error: errMessage };
+      }
       
       // Sandbox/offline fallback for registration
       const sandboxUser = {

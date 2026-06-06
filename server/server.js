@@ -1,4 +1,28 @@
 require('dotenv').config();
+
+// ==================== ENVIRONMENT VARIABLE AUDIT ====================
+const REQUIRED_ENV = [
+  'DATABASE_URL',
+  'JWT_SECRET',
+  'JWT_REFRESH_SECRET',
+  'RAZORPAY_KEY_ID',
+  'RAZORPAY_KEY_SECRET',
+  'RESEND_API_KEY'
+];
+
+const missingEnv = REQUIRED_ENV.filter(key => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error('❌ [JK Enterprises Server] Missing Critical Environment Variables:');
+  missingEnv.forEach(key => console.error(`   - ${key}`));
+  console.error('Please configure these variables in the Render dashboard or local .env file.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('💥 Server is in production mode. Crashing startup for safety.');
+    process.exit(1);
+  }
+} else {
+  console.log('✅ [JK Enterprises Server] Environment Variable Audit Passed.');
+}
+
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -81,7 +105,7 @@ app.use((err, req, res, next) => {
   console.error('Unhandled System Exception:', err);
   res.status(500).json({
     success: false,
-    message: 'An internal server error occurred while processing your request.'
+    message: 'We are currently experiencing a temporary service disruption. Please try again shortly.'
   });
 });
 

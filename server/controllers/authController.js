@@ -156,7 +156,7 @@ exports.register = async (req, res) => {
     sendTokenResponse(user, 201, res);
   } catch (error) {
     console.error('Register error:', error);
-    res.status(500).json({ success: false, message: 'Server error during registration.' });
+    res.status(500).json({ success: false, message: 'Unable to complete registration. Please try again shortly.' });
   }
 };
 
@@ -207,7 +207,7 @@ exports.login = async (req, res) => {
     sendTokenResponse(user, 200, res);
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Server error during login.' });
+    res.status(500).json({ success: false, message: 'Unable to complete login. Please try again shortly.' });
   }
 };
 
@@ -306,7 +306,7 @@ exports.logout = async (req, res) => {
     });
   } catch (error) {
     console.error('Logout error:', error);
-    res.status(500).json({ success: false, message: 'Server error during logout.' });
+    res.status(500).json({ success: false, message: 'Unable to log out. Please try again shortly.' });
   }
 };
 
@@ -337,7 +337,7 @@ exports.getMe = async (req, res) => {
       user: userResponse
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred. Please try again shortly.' });
   }
 };
 
@@ -468,11 +468,11 @@ exports.forgotPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Reset instructions sent to your email. Check console log for code.',
-      resetToken // Simulated for ease
+      message: 'Reset instructions sent to your email.',
+      resetToken: process.env.NODE_ENV !== 'production' ? resetToken : undefined
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred. Please try again shortly.' });
   }
 };
 
@@ -506,7 +506,7 @@ exports.joinWaitlist = async (req, res) => {
     });
   } catch (error) {
     console.error('Waitlist join error:', error);
-    res.status(500).json({ success: false, message: 'Server error during waitlist submission.' });
+    res.status(500).json({ success: false, message: 'Unable to join waitlist. Please try again shortly.' });
   }
 };
 
@@ -639,7 +639,7 @@ exports.syncSupabase = async (req, res) => {
     });
   } catch (error) {
     console.error('Supabase sync error:', error);
-    res.status(500).json({ success: false, message: error.message || 'Server error during supabase sync.' });
+    res.status(500).json({ success: false, message: 'Account synchronization failed. Please try again shortly.' });
   }
 };
 
@@ -725,7 +725,7 @@ exports.verifyOTP = async (req, res) => {
     });
   } catch (error) {
     console.error('Verify OTP error:', error);
-    res.status(500).json({ success: false, message: 'Server error during OTP verification.' });
+    res.status(500).json({ success: false, message: 'Unable to verify OTP. Please try again shortly.' });
   }
 };
 
@@ -788,7 +788,7 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
-    res.status(500).json({ success: false, message: 'Server error during profile update.' });
+    res.status(500).json({ success: false, message: 'Unable to update profile. Please try again shortly.' });
   }
 };
 

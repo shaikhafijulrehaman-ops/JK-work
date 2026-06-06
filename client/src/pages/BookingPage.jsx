@@ -318,7 +318,11 @@ export default function BookingPage() {
             await handlePaymentSuccess(paymentId);
           } catch (verifyError) {
             console.error('Payment verification error:', verifyError);
-            setErrorMsg(verifyError.message || 'Failed to verify transaction signature.');
+            if (import.meta.env.MODE === 'production') {
+              setErrorMsg('Payment verification failed. Please contact customer support with your transaction details.');
+            } else {
+              setErrorMsg(verifyError.message || 'Failed to verify transaction signature.');
+            }
             setIsProcessingPayment(false);
           }
         },
@@ -353,7 +357,11 @@ export default function BookingPage() {
       rzp.open();
     } catch (orderError) {
       console.error('Order creation error:', orderError);
-      setErrorMsg(orderError.message || 'Failed to initialize payment transaction.');
+      if (import.meta.env.MODE === 'production') {
+        setErrorMsg('Failed to initialize payment transaction. Please try again shortly.');
+      } else {
+        setErrorMsg(orderError.message || 'Failed to initialize payment transaction.');
+      }
       setIsProcessingPayment(false);
     }
   };

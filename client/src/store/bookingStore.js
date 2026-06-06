@@ -29,6 +29,10 @@ export const useBookingStore = create((set, get) => ({
       }
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: fetchBookings failed', e);
+      if (import.meta.env.MODE === 'production') {
+        set({ error: 'Failed to retrieve bookings. Please try again shortly.', loading: false });
+        return;
+      }
       // Offline fallback lists
       const localBookings = JSON.parse(localStorage.getItem('jk_bookings')) || [];
       set({ bookings: localBookings, loading: false });
@@ -61,6 +65,11 @@ export const useBookingStore = create((set, get) => ({
       }
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: createBooking failed', e);
+      if (import.meta.env.MODE === 'production') {
+        const errMsg = 'Failed to submit booking. Please try again shortly.';
+        set({ error: errMsg, loading: false });
+        return { success: false, error: errMsg };
+      }
       // Local fallback mock order execution
       const mockOrder = {
         id: `booking-mock-${Date.now()}`,
@@ -125,9 +134,13 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
+      if (import.meta.env.MODE === 'production') return false;
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: updateJobStatus failed', e);
+      if (import.meta.env.MODE === 'production') return false;
     }
+
+    if (import.meta.env.MODE === 'production') return false;
 
     // Sandbox Local Mutation for live countdown preview
     const current = get().bookings;
@@ -161,9 +174,13 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
+      if (import.meta.env.MODE === 'production') return false;
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: assignWorker failed', e);
+      if (import.meta.env.MODE === 'production') return false;
     }
+
+    if (import.meta.env.MODE === 'production') return false;
 
     // Sandbox Local Assignment
     const current = get().bookings;
@@ -202,9 +219,13 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
+      if (import.meta.env.MODE === 'production') return false;
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: submitReview failed', e);
+      if (import.meta.env.MODE === 'production') return false;
     }
+
+    if (import.meta.env.MODE === 'production') return false;
 
     // Sandbox Local Review
     const current = get().bookings;
@@ -234,9 +255,13 @@ export const useBookingStore = create((set, get) => ({
         await get().fetchBookings();
         return true;
       }
+      if (import.meta.env.MODE === 'production') return false;
     } catch (e) {
       console.error('[JK Booking Monitoring] Payment failure: simulatePayment failed', e);
+      if (import.meta.env.MODE === 'production') return false;
     }
+
+    if (import.meta.env.MODE === 'production') return false;
 
     // Sandbox Payout Mutation
     const current = get().bookings;
@@ -269,8 +294,18 @@ export const useBookingStore = create((set, get) => ({
         set({ bookings: updated });
         return { success: true, booking: data.booking };
       }
+      if (import.meta.env.MODE === 'production') {
+        return { success: false, error: data.message || 'Booking details not found.' };
+      }
     } catch (e) {
       console.error('[JK Booking Monitoring] API/Database failure: fetchBookingDetails failed', e);
+      if (import.meta.env.MODE === 'production') {
+        return { success: false, error: 'Booking details not found.' };
+      }
+    }
+
+    if (import.meta.env.MODE === 'production') {
+      return { success: false, error: 'Booking details not found.' };
     }
 
     // Offline fallback: find in local state
@@ -303,6 +338,10 @@ export const useBookingStore = create((set, get) => ({
       return { success: false, error: data.message };
     } catch (e) {
       set({ loading: false });
+      
+      if (import.meta.env.MODE === 'production') {
+        return { success: false, error: 'Failed to accept booking. Database offline.' };
+      }
       
       // Sandbox fallback accept
       const current = get().bookings;
@@ -339,7 +378,15 @@ export const useBookingStore = create((set, get) => ({
       if (data.success) {
         return { success: true };
       }
-    } catch (e) {}
+    } catch (e) {
+      if (import.meta.env.MODE === 'production') {
+        return { success: false, error: 'Failed to reject booking. Database offline.' };
+      }
+    }
+
+    if (import.meta.env.MODE === 'production') {
+      return { success: true };
+    }
 
     // Sandbox fallback reject: remove from matched list for this local session
     const current = get().bookings;

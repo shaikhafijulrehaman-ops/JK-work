@@ -66,10 +66,18 @@ export const useCartStore = create((set, get) => ({
         return data.success;
       }
       // Offline fallback: 560073 (Anchepalya) and 560074 are valid
+      if (import.meta.env.MODE === 'production') {
+        set({ pincode: pin, isPincodeValid: false });
+        return false;
+      }
       const valid = pin === '560073' || pin === '560074';
       set({ pincode: pin, isPincodeValid: valid });
       return valid;
     } catch (e) {
+      if (import.meta.env.MODE === 'production') {
+        set({ pincode: pin, isPincodeValid: false });
+        return false;
+      }
       const valid = pin === '560073' || pin === '560074';
       set({ pincode: pin, isPincodeValid: valid });
       return valid;
@@ -96,6 +104,9 @@ export const useCartStore = create((set, get) => ({
       }
     } catch (e) {
       console.warn('Coupon validation offline fallback...', e);
+      if (import.meta.env.MODE === 'production') {
+        return { success: false, message: 'Unable to validate coupon code at this time.' };
+      }
       if (code.toUpperCase() === '9MINUTES') {
         const mockCoupon = { code: '9MINUTES', discountType: 'PERCENTAGE', discountValue: 15.0, minOrderValue: 0, maxDiscount: 200 };
         set({ couponCode: '9MINUTES', activeCoupon: mockCoupon });
