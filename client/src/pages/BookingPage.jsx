@@ -256,7 +256,6 @@ export default function BookingPage() {
     }
 
     const amountInINR = getFinalTotal();
-    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn';
 
     try {
       // Step 1: Create Order on Backend
@@ -280,10 +279,11 @@ export default function BookingPage() {
 
       const orderData = await orderRes.json();
       const orderId = orderData.order_id;
+      const finalRazorpayKey = orderData.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn';
 
       // Step 2: Open Razorpay Checkout Modal
       const options = {
-        key: razorpayKey,
+        key: finalRazorpayKey,
         amount: orderData.amount,
         currency: orderData.currency,
         name: 'JK Enterprises',
