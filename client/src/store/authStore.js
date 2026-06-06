@@ -101,7 +101,7 @@ export const useAuthStore = create((set, get) => ({
         }
 
         const client = google.accounts.oauth2.initTokenClient({
-          client_id: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
           scope: 'email profile',
           callback: async (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
