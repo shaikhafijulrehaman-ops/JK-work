@@ -306,6 +306,10 @@ const db = {
     return useSandbox || !isPrismaConnected;
   },
   getPrisma: () => prisma,
+  __setStates: (connected, sandboxMode) => {
+    isPrismaConnected = connected;
+    useSandbox = sandboxMode;
+  },
 
   // --- USER CONTROLLER MOCK API ---
   user: {
@@ -677,6 +681,18 @@ const db = {
         return null;
       }
       return await prisma.promoCode.delete(args);
+    },
+    count: async (args = {}) => {
+      if (db.isSandbox()) {
+        let list = sandbox.promoCodes;
+        if (args.where) {
+          if (args.where.isActive !== undefined) {
+            list = list.filter(c => c.isActive === args.where.isActive);
+          }
+        }
+        return list.length;
+      }
+      return await prisma.promoCode.count(args);
     }
   },
 
@@ -726,6 +742,19 @@ const db = {
           if (args.where.status) {
             results = results.filter(b => b.status === args.where.status);
           }
+        }
+
+        // Apply sorting if specified in sandbox
+        if (args.orderBy) {
+          if (args.orderBy.createdAt) {
+            const dir = args.orderBy.createdAt === 'desc' ? -1 : 1;
+            results = [...results].sort((a, b) => (new Date(a.createdAt) - new Date(b.createdAt)) * dir);
+          }
+        }
+
+        // Apply slice if take specified in sandbox
+        if (args.take) {
+          results = results.slice(0, args.take);
         }
 
         // Expand nested objects
@@ -788,6 +817,61 @@ const db = {
         throw new Error('Booking not found in Sandbox');
       }
       return await prisma.booking.update(args);
+    },
+    count: async (args = {}) => {
+      if (db.isSandbox()) {
+        let list = sandbox.bookings;
+        if (args.where) {
+          if (args.where.createdAt) {
+            const gte = args.where.createdAt.gte;
+            const lte = args.where.createdAt.lte;
+            if (gte) {
+              list = list.filter(b => new Date(b.createdAt) >= gte);
+            }
+            if (lte) {
+              list = list.filter(b => new Date(b.createdAt) <= lte);
+            }
+          }
+          if (args.where.status) {
+            list = list.filter(b => b.status.toUpperCase() === args.where.status.toUpperCase());
+          }
+          if (args.where.paymentStatus) {
+            list = list.filter(b => b.paymentStatus.toUpperCase() === args.where.paymentStatus.toUpperCase());
+          }
+        }
+        return list.length;
+      }
+      return await prisma.booking.count(args);
+    },
+    aggregate: async (args = {}) => {
+      if (db.isSandbox()) {
+        let list = sandbox.bookings;
+        if (args.where) {
+          if (args.where.paymentStatus) {
+            list = list.filter(b => b.paymentStatus.toUpperCase() === args.where.paymentStatus.toUpperCase());
+          }
+          if (args.where.createdAt) {
+            const gte = args.where.createdAt.gte;
+            const lte = args.where.createdAt.lte;
+            if (gte) {
+              list = list.filter(b => new Date(b.createdAt) >= gte);
+            }
+            if (lte) {
+              list = list.filter(b => new Date(b.createdAt) <= lte);
+            }
+          }
+        }
+        let finalPriceSum = 0;
+        if (args._sum && args._sum.finalPrice) {
+          finalPriceSum = list.reduce((sum, b) => sum + (b.finalPrice || 0), 0);
+        }
+        return {
+          _sum: {
+            finalPrice: finalPriceSum
+          }
+        };
+      }
+      return await prisma.booking.aggregate(args);
     }
   },
 
@@ -1092,7 +1176,20 @@ Object.keys(db).forEach(modelKey => {
         let attempt = 1;
         while (true) {
           try {
-            return await originalMethod.apply(this, args);
+            // If sandbox is active or Postgres connection checks failed, run immediately
+            if (useSandbox || !isPrismaConnected) {
+              return await originalMethod.apply(this, args);
+            }
+
+            // Enforce a strict 1000ms query timeout on live DB queries to guarantee sub-1-second responses
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error('DATABASE_QUERY_TIMEOUT')), 1000);
+            });
+            const queryPromise = originalMethod.apply(this, args).finally(() => {
+              if (timeoutId) clearTimeout(timeoutId);
+            });
+            return await Promise.race([queryPromise, timeoutPromise]);
           } catch (err) {
             // Log the query failure in detail
             console.error(`💥 [DATABASE QUERY ERROR] Exception during ${modelKey}.${methodKey} execution:`);
@@ -1101,16 +1198,19 @@ Object.keys(db).forEach(modelKey => {
             console.error(`   Error Code:`, err.code || 'N/A');
             console.error(`   Stack Trace:`, err.stack);
 
+            const isTimeout = err.message === 'DATABASE_QUERY_TIMEOUT';
+
             // Fail-fast / retry in production: propagate or retry any DB/query errors
             if (process.env.NODE_ENV === 'production') {
-              const isTransient = err.message?.toLowerCase().includes('connection') || 
+              const isTransient = !isTimeout && (
+                                  err.message?.toLowerCase().includes('connection') || 
                                   err.message?.toLowerCase().includes('timeout') || 
                                   err.message?.toLowerCase().includes('pool') ||
                                   err.message?.toLowerCase().includes('deadlock') ||
                                   err.message?.toLowerCase().includes('socket') ||
                                   err.code === 'P1001' || // Can't reach database server
                                   err.code === 'P1008' || // Operations timeout
-                                  err.code === 'P2024';   // Connection pool timeout
+                                  err.code === 'P2024');  // Connection pool timeout
 
               if (isTransient && attempt < maxAttempts) {
                 const backoff = attempt * attempt * 100; // 100ms, 400ms

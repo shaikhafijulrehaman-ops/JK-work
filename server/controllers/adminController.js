@@ -20,51 +20,6 @@ exports.updateWorkerStatus = async (req, res) => {
 // Get high-level analytics
 exports.getAnalytics = async (req, res) => {
   try {
-    if (db.isSandbox()) {
-      const bookings = await db.booking.findMany({});
-      const coupons = await db.promoCode.findMany({}).catch(() => []);
-
-      const today = new Date().toDateString();
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
-
-      const todayBookings = bookings.filter(b => new Date(b.createdAt).toDateString() === today);
-      const pendingBookings = bookings.filter(b => b.status.toUpperCase() === 'PENDING');
-      const completedBookings = bookings.filter(b => b.status.toUpperCase() === 'COMPLETED');
-      const cancelledBookings = bookings.filter(b => b.status.toUpperCase() === 'CANCELLED');
-      
-      const activeCoupons = coupons.filter(c => c.isActive);
-
-      const todayRevenue = bookings
-        .filter(b => b.status === 'COMPLETED' && new Date(b.createdAt).toDateString() === today)
-        .reduce((sum, b) => sum + (b.finalPrice || 0), 0);
-
-      const monthRevenue = bookings
-        .filter(b => b.status === 'COMPLETED' && new Date(b.createdAt).getMonth() === currentMonth && new Date(b.createdAt).getFullYear() === currentYear)
-        .reduce((sum, b) => sum + (b.finalPrice || 0), 0);
-
-      const stats = {
-        todayCount: todayBookings.length,
-        pendingCount: pendingBookings.length,
-        completedCount: completedBookings.length,
-        cancelledCount: cancelledBookings.length,
-        activePartnersCount: 0,
-        pendingApprovalsCount: 0,
-        todayRev: todayRevenue,
-        monthRev: monthRevenue,
-        activeCouponsCount: activeCoupons.length,
-        totalCouponsCount: coupons.length
-      };
-
-      return res.status(200).json({
-        success: true,
-        analytics: stats
-      });
-    }
-
-    // Live Prisma connected optimization
-    const prisma = db.getPrisma();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -83,17 +38,17 @@ exports.getAnalytics = async (req, res) => {
       todayRevenueObj,
       monthRevenueObj
     ] = await Promise.all([
-      prisma.booking.count({ where: { createdAt: { gte: todayStart, lte: todayEnd } } }),
-      prisma.booking.count({ where: { status: 'PENDING' } }),
-      prisma.booking.count({ where: { status: 'COMPLETED' } }),
-      prisma.booking.count({ where: { status: 'CANCELLED' } }),
-      prisma.promoCode.count({ where: { isActive: true } }),
-      prisma.promoCode.count(),
-      prisma.booking.aggregate({
+      db.booking.count({ where: { createdAt: { gte: todayStart, lte: todayEnd } } }),
+      db.booking.count({ where: { status: 'PENDING' } }),
+      db.booking.count({ where: { status: 'COMPLETED' } }),
+      db.booking.count({ where: { status: 'CANCELLED' } }),
+      db.promoCode.count({ where: { isActive: true } }),
+      db.promoCode.count(),
+      db.booking.aggregate({
         where: { paymentStatus: 'PAID', createdAt: { gte: todayStart, lte: todayEnd } },
         _sum: { finalPrice: true }
       }),
-      prisma.booking.aggregate({
+      db.booking.aggregate({
         where: { paymentStatus: 'PAID', createdAt: { gte: firstDayOfMonth } },
         _sum: { finalPrice: true }
       })
@@ -125,31 +80,18 @@ exports.getAnalytics = async (req, res) => {
 // Get all database records for the unified Admin SaaS dashboard
 exports.getDashboardData = async (req, res) => {
   try {
-    let bookings;
-
-    if (db.isSandbox()) {
-      bookings = await db.booking.findMany({
-        include: {
-          user: { select: { id: true, name: true, email: true, phone: true } },
-          items: { include: { service: true } }
-        }
-      });
-      bookings = bookings.slice(0, 100);
-    } else {
-      const prisma = db.getPrisma();
-      bookings = await prisma.booking.findMany({
-        take: 105,
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true }
-          },
-          items: {
-            include: { service: true }
-          }
+    const bookings = await db.booking.findMany({
+      take: 105,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true }
         },
-        orderBy: { createdAt: 'desc' }
-      });
-    }
+        items: {
+          include: { service: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
     // Fetch other lists
     const workers = [];
