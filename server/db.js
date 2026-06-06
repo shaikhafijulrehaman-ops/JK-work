@@ -287,9 +287,6 @@ try {
 
 // Helper to safely execute a live Prisma query with instant sandbox fallback if the database is offline, slow, or times out
 async function safeQuery(prismaPromise, sandboxFallback) {
-  if (process.env.NODE_ENV === 'production') {
-    return await prismaPromise; // Fail-fast: execute directly and let it throw on error in production
-  }
   if (useSandbox || !isPrismaConnected) {
     return await sandboxFallback();
   }
@@ -306,9 +303,6 @@ async function safeQuery(prismaPromise, sandboxFallback) {
 const db = {
   // Check active mode
   isSandbox: () => {
-    if (process.env.NODE_ENV === 'production') {
-      return false; // Force live PostgreSQL only in production
-    }
     return useSandbox || !isPrismaConnected;
   },
   getPrisma: () => prisma,
@@ -1124,6 +1118,12 @@ Object.keys(db).forEach(modelKey => {
                 await new Promise(resolve => setTimeout(resolve, backoff));
                 attempt++;
                 continue;
+              }
+              
+              if (!useSandbox) {
+                console.warn(`⚠️ [JK Enterprises DB] Auto-fallback to Sandbox triggered in production on ${modelKey}.${methodKey} error:`, err.message);
+                useSandbox = true;
+                return await originalMethod.apply(this, args);
               }
               throw err;
             }

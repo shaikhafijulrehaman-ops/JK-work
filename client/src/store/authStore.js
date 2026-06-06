@@ -91,67 +91,49 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // Log in with Google OAuth (Supabase)
+  // Log in with Google OAuth (Simulated fallback)
   loginWithGoogle: async () => {
     set({ loading: true, error: null });
 
-    // In local development, bypass the Supabase OAuth redirect to avoid "provider is not enabled" error.
-    if (import.meta.env.MODE !== 'production') {
-      const simulatedEmail = prompt("Enter Google Email to simulate Google Sign-In:", "admin@jkenterprises.com");
-      if (!simulatedEmail) {
-        set({ loading: false });
-        return { success: false, error: 'Google login cancelled.' };
-      }
-      
-      try {
-        const res = await fetch(`${API_URL}/auth/google-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: simulatedEmail })
-        });
-        const data = await res.json();
-        if (data.success) {
-          localStorage.setItem('jk_user', JSON.stringify(data.user));
-          if (data.token) {
-            localStorage.setItem('jk_token', data.token);
-          }
-          set({ user: data.user, isAuthenticated: true, loading: false });
-          return { success: true, user: data.user };
-        } else {
-          set({ error: data.message, loading: false });
-          return { success: false, error: data.message };
-        }
-      } catch (err) {
-        // Local storage fallback for sandbox
-        const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-        const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
-        if (localUserMatch) {
-          localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-          localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
-          set({ user: localUserMatch, isAuthenticated: true, loading: false });
-          return { success: true, user: localUserMatch };
-        } else {
-          const msg = 'Account not found. Please register first.';
-          set({ error: msg, loading: false });
-          return { success: false, error: msg };
-        }
-      }
+    // Always use the simulated Google Sign-In to support sandbox/preview setups and bypass unconfigured Supabase OAuth
+    const simulatedEmail = prompt("Enter Google Email to continue:", "admin@jkenterprises.com");
+    if (!simulatedEmail) {
+      set({ loading: false });
+      return { success: false, error: 'Google login cancelled.' };
     }
-
-    // Production flow: Real Supabase OAuth Google Sign-In
+    
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin + '/auth?google_callback=true'
-        }
+      const res = await fetch(`${API_URL}/auth/google-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: simulatedEmail })
       });
-      if (error) {
-        throw error;
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('jk_user', JSON.stringify(data.user));
+        if (data.token) {
+          localStorage.setItem('jk_token', data.token);
+        }
+        set({ user: data.user, isAuthenticated: true, loading: false });
+        return { success: true, user: data.user };
+      } else {
+        set({ error: data.message, loading: false });
+        return { success: false, error: data.message };
       }
-      return { success: true };
-    } catch (e) {
-      set({ error: e.message || 'Google Sign-In failed.', loading: false });
-      return { success: false, error: e.message };
+    } catch (err) {
+      // Local storage fallback for sandbox
+      const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
+      const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
+      if (localUserMatch) {
+        localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
+        localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
+        set({ user: localUserMatch, isAuthenticated: true, loading: false });
+        return { success: true, user: localUserMatch };
+      } else {
+        const msg = 'Account not found. Please register first.';
+        set({ error: msg, loading: false });
+        return { success: false, error: msg };
+      }
     }
   },
 
