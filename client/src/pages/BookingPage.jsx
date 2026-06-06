@@ -20,8 +20,7 @@ import {
   MessageSquare,
   FileText,
   User,
-  Heart,
-  Search,
+  Tag,
   AlertCircle
 } from 'lucide-react';
 
@@ -110,6 +109,13 @@ export default function BookingPage() {
   const [transactionId, setTransactionId] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Coupon states
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [couponError, setCouponError] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -215,7 +221,62 @@ export default function BookingPage() {
   };
 
   const getTaxes = () => getServicePrice() * 0.05; // 5% Platform Dispatch Taxes
-  const getFinalTotal = () => getServicePrice() + getTaxes();
+  
+  const getFinalTotal = () => {
+    const servicePrice = getServicePrice();
+    const taxes = servicePrice * 0.05;
+    const total = servicePrice + taxes - discountAmount;
+    return total > 0 ? total : 0;
+  };
+
+  // Coupon Handlers
+  const handleApplyCoupon = async (e) => {
+    e.preventDefault();
+    if (!couponCode.trim()) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setCouponError('');
+    setIsValidatingCoupon(true);
+
+    try {
+      const subtotal = getServicePrice();
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        body: JSON.stringify({
+          code: couponCode.trim(),
+          subtotal
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setCouponError(data.message || 'Invalid coupon code.');
+        setAppliedCoupon(null);
+        setDiscountAmount(0);
+      } else {
+        setAppliedCoupon(data.coupon);
+        setDiscountAmount(data.discount);
+        setCouponError('');
+      }
+    } catch (err) {
+      console.error('Coupon validation failed:', err);
+      setCouponError('Failed to validate coupon code. Please try again.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setDiscountAmount(0);
+    setCouponCode('');
+    setCouponError('');
+  };
 
   // GPS Simulator
   const handleGPSDetect = () => {
@@ -380,7 +441,9 @@ export default function BookingPage() {
         area: city,
         pincode: pincode,
         notes: notes || specialInstructions || '',
-        transaction_id: payId
+        transaction_id: payId,
+        coupon_code: appliedCoupon ? appliedCoupon.code : null,
+        discount_applied: discountAmount
       };
 
       const res = await fetch('/api/bookings/payment-success', {
@@ -546,6 +609,12 @@ ${formattedDate}`;
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Status</span>
                 <span className="font-extrabold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200/50 uppercase text-[9px] font-black">Awaiting Payment</span>
               </div>
+              {appliedCoupon && (
+                <div className="flex justify-between items-center border-b pb-2.5 text-emerald-600 font-bold">
+                  <span className="uppercase tracking-wider text-[9px]">Discount ({appliedCoupon.code})</span>
+                  <span className="text-right">- ₹{discountAmount}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center pt-1 font-poppins font-black text-slate-800 text-sm">
                 <span className="uppercase tracking-wider text-[10px]">Booking Amount</span>
                 <span className="text-brand text-base">₹{getFinalTotal().toLocaleString()}</span>
@@ -610,6 +679,12 @@ ${formattedDate}`;
                 <span className="text-slate-400">Booking ID:</span>
                 <span className="font-mono font-extrabold text-slate-800">#{tempBookingId}</span>
               </div>
+              {appliedCoupon && (
+                <div className="flex justify-between items-center text-emerald-600 font-bold">
+                  <span>Discount ({appliedCoupon.code}):</span>
+                  <span>- ₹{discountAmount}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Amount Paid:</span>
                 <span className="font-extrabold text-emerald-600">₹{getFinalTotal()}</span>
@@ -837,8 +912,64 @@ ${formattedDate}`;
               </div>
             </div>
 
+            {/* Section 5: Coupons */}
+            <div className="space-y-3.5 border-t border-slate-100/50 pt-4 text-left">
+              <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Promotional Coupon</h3>
+              
+              {!appliedCoupon ? (
+                <div className="flex gap-2">
+                  <div className="form-group flex-1">
+                    <input 
+                      type="text" 
+                      id="couponCode"
+                      className="form-input text-slate-800 uppercase" 
+                      placeholder=" "
+                      value={couponCode} 
+                      onChange={e => setCouponCode(e.target.value)} 
+                    />
+                    <label htmlFor="couponCode" className="form-label">Coupon Code</label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyCoupon}
+                    disabled={isValidatingCoupon}
+                    className="bg-brand hover:bg-brand-dark text-white font-poppins font-black text-[10px] px-4 rounded-xl uppercase tracking-wider transition-all h-[42px] flex items-center justify-center min-w-[80px]"
+                  >
+                    {isValidatingCoupon ? '...' : 'Apply'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-emerald-800">
+                  <div className="flex items-center space-x-2 text-xs">
+                    <Tag className="w-4 h-4 text-emerald-600" />
+                    <span className="font-bold uppercase">{appliedCoupon.code}</span>
+                    <span className="text-[10px] text-emerald-600 font-semibold">(Discount of ₹{discountAmount} applied)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="text-[9px] font-black text-rose-600 hover:text-rose-800 uppercase tracking-wider bg-rose-50 border border-rose-100 rounded px-2 py-0.5 transition-all"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
+              {couponError && (
+                <div className="text-red-500 text-[9px] font-extrabold bg-rose-500/5 border border-rose-500/10 p-2 rounded-xl">
+                  {couponError}
+                </div>
+              )}
+            </div>
+
             {/* Bottom Section: Compact Invoice details & Pay After Service Badge */}
             <div className="border-t border-slate-100/50 pt-4 space-y-3.5">
+              {appliedCoupon && (
+                <div className="flex justify-between items-center text-xs text-emerald-600 font-bold">
+                  <span>Discount ({appliedCoupon.code})</span>
+                  <span>- Rs. {discountAmount}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center text-xs">
                 <span className="font-poppins font-black text-slate-800 uppercase tracking-wider text-[10px]">Invoice Summary</span>
                 <span className="font-poppins font-black text-brand text-sm">Rs. {getFinalTotal().toLocaleString()}</span>

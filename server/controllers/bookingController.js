@@ -415,7 +415,9 @@ exports.confirmPaymentSuccess = async (req, res) => {
       area, 
       pincode, 
       notes, 
-      transaction_id 
+      transaction_id,
+      coupon_code,
+      discount_applied
     } = req.body;
 
     if (!booking_id || !customer_name || !phone || !service_name || !amount || !address) {
@@ -443,13 +445,14 @@ exports.confirmPaymentSuccess = async (req, res) => {
         timeSlot: 'Instant Dispatch',
         address: address,
         phone: phone,
-        totalPrice: parseFloat(amount),
-        discountApplied: 0.0,
+        totalPrice: parseFloat(amount) + parseFloat(discount_applied || 0),
+        discountApplied: parseFloat(discount_applied || 0.0),
         finalPrice: parseFloat(amount),
         paymentStatus: 'PAID', // Maps to PAID enum inside existing DB column
         paymentMethod: 'CARD',
         paymentId: transaction_id,
         serviceCategory: matchingService ? matchingService.category : 'General',
+        couponCode: coupon_code || null,
         
         // Custom redesign columns
         customer_name,
@@ -477,6 +480,15 @@ exports.confirmPaymentSuccess = async (req, res) => {
         }
       }
     });
+
+    // Increment coupon used count if coupon was applied
+    if (coupon_code) {
+      const uppercaseCode = coupon_code.trim().toUpperCase();
+      await db.promoCode.update({
+        where: { code: uppercaseCode },
+        data: { usedCount: { increment: 1 } }
+      }).catch(e => console.warn('Failed to increment promo code usage count:', e.message));
+    }
 
     // Audit Logging
     logActivity(req, {
