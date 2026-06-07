@@ -188,48 +188,58 @@ app.use((err, req, res, next) => {
 
 // ==================== BIND SERVER PORT ====================
 async function startServer() {
-  console.log('🏁 [JK Enterprises Server] Running startup health checks...');
-  
-  // 1. Database Connection Check
-  try {
-    const dbConnected = await db.connectDb();
-    if (!dbConnected) {
-      console.error('❌ Startup blocked: Database connectivity verification failed.');
-      process.exit(1);
-    }
-  } catch (err) {
-    console.error('❌ Startup blocked: Exception during database verification:', err.message);
-    process.exit(1);
-  }
-
-  // 2. SMTP Connectivity Check
-  try {
-    console.log('🔌 Verifying SMTP email server connection...');
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
-      secure: parseInt(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
-    await transporter.verify();
-    console.log('✉️ [SMTP Gateway] Connection verified successfully.');
-  } catch (err) {
-    console.error('❌ Startup blocked: SMTP email gateway verification failed:', err.message);
-    process.exit(1);
-  }
-
-  console.log('✅ All startup health checks passed.');
-
-  app.listen(PORT, () => {
+  // Bind the port immediately so that Render detects an open port
+  app.listen(PORT, async () => {
     console.log('================================================================');
     console.log(`🚀 [JK Enterprises Server] Service Booking Gateway Active!`);
     console.log(`📍 Port: ${PORT}`);
     console.log(`🎯 Brand: JK Enterprises (Anchepalya Instant Cleaning Usp)`);
     console.log(`📅 Date: May 2026`);
     console.log('================================================================');
+
+    console.log('🏁 [JK Enterprises Server] Running startup health checks...');
+    
+    // 1. Database Connection Check
+    try {
+      const dbConnected = await db.connectDb();
+      if (!dbConnected) {
+        console.error('❌ Startup check failed: Database connectivity verification failed.');
+        if (process.env.NODE_ENV === 'production') {
+          console.error('💥 Crashing server in production due to DB connection failure.');
+          process.exit(1);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Startup check failed: Exception during database verification:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      }
+    }
+
+    // 2. SMTP Connectivity Check (with timeout to prevent hanging)
+    try {
+      console.log('🔌 Verifying SMTP email server connection...');
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT),
+        secure: parseInt(process.env.SMTP_PORT) === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        },
+        connectionTimeout: 10000, // 10s connection timeout
+        greetingTimeout: 10000,   // 10s greeting timeout
+        socketTimeout: 10000      // 10s socket timeout
+      });
+      await transporter.verify();
+      console.log('✉️ [SMTP Gateway] Connection verified successfully.');
+    } catch (err) {
+      console.error('⚠️ [SMTP Gateway] Warning: SMTP email gateway verification failed:', err.message);
+      // Do not hard-crash the entire HTTP server in production just because email is down/unreachable,
+      // but print a clear warning so the admin can fix SMTP credentials.
+    }
+
+    console.log('✅ Startup health checks sequence completed.');
   });
 }
 
