@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getCache, setCache, invalidateCache } from '../../utils/cache';
-import { fetchWithTimeout } from '../../utils/api';
+import { fetchWithRetry } from '../../utils/api';
 import { TableSkeleton } from '../../components/Skeletons';
 import { useNotificationStore } from '../../store/notificationStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -67,8 +67,8 @@ const AdminWorkersTab = React.memo(({ activeTab }) => {
 
     try {
       const [workersRes, bookingsRes] = await Promise.all([
-        fetchWithTimeout('/api/admin/workers', { credentials: 'include' }),
-        fetchWithTimeout('/api/admin/bookings', { credentials: 'include' })
+        fetchWithRetry('/api/admin/workers', { credentials: 'include' }),
+        fetchWithRetry('/api/admin/bookings', { credentials: 'include' })
       ]);
 
       const workersData = await workersRes.json();

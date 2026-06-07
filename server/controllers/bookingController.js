@@ -424,71 +424,84 @@ exports.confirmPaymentSuccess = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide all required transaction fields.' });
     }
 
-    // 1. Verify/fetch serviceArea pincode
-    const serviceArea = await db.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
-    const serviceAreaId = serviceArea ? serviceArea.id : 'sa-sample';
+    // ACID transaction: booking + coupon + customer update + notifications
+    const booking = await db.transaction(async (tx) => {
+      // 1. Verify/fetch serviceArea pincode
+      const serviceArea = await tx.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
+      const serviceAreaId = serviceArea ? serviceArea.id : 'sa-sample';
 
-    // 2. We can resolve a serviceId if needed by searching the DB for serviceName
-    const matchingService = await db.service.findFirst({
-      where: { name: { contains: service_name } }
-    });
-    const serviceId = matchingService ? matchingService.id : 's-1';
+      // 2. Resolve service reference
+      const matchingService = await tx.service.findFirst({
+        where: { name: { contains: service_name } }
+      });
+      const serviceId = matchingService ? matchingService.id : 's-1';
 
-    // 3. Create the Booking entry
-    const booking = await db.booking.create({
-      data: {
-        id: booking_id,
-        userId: req.user.id,
-        serviceAreaId: serviceAreaId,
-        status: 'PENDING', // Maps to PENDING enum inside the existing DB column
-        scheduledAt: new Date(),
-        timeSlot: 'Instant Dispatch',
-        address: address,
-        phone: phone,
-        totalPrice: parseFloat(amount) + parseFloat(discount_applied || 0),
-        discountApplied: parseFloat(discount_applied || 0.0),
-        finalPrice: parseFloat(amount),
-        paymentStatus: 'PAID', // Maps to PAID enum inside existing DB column
-        paymentMethod: 'CARD',
-        paymentId: transaction_id,
-        serviceCategory: matchingService ? matchingService.category : 'General',
-        couponCode: coupon_code || null,
-        
-        // Custom redesign columns
-        customer_name,
-        email,
-        service_name,
-        amount: parseFloat(amount),
-        area,
-        pincode,
-        notes,
-        payment_status: 'Paid',
-        transaction_id,
-        booking_status: 'New Booking',
-        
-        // Relational bookingItem mapping
-        items: {
-          createMany: {
-            data: [
-              {
-                serviceId: serviceId,
-                quantity: 1,
-                price: parseFloat(amount)
-              }
-            ]
+      // 3. Create the Booking entry (this updates customer history and booking count automatically)
+      const newBooking = await tx.booking.create({
+        data: {
+          id: booking_id,
+          userId: req.user.id,
+          serviceAreaId: serviceAreaId,
+          status: 'PENDING',
+          scheduledAt: new Date(),
+          timeSlot: 'Instant Dispatch',
+          address: address,
+          phone: phone,
+          totalPrice: parseFloat(amount) + parseFloat(discount_applied || 0),
+          discountApplied: parseFloat(discount_applied || 0.0),
+          finalPrice: parseFloat(amount),
+          paymentStatus: 'PAID',
+          paymentMethod: 'CARD',
+          paymentId: transaction_id,
+          serviceCategory: matchingService ? matchingService.category : 'General',
+          couponCode: coupon_code || null,
+          
+          customer_name,
+          email,
+          service_name,
+          amount: parseFloat(amount),
+          area,
+          pincode,
+          notes,
+          payment_status: 'Paid',
+          transaction_id,
+          booking_status: 'New Booking',
+          
+          items: {
+            createMany: {
+              data: [
+                {
+                  serviceId: serviceId,
+                  quantity: 1,
+                  price: parseFloat(amount)
+                }
+              ]
+            }
           }
         }
-      }
-    });
+      });
 
-    // Increment coupon used count if coupon was applied
-    if (coupon_code) {
-      const uppercaseCode = coupon_code.trim().toUpperCase();
-      await db.promoCode.update({
-        where: { code: uppercaseCode },
-        data: { usedCount: { increment: 1 } }
-      }).catch(e => console.warn('Failed to increment promo code usage count:', e.message));
-    }
+      // 4. Increment coupon usage count
+      if (coupon_code) {
+        const uppercaseCode = coupon_code.trim().toUpperCase();
+        await tx.promoCode.update({
+          where: { code: uppercaseCode },
+          data: { usedCount: { increment: 1 } }
+        });
+      }
+
+      // 5. Fire system notification
+      await tx.notification.create({
+        data: {
+          userId: req.user.id,
+          type: 'PAYMENT_SUCCESS',
+          title: 'Booking Confirmed!',
+          message: `Your booking #${booking_id} for ${service_name} has been processed successfully.`
+        }
+      });
+
+      return newBooking;
+    });
 
     // Audit Logging
     logActivity(req, {
@@ -498,7 +511,7 @@ exports.confirmPaymentSuccess = async (req, res) => {
       details: { bookingId: booking.id, serviceName: service_name, amount: booking.finalPrice }
     });
 
-    // 4. Trigger simulated Admin WhatsApp Dispatch Log to Console
+    // 6. Trigger simulated Admin WhatsApp Dispatch Log to Console
     console.log('\n==================================================');
     console.log('💬 [WhatsApp Dispatch mock to ADMIN]');
     console.log('New Booking Request\n');
@@ -517,16 +530,6 @@ exports.confirmPaymentSuccess = async (req, res) => {
     console.log(`Booking Time:\n${new Date(booking.createdAt).toLocaleString()}\n`);
     console.log('==================================================\n');
 
-    // 5. Fire system notification
-    await db.notification.create({
-      data: {
-        userId: req.user.id,
-        type: 'PAYMENT_SUCCESS',
-        title: 'Booking Confirmed!',
-        message: `Your booking #${booking_id} for ${service_name} has been processed successfully.`
-      }
-    }).catch(() => {});
-
     res.status(201).json({
       success: true,
       message: 'Booking created and payment confirmed successfully!',
@@ -535,6 +538,10 @@ exports.confirmPaymentSuccess = async (req, res) => {
 
   } catch (error) {
     console.error('Confirm Payment Success Error:', error);
+    
+    // Log payment failures
+    console.error(`[PAYMENT FAILURE] Failed transaction: ${req.body.transaction_id || 'N/A'} under booking: ${req.body.booking_id || 'N/A'}. Error: ${error.message}`);
+    
     res.status(500).json({ success: false, message: 'Unable to confirm booking. Please try again shortly.' });
   }
 };

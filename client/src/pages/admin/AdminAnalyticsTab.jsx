@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getCache, setCache } from '../../utils/cache';
-import { fetchWithTimeout } from '../../utils/api';
+import { fetchWithRetry } from '../../utils/api';
 import { TableSkeleton } from '../../components/Skeletons';
 import { AlertCircle } from 'lucide-react';
 
@@ -21,10 +21,10 @@ const AdminAnalyticsTab = React.memo(() => {
     setError(null);
 
     try {
-      // Parallel fetch bookings and workers
+      // Parallel fetch bookings and workers with retries
       const [bookingsRes, workersRes] = await Promise.all([
-        fetchWithTimeout('/api/admin/bookings', { credentials: 'include' }),
-        fetchWithTimeout('/api/admin/workers', { credentials: 'include' })
+        fetchWithRetry('/api/admin/bookings', { credentials: 'include' }),
+        fetchWithRetry('/api/admin/workers', { credentials: 'include' })
       ]);
 
       const bookingsData = await bookingsRes.json();

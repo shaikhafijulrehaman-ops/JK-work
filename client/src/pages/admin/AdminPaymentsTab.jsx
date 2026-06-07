@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getCache, setCache } from '../../utils/cache';
-import { fetchWithTimeout } from '../../utils/api';
+import { fetchWithRetry } from '../../utils/api';
 import { TableSkeleton } from '../../components/Skeletons';
 import { AlertCircle, TrendingUp } from 'lucide-react';
 
@@ -26,7 +26,7 @@ const AdminPaymentsTab = React.memo(() => {
     setError(null);
 
     try {
-      const res = await fetchWithTimeout('/api/admin/payments', { credentials: 'include' });
+      const res = await fetchWithRetry('/api/admin/payments', { credentials: 'include' });
       const data = await res.json();
       
       if (data.success) {

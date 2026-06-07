@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { getCache, setCache, invalidateCache, clearCache } from '../../utils/cache';
-import { fetchWithTimeout } from '../../utils/api';
+import { fetchWithRetry } from '../../utils/api';
 import { CardSkeleton, TableSkeleton, AnalyticsSkeleton } from '../../components/Skeletons';
 import { 
   TrendingUp, ShoppingBag, Users, Percent, ShieldAlert, 
@@ -626,7 +626,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     setTabLoading(true);
     try {
       const url = `/api/admin/audit-logs?page=${page}&limit=50&eventType=${eventType}`;
-      const res = await fetchWithTimeout(url, { credentials: 'include' });
+      const res = await fetchWithRetry(url, { credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         setAuditLogs(data.logs || []);
@@ -677,7 +677,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         const silentFetch = async () => {
           try {
             const url = `/api/admin/audit-logs?page=${auditPage}&limit=50&eventType=${auditFilter}`;
-            const res = await fetchWithTimeout(url, { credentials: 'include' });
+            const res = await fetchWithRetry(url, { credentials: 'include' });
             const data = await res.json();
             if (data.success) {
               setAuditLogs(data.logs || []);
@@ -733,8 +733,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       if (tab === 'dashboard') {
         const [analyticsRes, workersRes] = await Promise.all([
-          fetchWithTimeout('/api/admin/analytics', { credentials: 'include' }),
-          fetchWithTimeout('/api/admin/workers?status=PENDING', { credentials: 'include' })
+          fetchWithRetry('/api/admin/analytics', { credentials: 'include' }),
+          fetchWithRetry('/api/admin/workers?status=PENDING', { credentials: 'include' })
         ]);
         
         const analyticsData = await analyticsRes.json();
@@ -749,7 +749,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve dashboard analytics');
         }
       } else if (tab === 'bookings') {
-        const res = await fetchWithTimeout('/api/admin/bookings', { credentials: 'include' });
+        const res = await fetchWithRetry('/api/admin/bookings', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setBookings(data.bookings || []);
@@ -758,7 +758,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve bookings.');
         }
       } else if (tab === 'customers') {
-        const res = await fetchWithTimeout('/api/admin/customers', { credentials: 'include' });
+        const res = await fetchWithRetry('/api/admin/customers', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setCustomers(data.customers || []);
@@ -767,7 +767,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve customers.');
         }
       } else if (tab === 'services') {
-        const res = await fetchWithTimeout('/api/admin/services', { credentials: 'include' });
+        const res = await fetchWithRetry('/api/admin/services', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setServices(data.services || []);
@@ -776,7 +776,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve services.');
         }
       } else if (tab === 'coupons') {
-        const res = await fetchWithTimeout('/api/admin/coupons', { credentials: 'include' });
+        const res = await fetchWithRetry('/api/admin/coupons', { credentials: 'include' });
         const data = await res.json();
         if (data.success) {
           setCoupons(data.coupons || []);
@@ -786,7 +786,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         }
       } else if (tab === 'audit-logs') {
         // Run background dashboard sync to populate other collections silently
-        fetchWithTimeout('/api/admin/dashboard-data', { credentials: 'include' })
+        fetchWithRetry('/api/admin/dashboard-data', { credentials: 'include' })
           .then(res => res.json())
           .then(data => {
             if (data.success) {

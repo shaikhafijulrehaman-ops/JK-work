@@ -256,37 +256,60 @@ seedSandbox();
 loadSandbox();
 isSeeded = true;
 
-// 2. Initialize Prisma Client & test connection
+// 2. Initialize Prisma Client
 try {
   prisma = new PrismaClient();
-  // Quick self-check to see if the database is actually reachable
-  // Using direct ping or query
-  prisma.$connect()
-    .then(() => {
-      isPrismaConnected = true;
-      console.log('⚡ [JK Enterprises DB] Connected successfully to Neon PostgreSQL database.');
-    })
-    .catch((err) => {
-      useSandbox = true;
-      console.error('💥 [DATABASE CONNECTION ERROR] Failed to connect to PostgreSQL database:');
-      console.error('   Error Name:', err.name);
-      console.error('   Error Message:', err.message);
-      console.error('   Error Code:', err.code || 'N/A');
-      console.error('   Stack Trace:', err.stack);
-      console.warn('⚠️ [JK Enterprises DB] Neon PostgreSQL offline or invalid connection. Falling back to local In-Memory Sandbox.');
-      console.warn('💡 Supply a valid DATABASE_URL in server/.env to run migrations on live PostgreSQL.');
-    });
 } catch (e) {
-  useSandbox = true;
-  console.error('💥 [DATABASE INITIALIZATION ERROR] Prisma client failed to initialize:');
-  console.error('   Error Name:', e.name);
-  console.error('   Error Message:', e.message);
-  console.error('   Stack Trace:', e.stack);
-  console.warn('⚠️ [JK Enterprises DB] Prisma client failed to initialize. Falling back to In-Memory Sandbox.');
+  console.error('💥 [DATABASE INITIALIZATION ERROR] Prisma client failed to initialize:', e.message);
 }
 
-// Helper to safely execute a live Prisma query with instant sandbox fallback if the database is offline, slow, or times out
+// Helper function to establish database connection with retries
+async function connectWithRetry(maxAttempts = 5, delay = 2000) {
+  if (!prisma) {
+    if (process.env.NODE_ENV !== 'production') {
+      useSandbox = true;
+    }
+    return false;
+  }
+  let attempt = 1;
+  while (attempt <= maxAttempts) {
+    try {
+      console.log(`🔌 Attempting to connect to PostgreSQL database (Attempt ${attempt}/${maxAttempts})...`);
+      await prisma.$connect();
+      // Run quick query to verify connection
+      await prisma.$executeRawUnsafe('SELECT 1;');
+      isPrismaConnected = true;
+      useSandbox = false;
+      console.log('⚡ [JK Enterprises DB] Connected successfully to Neon PostgreSQL database.');
+      return true;
+    } catch (err) {
+      console.error(`💥 [DATABASE CONNECTION ERROR] Attempt ${attempt} failed: ${err.message}`);
+      if (attempt === maxAttempts) {
+        if (process.env.NODE_ENV === 'production') {
+          console.error('💥 Critical: Could not connect to database in production after startup retries.');
+        } else {
+          console.warn('⚠️ Falling back to local In-Memory Sandbox in development.');
+          useSandbox = true;
+        }
+        return false;
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempt++;
+    }
+  }
+}
+
+// Start connection asynchronously on load
+connectWithRetry(5, 2000).catch(err => {
+  console.error('Error in initial DB connection:', err.message);
+});
+
+// Helper to safely execute a live Prisma query with retry/sandbox logic
 async function safeQuery(prismaPromise, sandboxFallback) {
+  if (process.env.NODE_ENV === 'production') {
+    // In production, we never fallback to sandbox. Directly return prisma promise.
+    return await prismaPromise;
+  }
   if (useSandbox || !isPrismaConnected) {
     return await sandboxFallback();
   }
@@ -303,12 +326,30 @@ async function safeQuery(prismaPromise, sandboxFallback) {
 const db = {
   // Check active mode
   isSandbox: () => {
+    if (process.env.NODE_ENV === 'production') {
+      return false;
+    }
     return useSandbox || !isPrismaConnected;
   },
   getPrisma: () => prisma,
   __setStates: (connected, sandboxMode) => {
     isPrismaConnected = connected;
     useSandbox = sandboxMode;
+  },
+  connectDb: async () => {
+    return await connectWithRetry();
+  },
+  ping: async () => {
+    if (useSandbox) {
+      return { connected: false, sandbox: true };
+    }
+    try {
+      if (!prisma) return { connected: false, sandbox: false, error: 'Prisma Client not initialized' };
+      await prisma.$executeRawUnsafe('SELECT 1;');
+      return { connected: true, sandbox: false };
+    } catch (err) {
+      return { connected: false, sandbox: false, error: err.message };
+    }
   },
 
   // --- USER CONTROLLER MOCK API ---
@@ -1161,81 +1202,134 @@ const db = {
       }
       return await prisma.customer.update(args);
     }
+  },
+  transaction: async (fn) => {
+    if (db.isSandbox()) {
+      return await fn(db);
+    }
+    
+    const maxAttempts = 3;
+    let attempt = 1;
+    const queryTimeoutMs = 15000;
+
+    while (true) {
+      let timeoutId;
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('DATABASE_TRANSACTION_TIMEOUT')), queryTimeoutMs);
+        });
+
+        const txPromise = prisma.$transaction(async (tx) => {
+          return await fn(tx);
+        });
+
+        const result = await Promise.race([txPromise, timeoutPromise]);
+        return result;
+      } catch (err) {
+        console.error(`💥 [DATABASE TRANSACTION ERROR] Exception during transaction execution (Attempt ${attempt}/${maxAttempts}):`);
+        console.error(`   Error Name:`, err.name);
+        console.error(`   Error Message:`, err.message);
+        console.error(`   Error Code:`, err.code || 'N/A');
+
+        const isTimeout = err.message === 'DATABASE_TRANSACTION_TIMEOUT';
+        const isTransient = isTimeout || (
+                            err.message?.toLowerCase().includes('connection') || 
+                            err.message?.toLowerCase().includes('timeout') || 
+                            err.message?.toLowerCase().includes('pool') ||
+                            err.message?.toLowerCase().includes('deadlock') ||
+                            err.message?.toLowerCase().includes('socket') ||
+                            err.code === 'P1001' ||
+                            err.code === 'P1008' ||
+                            err.code === 'P2024');
+
+        if (isTransient && attempt < maxAttempts) {
+          const backoff = attempt * attempt * 200;
+          console.warn(`⚠️ [JK Enterprises DB] Transient transaction error. Retrying in ${backoff}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoff));
+          attempt++;
+          continue;
+        }
+
+        throw err;
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    }
   }
 };
 
 // Automatically wrap all db methods to fallback to sandbox on any Prisma error (or retry in production)
 Object.keys(db).forEach(modelKey => {
-  if (modelKey === 'isSandbox' || modelKey === 'getPrisma') return;
+  if (modelKey === 'isSandbox' || modelKey === 'getPrisma' || modelKey === 'connectDb' || modelKey === 'ping' || modelKey === 'transaction') return;
   const model = db[modelKey];
   Object.keys(model).forEach(methodKey => {
     const originalMethod = model[methodKey];
     if (typeof originalMethod === 'function') {
       model[methodKey] = async function(...args) {
+        const isProd = process.env.NODE_ENV === 'production';
+        
+        // 1. If not in production and sandbox fallback is already active, run sandbox fallback directly
+        if (!isProd && (useSandbox || !isPrismaConnected)) {
+          return await originalMethod.apply(this, args);
+        }
+
+        // 2. Otherwise, run query on live PostgreSQL with retries and timeout
         const maxAttempts = 3;
         let attempt = 1;
-        while (true) {
-          try {
-            // If sandbox is active or Postgres connection checks failed, run immediately
-            if (useSandbox || !isPrismaConnected) {
-              return await originalMethod.apply(this, args);
-            }
+        const queryTimeoutMs = 10000; // 10 seconds timeout for cold starts
 
-            // Enforce a strict 1000ms query timeout on live DB queries to guarantee sub-1-second responses
-            let timeoutId;
+        while (true) {
+          let timeoutId;
+          try {
+            // Enforce strict timeout
             const timeoutPromise = new Promise((_, reject) => {
-              timeoutId = setTimeout(() => reject(new Error('DATABASE_QUERY_TIMEOUT')), 1000);
+              timeoutId = setTimeout(() => reject(new Error('DATABASE_QUERY_TIMEOUT')), queryTimeoutMs);
             });
-            const queryPromise = originalMethod.apply(this, args).finally(() => {
-              if (timeoutId) clearTimeout(timeoutId);
-            });
-            return await Promise.race([queryPromise, timeoutPromise]);
+
+            const queryPromise = originalMethod.apply(this, args);
+            
+            const result = await Promise.race([queryPromise, timeoutPromise]);
+            return result;
           } catch (err) {
-            // Log the query failure in detail
-            console.error(`💥 [DATABASE QUERY ERROR] Exception during ${modelKey}.${methodKey} execution:`);
+            console.error(`💥 [DATABASE QUERY ERROR] Exception during ${modelKey}.${methodKey} execution (Attempt ${attempt}/${maxAttempts}):`);
             console.error(`   Error Name:`, err.name);
             console.error(`   Error Message:`, err.message);
             console.error(`   Error Code:`, err.code || 'N/A');
-            console.error(`   Stack Trace:`, err.stack);
 
             const isTimeout = err.message === 'DATABASE_QUERY_TIMEOUT';
+            const isTransient = isTimeout || (
+                                err.message?.toLowerCase().includes('connection') || 
+                                err.message?.toLowerCase().includes('timeout') || 
+                                err.message?.toLowerCase().includes('pool') ||
+                                err.message?.toLowerCase().includes('deadlock') ||
+                                err.message?.toLowerCase().includes('socket') ||
+                                err.code === 'P1001' || // Can't reach database server
+                                err.code === 'P1008' || // Operations timeout
+                                err.code === 'P2024');  // Connection pool timeout
 
-            // Fail-fast / retry in production: propagate or retry any DB/query errors
-            if (process.env.NODE_ENV === 'production') {
-              const isTransient = !isTimeout && (
-                                  err.message?.toLowerCase().includes('connection') || 
-                                  err.message?.toLowerCase().includes('timeout') || 
-                                  err.message?.toLowerCase().includes('pool') ||
-                                  err.message?.toLowerCase().includes('deadlock') ||
-                                  err.message?.toLowerCase().includes('socket') ||
-                                  err.code === 'P1001' || // Can't reach database server
-                                  err.code === 'P1008' || // Operations timeout
-                                  err.code === 'P2024');  // Connection pool timeout
+            if (isTransient && attempt < maxAttempts) {
+              const backoff = attempt * attempt * 200; // 200ms, 800ms
+              console.warn(`⚠️ [JK Enterprises DB] Transient database error on ${modelKey}.${methodKey}. Retrying in ${backoff}ms...`);
+              await new Promise(resolve => setTimeout(resolve, backoff));
+              attempt++;
+              continue;
+            }
 
-              if (isTransient && attempt < maxAttempts) {
-                const backoff = attempt * attempt * 100; // 100ms, 400ms
-                console.warn(`⚠️ [JK Enterprises DB] Transient database error in production on ${modelKey}.${methodKey} (attempt ${attempt}/${maxAttempts}). Retrying in ${backoff}ms... Error: ${err.message}`);
-                await new Promise(resolve => setTimeout(resolve, backoff));
-                attempt++;
-                continue;
-              }
-              
-              if (!useSandbox) {
-                console.warn(`⚠️ [JK Enterprises DB] Auto-fallback to Sandbox triggered in production on ${modelKey}.${methodKey} error:`, err.message);
-                useSandbox = true;
-                return await originalMethod.apply(this, args);
-              }
+            // If we are in production, we NEVER fallback to sandbox. We throw the error.
+            if (isProd) {
+              console.error(`💥 [DATABASE QUERY FAILURE] Max retry attempts reached in production for ${modelKey}.${methodKey}. Throwing error.`);
               throw err;
             }
-            
-            // If a query failed and we weren't already in sandbox mode, switch to it and retry using sandbox (dev/test)
+
+            // In development, fallback to sandbox
             if (!useSandbox) {
-              console.warn(`⚠️ [JK Enterprises DB] Auto-fallback triggered on ${modelKey}.${methodKey} error:`, err.message);
+              console.warn(`⚠️ [JK Enterprises DB] Auto-fallback to Sandbox triggered on ${modelKey}.${methodKey} error:`, err.message);
               useSandbox = true;
-              // Retry the method call, which will now run in sandbox mode because isSandbox() returns true
               return await originalMethod.apply(this, args);
             }
             throw err;
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
           }
         }
       };

@@ -191,8 +191,8 @@ exports.login = async (req, res) => {
     console.log(`[LOGIN TRACE] Database query completed. User found: ${!!user}`);
 
     if (!user || user.role === 'WORKER') {
-      console.warn(`[LOGIN TRACE] ⚠️ Authentication failed: User not found or role WORKER is restricted.`);
-      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      console.warn(`[AUTH FAILURE] Login failed for ${email}: User account not found or role WORKER restricted.`);
+      return res.status(404).json({ success: false, message: 'User account not found.' });
     }
 
     console.log(`[LOGIN TRACE] Step 2: Comparing bcrypt passwords...`);
@@ -200,8 +200,8 @@ exports.login = async (req, res) => {
     console.log(`[LOGIN TRACE] Bcrypt comparison completed. Match result: ${isMatch}`);
     
     if (!isMatch) {
-      console.warn(`[LOGIN TRACE] ⚠️ Authentication failed: Password mismatch.`);
-      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      console.warn(`[AUTH FAILURE] Login failed for ${email}: Incorrect password.`);
+      return res.status(401).json({ success: false, message: 'Incorrect password.' });
     }
 
     console.log(`[LOGIN TRACE] Step 3: Triggering WhatsApp admin notification...`);
@@ -211,14 +211,24 @@ exports.login = async (req, res) => {
     sendTokenResponse(user, 200, res);
     console.log(`[LOGIN TRACE] ✅ Login response sent successfully.`);
   } catch (error) {
-    console.error('💥 [LOGIN AUDIT ERROR] Exception caught during user login flow:');
-    console.error('   Email:', email);
-    console.error('   Error Name:', error.name);
-    console.error('   Error Message:', error.message);
-    console.error('   Error Code:', error.code || 'N/A');
-    console.error('   Stack Trace:', error.stack);
+    console.error('💥 [LOGIN AUDIT ERROR] Exception caught during user login flow:', error.message);
     
-    res.status(500).json({ success: false, message: 'Unable to complete login. Please try again shortly.' });
+    console.error(`[AUTH FAILURE] Login failed for ${email}: ${error.message}`);
+    
+    const isDbError = error.message?.toLowerCase().includes('connection') || 
+                      error.message?.toLowerCase().includes('timeout') || 
+                      error.message?.toLowerCase().includes('pool') ||
+                      error.message?.toLowerCase().includes('socket') ||
+                      error.code?.startsWith('P'); // Prisma database error code
+                      
+    if (isDbError) {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database is temporarily unavailable. Please try again shortly.' 
+      });
+    }
+    
+    res.status(500).json({ success: false, message: 'An internal server error occurred. Please try again shortly.' });
   }
 };
 
@@ -352,77 +362,57 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// Helper to send real OTP email via Resend API
+// Helper to send real OTP email via Nodemailer SMTP with auto-retry
 const sendOTPEmail = async (email, otp) => {
-  const apiKey = process.env.RESEND_API_KEY || 're_PDsJCVRp_35jTcm1yNgt8PS7bCQerQ1PM';
-  if (!apiKey) {
-    console.warn('⚠️ [Mail Gateway] RESEND_API_KEY is not set. OTP email will only be mocked in logs.');
-    return false;
-  }
+  const nodemailer = require('nodemailer');
+  const maxMailAttempts = 3;
+  let attempt = 1;
+  
+  const mailOptions = {
+    from: process.env.SMTP_FROM || 'JK Home Care <onboarding@resend.dev>',
+    to: email,
+    subject: 'JK Home Care - OTP Verification Code',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+        <p>Hello,</p>
+        <p>Thank you for choosing JK Home Care. Use the following One-Time Password (OTP) to complete your verification:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background-color: #f1f5f9; padding: 10px 20px; border-radius: 4px; border: 1px dashed #cbd5e1;">${otp}</span>
+        </div>
+        <p style="color: #64748b; font-size: 14px;">This code is valid for 10 minutes. If you did not request this verification, please ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+        <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+      </div>
+    `
+  };
 
-  const fromEmail = process.env.RESEND_FROM || 'JK Home Care <no-reply@jkhomecare.in>';
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [email],
-        subject: 'JK Home Care - OTP Verification Code',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
-            <p>Hello,</p>
-            <p>Thank you for choosing JK Home Care. Use the following One-Time Password (OTP) to complete your verification:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background-color: #f1f5f9; padding: 10px 20px; border-radius: 4px; border: 1px dashed #cbd5e1;">${otp}</span>
-            </div>
-            <p style="color: #64748b; font-size: 14px;">This code is valid for 10 minutes. If you did not request this verification, please ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
-          </div>
-        `
-      })
-    });
-
-    const data = await response.json();
-    if (response.ok) {
-      console.log(`✉️ OTP email sent successfully to ${email} via Resend. ID: ${data.id}`);
-      return true;
-    } else {
-      console.warn('⚠️ Resend primary email send failed:', data.message || data);
-      
-      // Fallback to onboarding@resend.dev for developer testing if primary failed
-      if (fromEmail !== 'JK Home Care <onboarding@resend.dev>') {
-        console.log('🔄 Attempting fallback send via onboarding@resend.dev...');
-        const fallbackResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            from: 'JK Home Care <onboarding@resend.dev>',
-            to: [email],
-            subject: 'JK Home Care - OTP Verification Code (Fallback)',
-            html: `<p>Your verification code is: <strong>${otp}</strong></p>`
-          })
-        });
-        
-        if (fallbackResponse.ok) {
-          console.log(`✉️ OTP email sent successfully via onboarding fallback.`);
-          return true;
-        }
-      }
-      return false;
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT),
+    secure: parseInt(process.env.SMTP_PORT) === 465,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
     }
-  } catch (error) {
-    console.error('❌ Error sending OTP email via Resend:', error.message);
-    return false;
+  });
+
+  while (attempt <= maxMailAttempts) {
+    try {
+      console.log(`✉️ [Mail Gateway] Attempting SMTP email send to ${email} (Attempt ${attempt}/${maxMailAttempts})...`);
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`✉️ OTP email sent successfully to ${email} via SMTP. MessageId: ${info.messageId}`);
+      return true;
+    } catch (err) {
+      console.error(`❌ [Mail Gateway Error] SMTP send failed on attempt ${attempt}:`, err.message);
+      if (attempt === maxMailAttempts) {
+        console.error(`💥 [Mail Gateway Failure] Failed to send OTP email to ${email} after ${maxMailAttempts} attempts.`);
+        return false;
+      }
+      const backoff = attempt * 1000;
+      await new Promise(resolve => setTimeout(resolve, backoff));
+      attempt++;
+    }
   }
 };
 
