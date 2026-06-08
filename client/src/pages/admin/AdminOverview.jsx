@@ -3101,6 +3101,15 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   <p className="text-slate-700 mt-0.5 leading-relaxed font-semibold">{selectedBooking.address}</p>
                 </div>
 
+                {selectedBooking.notes && (
+                  <div>
+                    <span className="block text-[9px] font-bold text-amber-500 uppercase font-poppins">Special Instructions / Notes</span>
+                    <p className="text-slate-700 mt-0.5 leading-relaxed font-semibold bg-amber-50/40 border border-amber-100/70 rounded-xl p-3 shadow-inner">
+                      {selectedBooking.notes}
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Selected Service Items</span>
                   <div className="bg-slate-50 border border-slate-150 rounded-xl p-3.5 mt-1 space-y-1.5 shadow-inner">
