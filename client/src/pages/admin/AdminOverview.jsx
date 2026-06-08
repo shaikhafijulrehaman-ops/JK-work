@@ -2112,8 +2112,22 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                     value={b.status}
                                     onChange={async (e) => {
                                       const nextStatus = e.target.value;
-                                      await handleChangeBookingStatus(b.id, nextStatus);
-                                      setBookings(prev => prev.map(item => item.id === b.id ? { ...item, status: nextStatus, booking_status: nextStatus } : item));
+                                      if (nextStatus === 'ASSIGNED') {
+                                        const partnerName = window.prompt("Enter Service Partner Name:");
+                                        if (!partnerName) {
+                                          addNotification('Assignment Cancelled', 'Partner Name is required.');
+                                          return;
+                                        }
+                                        const partnerMobile = window.prompt("Enter Service Partner Mobile Number:");
+                                        if (!partnerMobile) {
+                                          addNotification('Assignment Cancelled', 'Partner Mobile Number is required.');
+                                          return;
+                                        }
+                                        await handleAssignPartner(b.id, partnerName, partnerMobile);
+                                      } else {
+                                        await handleChangeBookingStatus(b.id, nextStatus);
+                                        setBookings(prev => prev.map(item => item.id === b.id ? { ...item, status: nextStatus, booking_status: nextStatus } : item));
+                                      }
                                     }}
                                     className={`text-[10px] font-black px-2 py-0.5 rounded-lg uppercase tracking-wider focus:outline-none border border-slate-200/50 cursor-pointer ${
                                       b.status === 'CANCELLED' ? 'bg-rose-50 text-rose-750' :
