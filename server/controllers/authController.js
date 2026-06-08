@@ -362,11 +362,10 @@ exports.getMe = async (req, res) => {
   }
 };
 
+const { sendEmail } = require('../utils/email');
+
 // Helper to send real OTP email via Nodemailer SMTP with auto-retry
 const sendOTPEmail = async (email, otp) => {
-  const nodemailer = require('nodemailer');
-  
-  const fromEmail = process.env.SMTP_FROM || 'JK Home Care <onboarding@resend.dev>';
   const subject = 'JK Home Care - OTP Verification Code';
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -382,68 +381,7 @@ const sendOTPEmail = async (email, otp) => {
     </div>
   `;
 
-  // 1. Try sending via Nodemailer SMTP first
-  try {
-    console.log(`✉️ [Mail Gateway] Attempting SMTP email send to ${email}...`);
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
-      secure: parseInt(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      connectionTimeout: 5000, // 5s timeout to avoid blocking or long wait
-      greetingTimeout: 5000,
-      socketTimeout: 5000
-    });
-    
-    const info = await transporter.sendMail({
-      from: fromEmail,
-      to: email,
-      subject: subject,
-      html: htmlContent
-    });
-    console.log(`✉️ OTP email sent successfully to ${email} via SMTP. MessageId: ${info.messageId}`);
-    return true;
-  } catch (smtpError) {
-    console.warn(`⚠️ [Mail Gateway Warning] SMTP send failed: ${smtpError.message}. Trying Resend REST API fallback...`);
-    
-    // 2. Fallback to Resend REST API (HTTPS port 443 - never blocked by Render)
-    const apiKey = process.env.RESEND_API_KEY || process.env.SMTP_PASS;
-    if (!apiKey) {
-      console.error('💥 [Mail Gateway Failure] No RESEND_API_KEY or SMTP_PASS found for API fallback.');
-      return false;
-    }
-
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [email],
-          subject: subject,
-          html: htmlContent
-        })
-      });
-      
-      const data = await response.json();
-      if (response.ok) {
-        console.log(`✉️ OTP email sent successfully to ${email} via Resend REST API fallback. ID: ${data.id}`);
-        return true;
-      } else {
-        console.error('💥 [Mail Gateway Failure] Resend API fallback failed:', data.message || data);
-        return false;
-      }
-    } catch (apiError) {
-      console.error('💥 [Mail Gateway Failure] Exception during Resend API fallback:', apiError.message);
-      return false;
-    }
-  }
+  return await sendEmail({ to: email, subject, html: htmlContent });
 };
 
 /**

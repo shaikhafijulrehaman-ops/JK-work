@@ -216,6 +216,9 @@ model Booking {
   payment_status String?       @default("Pending")
   transaction_id String?
   booking_status String?       @default("New Booking")
+  partnerName    String?
+  partnerMobile  String?
+  refundId       String?
 
   // Relations
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)

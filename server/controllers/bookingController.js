@@ -384,11 +384,86 @@ exports.validateCouponCode = async (req, res) => {
   }
 };
 
-/**
- * ADMIN: Dispatch and Assign worker to booking
- */
 exports.assignWorker = async (req, res) => {
-  return res.status(400).json({ success: false, message: 'Worker assignment is no longer supported on this managed platform.' });
+  try {
+    const { partnerName, partnerMobile } = req.body;
+    if (!partnerName || !partnerMobile) {
+      return res.status(400).json({ success: false, message: 'Please provide both Partner Name and Partner Mobile Number.' });
+    }
+
+    const bookingId = req.params.id;
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      include: { user: true }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    const updated = await db.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: 'ASSIGNED',
+        booking_status: 'Assigned',
+        partnerName,
+        partnerMobile
+      }
+    });
+
+    // Create Notification
+    await db.notification.create({
+      data: {
+        userId: booking.userId,
+        type: 'WORKER_ASSIGNMENT',
+        title: 'Partner Assigned!',
+        message: `Your professional ${partnerName} (${partnerMobile}) has been assigned to your booking. Check dashboard for details.`
+      }
+    }).catch(() => {});
+
+    // Log Activity
+    logActivity(req, {
+      userId: req.user.id,
+      eventType: 'BOOKING',
+      action: 'BOOKING_ASSIGNED',
+      details: { bookingId, partnerName, partnerMobile }
+    });
+
+    // Send Email to Customer
+    const { sendEmail } = require('../utils/email');
+    const customerEmail = booking.email || booking.user?.email;
+    if (customerEmail) {
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+          <p>Hello,</p>
+          <p>A service partner has been successfully assigned to your booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
+          <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; color: #0f172a;">Assigned Partner Details:</h3>
+            <p style="margin: 5px 0;"><strong>Name:</strong> ${partnerName}</p>
+            <p style="margin: 5px 0;"><strong>Mobile:</strong> ${partnerMobile}</p>
+          </div>
+          <p>They will contact you shortly regarding their arrival. You can track their status in real-time on your dashboard.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+          <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+        </div>
+      `;
+      sendEmail({
+        to: customerEmail,
+        subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
+        html: htmlContent
+      }).catch(err => console.error('Error sending assignment email:', err.message));
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Partner assigned successfully.',
+      booking: updated
+    });
+  } catch (error) {
+    console.error('Assign partner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to assign partner.' });
+  }
 };
 
 exports.acceptBookingByPartner = async (req, res) => {

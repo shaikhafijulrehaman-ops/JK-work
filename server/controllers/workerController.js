@@ -27,6 +27,9 @@ exports.getMyJobs = async (req, res) => {
 /**
  * Transition assigned booking progress status
  */
+const { sendEmail } = require('../utils/email');
+const Razorpay = require('razorpay');
+
 exports.updateJobStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -34,65 +37,67 @@ exports.updateJobStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide target booking status.' });
     }
 
-    const booking = await db.booking.findUnique({ where: { id: req.params.id } });
+    // Load full booking including user relations
+    const booking = await db.booking.findUnique({ 
+      where: { id: req.params.id },
+      include: { user: true }
+    });
+    
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
-    // Role gate: Only the assigned worker or admin can transition status
-    const worker = await db.worker.findUnique({ where: { userId: req.user.id } });
-    if (req.user.role !== 'ADMIN' && (!worker || booking.workerId !== worker.id)) {
-      return res.status(403).json({ success: false, message: 'Unauthorized. You are not assigned to this job.' });
+    // Role gate: Only Admin can update status under the new flow
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Only admins can transition booking status.' });
     }
 
-    const updateData = { status };
+    const updateData = { 
+      status,
+      booking_status: status === 'PENDING' ? 'New Booking' : 
+                      status === 'ASSIGNED' ? 'Assigned' : 
+                      status === 'ON_THE_WAY' ? 'On The Way' : 
+                      status === 'CANCELLED' ? 'Cancelled' : status
+    };
 
-    // 1. If status is ON_THE_WAY, update worker state to ON_JOB
-    if (status === 'ON_THE_WAY' && worker) {
-      await db.worker.update({
-        where: { id: worker.id },
-        data: { status: 'ON_JOB' }
-      }).catch(() => {});
-    }
+    const customerEmail = booking.email || booking.user?.email;
 
-    // 2. If status is COMPLETED, calculate dynamic commission and store earnings
-    if (status === 'COMPLETED') {
-      const activeWorker = worker || await db.worker.findUnique({ where: { id: booking.workerId } });
-      const commissionRate = activeWorker ? activeWorker.commissionRate : 0.70; // Default 70% commission
-      
-      const workerEarnings = parseFloat((booking.finalPrice * commissionRate).toFixed(2));
-      updateData.workerEarnings = workerEarnings;
-      updateData.paymentStatus = 'PAID'; // Mark auto paid on completion if not already
-      updateData.payment_status = 'Paid';
-
-      // Free worker and increment count
-      if (activeWorker) {
-        await db.worker.update({
-          where: { id: activeWorker.id },
-          data: { 
-            status: 'AVAILABLE',
-            totalJobs: activeWorker.totalJobs + 1
-          }
-        }).catch(() => {});
-      }
-
-      // Send completed alert
+    // 1. If status is ON_THE_WAY, send email notification
+    if (status === 'ON_THE_WAY') {
       await db.notification.create({
         data: {
           userId: booking.userId,
-          type: 'PAYMENT_SUCCESS',
-          title: 'Job Completed Successfully!',
-          message: `Your professional has marked the job as completed. Please leave a rating and share your review!`
+          type: 'BOOKING_ALERT',
+          title: 'Partner On The Way!',
+          message: `Your professional ${booking.partnerName || 'expert'} is on the way! Estimated arrival in 9 minutes.`
         }
       }).catch(() => {});
+
+      if (customerEmail) {
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+            <p>Hello,</p>
+            <p>Your service partner is now <strong>On The Way</strong> for booking <strong>#${booking.id.substring(0,8).toUpperCase()}</strong>!</p>
+            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+              <p style="font-size: 16px; font-weight: bold; color: #0f172a; margin: 0;">Estimated Arrival Time: Within 9 Minutes</p>
+            </div>
+            <p><strong>Partner Name:</strong> ${booking.partnerName || 'N/A'}</p>
+            <p><strong>Partner Mobile:</strong> ${booking.partnerMobile || 'N/A'}</p>
+            <p>Please ensure someone is available at your doorstep to receive the service partner.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `;
+        sendEmail({
+          to: customerEmail,
+          subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+          html: htmlContent
+        }).catch(err => console.error('Error sending on-the-way email:', err.message));
+      }
     }
 
-    // 3. Update Booking
-    const updated = await db.booking.update({
-      where: { id: booking.id },
-      data: updateData
-    });
-
+    // 2. If status is CANCELLED, handle refund + emails
     if (status === 'CANCELLED') {
       logActivity(req, {
         userId: req.user.id,
@@ -100,17 +105,89 @@ exports.updateJobStatus = async (req, res) => {
         action: 'BOOKING_CANCELLED',
         details: { bookingId: booking.id }
       });
+
+      const paymentId = booking.paymentId || booking.transaction_id;
+      const wasPaid = booking.paymentStatus === 'PAID' || booking.payment_status === 'Paid';
+      
+      let refundId = null;
+
+      if (wasPaid && paymentId && paymentId !== 'N/A') {
+        const isSimulated = paymentId.startsWith('pay_sim_') || paymentId.startsWith('order_mock_') || !process.env.RAZORPAY_KEY_SECRET;
+        
+        if (isSimulated) {
+          refundId = `ref_sim_${Math.random().toString(36).substring(2,10)}`;
+          console.log(`✉️ [Refund System] Simulated Refund processed successfully for simulated payment ${paymentId}. Refund ID: ${refundId}`);
+        } else {
+          try {
+            console.log(`✉️ [Refund System] Initiating Razorpay Refund for payment ${paymentId}...`);
+            const razorpayClient = new Razorpay({
+              key_id: process.env.RAZORPAY_KEY_ID,
+              key_secret: process.env.RAZORPAY_KEY_SECRET
+            });
+            
+            const refund = await razorpayClient.payments.refund(paymentId, {
+              amount: Math.round(booking.finalPrice * 100), // amount in paise
+              notes: { bookingId: booking.id, reason: 'Admin cancelled booking' }
+            });
+            refundId = refund.id;
+            console.log(`✉️ [Refund System] Razorpay Refund completed. Refund ID: ${refundId}`);
+          } catch (refundError) {
+            console.error('💥 [Refund System Error] Razorpay refund failed:', refundError.message);
+            return res.status(500).json({ success: false, message: `Status update failed: Razorpay refund failed: ${refundError.message}` });
+          }
+        }
+
+        updateData.paymentStatus = 'REFUNDED';
+        updateData.payment_status = 'Refunded';
+        updateData.refundId = refundId;
+      }
+
+      // Create Notification
+      await db.notification.create({
+        data: {
+          userId: booking.userId,
+          type: 'SYSTEM_ALERT',
+          title: 'Booking Cancelled & Refunded',
+          message: `Your booking #${booking.id.substring(0,8)} has been cancelled. A full refund of Rs. ${booking.finalPrice} was initiated.`
+        }
+      }).catch(() => {});
+
+      // Send Cancellation & Refund Email
+      if (customerEmail) {
+        const refundDetailsHtml = refundId ? `
+          <div style="background-color: #f0fdfa; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ccfbf1;">
+            <h3 style="margin-top: 0; color: #0d9488;">Refund Confirmation</h3>
+            <p style="margin: 5px 0;"><strong>Refund Amount:</strong> Rs. ${booking.finalPrice}</p>
+            <p style="margin: 5px 0;"><strong>Refund Reference ID:</strong> ${refundId}</p>
+            <p style="margin: 5px 0; font-size: 11px; color: #0f766e;">The refunded amount will reflect in your account within 5-7 business days.</p>
+          </div>
+        ` : '';
+
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #e11d48; text-align: center;">Booking Cancelled</h2>
+            <p>Hello,</p>
+            <p>Your booking <strong>#${booking.id.substring(0,8).toUpperCase()}</strong> has been cancelled by the administrator.</p>
+            ${refundDetailsHtml}
+            <p>If you have any questions or require further assistance, please contact our customer support team.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `;
+
+        sendEmail({
+          to: customerEmail,
+          subject: `JK Home Care - Cancellation & Refund confirmation for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+          html: htmlContent
+        }).catch(err => console.error('Error sending cancellation email:', err.message));
+      }
     }
 
-    // Notify Customer about state shift
-    await db.notification.create({
-      data: {
-        userId: booking.userId,
-        type: 'BOOKING_ALERT',
-        title: `Service Status Updated: ${status.replace(/_/g, ' ')}`,
-        message: `Your JK service professional is now: "${status.replace(/_/g, ' ')}". Check your live tracking dashboard.`
-      }
-    }).catch(() => {});
+    // 3. Update Booking
+    const updated = await db.booking.update({
+      where: { id: booking.id },
+      data: updateData
+    });
 
     res.status(200).json({
       success: true,

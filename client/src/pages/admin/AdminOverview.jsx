@@ -120,6 +120,20 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  // Partner Assignment Input States
+  const [partnerNameInput, setPartnerNameInput] = useState('');
+  const [partnerMobileInput, setPartnerMobileInput] = useState('');
+
+  useEffect(() => {
+    if (selectedBooking) {
+      setPartnerNameInput(selectedBooking.partnerName || '');
+      setPartnerMobileInput(selectedBooking.partnerMobile || '');
+    } else {
+      setPartnerNameInput('');
+      setPartnerMobileInput('');
+    }
+  }, [selectedBooking]);
+
   // Admin seen-tracking for new applications
   const seenWorkerIds = React.useRef(new Set());
   const [toasts, setToasts] = useState([]);
@@ -930,25 +944,34 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     setSelectedWorker(null);
   };
 
-  const handleAssignWorker = async (bookingId, workerId) => {
+  const handleAssignPartner = async (bookingId, partnerName, partnerMobile) => {
     try {
       const res = await fetch(`/api/bookings/${bookingId}/assign`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ workerId })
+        body: JSON.stringify({ partnerName, partnerMobile })
       });
       if (res.ok) {
-        addNotification('Worker Assigned', 'Professional successfully assigned to booking.');
+        const data = await res.json();
+        addNotification('Partner Assigned', 'Service partner successfully assigned.');
+        if (selectedBooking && selectedBooking.id === bookingId) {
+          setSelectedBooking(data.booking || { ...selectedBooking, partnerName, partnerMobile, status: 'ASSIGNED' });
+        }
         fetchAllData();
+      } else {
+        const data = await res.json();
+        addNotification('Operation Failed', data.message || 'Unable to assign partner.');
       }
     } catch (err) {
       if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to assign worker.');
+        addNotification('Operation Failed', 'Database connection error. Unable to assign partner.');
       } else {
-        const worker = workers.find(w => w.id === workerId);
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, workerId, worker, status: 'ASSIGNED' } : b));
-        addNotification('Worker Assigned', 'Professional successfully assigned (Sandbox mode).');
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, partnerName, partnerMobile, status: 'ASSIGNED' } : b));
+        if (selectedBooking && selectedBooking.id === bookingId) {
+          setSelectedBooking({ ...selectedBooking, partnerName, partnerMobile, status: 'ASSIGNED' });
+        }
+        addNotification('Partner Assigned', 'Service partner successfully assigned (Sandbox mode).');
       }
     }
   };
@@ -2039,8 +2062,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           <option value="PENDING">New/Pending</option>
                           <option value="ASSIGNED">Assigned</option>
                           <option value="ON_THE_WAY">On The Way</option>
-                          <option value="STARTED">Started</option>
-                          <option value="COMPLETED">Completed</option>
                           <option value="CANCELLED">Cancelled</option>
                         </select>
                       </div>
@@ -2088,31 +2109,23 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 </td>
                                 <td className="p-4">
                                   <select
-                                    value={b.booking_status || (b.status === 'PENDING' ? 'New Booking' : b.status)}
+                                    value={b.status}
                                     onChange={async (e) => {
                                       const nextStatus = e.target.value;
-                                      const statusMap = {
-                                        'New Booking': 'PENDING',
-                                        'Confirmed': 'PENDING',
-                                        'In Progress': 'IN_PROGRESS',
-                                        'Completed': 'COMPLETED',
-                                        'Cancelled': 'CANCELLED'
-                                      };
-                                      
-                                      await handleChangeBookingStatus(b.id, statusMap[nextStatus] || 'PENDING');
-                                      setBookings(prev => prev.map(item => item.id === b.id ? { ...item, booking_status: nextStatus, status: statusMap[nextStatus] || 'PENDING' } : item));
+                                      await handleChangeBookingStatus(b.id, nextStatus);
+                                      setBookings(prev => prev.map(item => item.id === b.id ? { ...item, status: nextStatus, booking_status: nextStatus } : item));
                                     }}
                                     className={`text-[10px] font-black px-2 py-0.5 rounded-lg uppercase tracking-wider focus:outline-none border border-slate-200/50 cursor-pointer ${
-                                      (b.booking_status || b.status) === 'Completed' || (b.booking_status || b.status) === 'COMPLETED' ? 'bg-emerald-50 text-emerald-750' :
-                                      (b.booking_status || b.status) === 'Cancelled' || (b.booking_status || b.status) === 'CANCELLED' ? 'bg-rose-50 text-rose-750' :
+                                      b.status === 'CANCELLED' ? 'bg-rose-50 text-rose-750' :
+                                      b.status === 'ASSIGNED' ? 'bg-indigo-50 text-indigo-750' :
+                                      b.status === 'ON_THE_WAY' ? 'bg-blue-50 text-blue-750' :
                                       'bg-cyan-50 text-cyan-750'
                                     }`}
                                   >
-                                    <option value="New Booking">New Booking</option>
-                                    <option value="Confirmed">Confirmed</option>
-                                    <option value="In Progress">In Progress</option>
-                                    <option value="Completed">Completed</option>
-                                    <option value="Cancelled">Cancelled</option>
+                                    <option value="PENDING">New Booking</option>
+                                    <option value="ASSIGNED">Assigned</option>
+                                    <option value="ON_THE_WAY">On The Way</option>
+                                    <option value="CANCELLED">Cancelled</option>
                                   </select>
                                 </td>
                                 <td className="p-4">
@@ -3105,17 +3118,66 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                 </div>
 
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Assigned Professional</span>
-                  {selectedBooking.worker ? (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-1 flex justify-between items-center">
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase font-poppins">Assigned Service Partner</span>
+                  {selectedBooking.partnerName ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-1 flex justify-between items-center shadow-sm">
                       <div>
-                        <h5 className="font-bold text-emerald-600">{selectedBooking.worker.user?.name}</h5>
-                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{selectedBooking.worker.user?.phone}</p>
+                        <h5 className="font-bold text-cyan-700">{selectedBooking.partnerName}</h5>
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{selectedBooking.partnerMobile}</p>
                       </div>
-                      <span className="bg-emerald-50 text-emerald-750 font-black text-[9px] px-2.5 py-0.5 rounded">ASSIGNED</span>
+                      <span className="bg-cyan-50 text-cyan-750 font-black text-[9px] px-2.5 py-0.5 rounded tracking-wider uppercase">ASSIGNED</span>
                     </div>
                   ) : (
                     <p className="text-[10px] text-slate-400 font-medium mt-1">No service partner assigned to this job.</p>
+                  )}
+
+                  {/* Assign/Reassign Partner Form */}
+                  {selectedBooking.status !== 'CANCELLED' && (
+                    <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
+                      <h5 className="text-[10px] font-bold text-slate-500 uppercase font-poppins">Assign / Change Partner</h5>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Partner Name"
+                          value={partnerNameInput}
+                          onChange={(e) => setPartnerNameInput(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-brand w-full"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Mobile Number"
+                          value={partnerMobileInput}
+                          onChange={(e) => setPartnerMobileInput(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-brand w-full"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!partnerNameInput || !partnerMobileInput) {
+                            addNotification('Validation Error', 'Please enter both partner name and mobile number.');
+                            return;
+                          }
+                          handleAssignPartner(selectedBooking.id, partnerNameInput, partnerMobileInput);
+                        }}
+                        className="w-full bg-brand hover:bg-brand/90 text-white font-extrabold text-[10px] uppercase py-2 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1"
+                      >
+                        <span>Assign Partner</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedBooking.status === 'CANCELLED' && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 mt-4">
+                      <h5 className="font-bold text-rose-700">Booking Cancelled</h5>
+                      <p className="text-[10px] text-rose-600 mt-0.5 leading-relaxed font-semibold">
+                        A full refund has been automatically initiated for this cancelled booking.
+                      </p>
+                      {selectedBooking.refundId && (
+                        <p className="text-[9px] text-slate-400 font-mono mt-1.5">
+                          Refund ID: <span className="font-bold text-slate-600 select-all">{selectedBooking.refundId}</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

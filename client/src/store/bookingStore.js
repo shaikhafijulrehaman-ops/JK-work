@@ -159,7 +159,7 @@ export const useBookingStore = create((set, get) => ({
   },
 
   // Admin assign worker to booking
-  assignWorker: async (bookingId, workerId) => {
+  assignWorker: async (bookingId, partnerName, partnerMobile) => {
     try {
       const res = await fetch(`${API_URL}/bookings/${bookingId}/assign`, {
         method: 'PUT',
@@ -167,7 +167,7 @@ export const useBookingStore = create((set, get) => ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
         },
-        body: JSON.stringify({ workerId })
+        body: JSON.stringify({ partnerName, partnerMobile })
       });
       const data = await res.json();
       if (data.success) {
@@ -186,15 +186,9 @@ export const useBookingStore = create((set, get) => ({
     const current = get().bookings;
     const idx = current.findIndex(b => b.id === bookingId);
     if (idx !== -1) {
-      current[idx].workerId = workerId;
       current[idx].status = 'ASSIGNED';
-      
-      // Simulate assigning Ramesh Kumar
-      current[idx].worker = {
-        id: workerId,
-        rating: 4.8,
-        user: { name: workerId === 'w-2' ? 'Vijay Kumar' : 'Ramesh Kumar', phone: '7766554433' }
-      };
+      current[idx].partnerName = partnerName;
+      current[idx].partnerMobile = partnerMobile;
 
       localStorage.setItem('jk_bookings', JSON.stringify(current));
       set({ bookings: [...current] });

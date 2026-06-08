@@ -118,11 +118,9 @@ export default function Dashboard() {
 
   const getTimelineSteps = (status) => {
     const steps = [
-      { name: 'Pending', active: true, done: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'Assigned', active: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'On The Way', active: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'In Progress', active: ['IN_PROGRESS', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
-      { name: 'Completed', active: status === 'COMPLETED', done: status === 'COMPLETED' }
+      { name: 'Pending', active: true, done: ['ASSIGNED', 'ON_THE_WAY'].includes(status) },
+      { name: 'Assigned', active: ['ASSIGNED', 'ON_THE_WAY'].includes(status), done: status === 'ON_THE_WAY' },
+      { name: 'On The Way', active: status === 'ON_THE_WAY', done: status === 'ON_THE_WAY' }
     ];
     return steps;
   };
@@ -180,11 +178,12 @@ export default function Dashboard() {
                         Ref: #{b.id.substring(0, 8).toUpperCase()}
                       </span>
                       <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full leading-none ${
-                        b.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                        ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(b.status) ? 'bg-amber-100 text-amber-700 font-bold' :
-                        b.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
+                        b.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700' :
+                        b.status === 'ON_THE_WAY' ? 'bg-cyan-100 text-cyan-700' :
+                        b.status === 'ASSIGNED' ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-amber-100 text-amber-700'
                       }`}>
-                        {b.status.replace(/_/g, ' ')}
+                        {b.status === 'PENDING' ? 'Pending' : b.status.replace(/_/g, ' ')}
                       </span>
                     </div>
 
@@ -223,103 +222,101 @@ export default function Dashboard() {
                     </div>
                     
                     <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${
-                      selectedBooking.status === 'COMPLETED' ? 'bg-cyan-100 text-cyan-700' :
-                      ['PENDING', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status) ? 'bg-amber-100 text-amber-700 font-bold' :
-                      selectedBooking.status === 'PARTNER_ACCEPTED' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-brand/10 text-brand'
+                      selectedBooking.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700 font-bold' :
+                      selectedBooking.status === 'ON_THE_WAY' ? 'bg-cyan-100 text-cyan-700 font-bold' :
+                      selectedBooking.status === 'ASSIGNED' ? 'bg-emerald-100 text-emerald-800 font-bold' :
+                      'bg-amber-100 text-amber-700'
                     }`}>
-                      {selectedBooking.status.replace(/_/g, ' ')}
+                      {selectedBooking.status === 'PENDING' ? 'Pending' : selectedBooking.status.replace(/_/g, ' ')}
                     </span>
                   </div>
 
-                  {/* Dynamic Timeline stepper */}
-                  <div className="relative flex items-center justify-between w-full max-w-lg mx-auto py-2">
-                    {/* Background line */}
-                    <div className="absolute left-0 top-[22px] w-full h-1 bg-slate-100 -z-1"></div>
-                    
-                    {getTimelineSteps(selectedBooking.status).map((step, idx) => (
-                      <div key={idx} className="flex flex-col items-center z-10">
-                        <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white shadow transition-all ${
-                          step.done ? 'bg-brand text-white' : 
-                          step.active ? 'bg-brand/20 text-brand ring-brand/10 border border-brand' : 'bg-slate-200 text-slate-400'
-                        }`}>
-                          {step.done ? '✓' : idx + 1}
-                        </span>
-                        <span className={`text-[9px] font-bold mt-2 uppercase tracking-wide ${
-                          step.active ? 'text-brand font-black' : 'text-slate-400'
-                        }`}>
-                          {step.name}
-                        </span>
+                  {/* Cancelled status alert box or progressive stepper timeline */}
+                  {selectedBooking.status === 'CANCELLED' ? (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto text-rose-600 font-extrabold text-lg">
+                        ✕
                       </div>
-                    ))}
-                  </div>
-
-                  {/* GPS Anchepalya dispatch countdown mock map */}
-                  {selectedBooking.status === 'ON_THE_WAY' && (
-                    <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800 relative overflow-hidden">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(8,145,178,0.2),transparent)] pointer-events-none"></div>
-                      
-                      <div className="flex items-center justify-between mb-4 relative z-10">
-                        <div className="flex items-center space-x-2">
-                          <span className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-ping"></span>
-                          <span className="font-poppins font-black text-xs uppercase tracking-wider text-brand-light">Live GPS Dispatch Dispatcher</span>
-                        </div>
-                        <span className="font-poppins font-black text-xl text-royal-gold animate-pulse">
-                          {formatTime(secondsLeft)}
-                        </span>
-                      </div>
-
-                      {/* Map Animation Road */}
-                      <div className="h-10 bg-slate-800/80 border border-slate-700/50 rounded-lg relative flex items-center px-4 mb-4">
-                        {/* Start (Anchepalya base) */}
-                        <div className="absolute left-3 text-[10px] font-bold text-slate-500">Anchepalya Hub</div>
-                        {/* End (Customer Doorstep) */}
-                        <div className="absolute right-3 text-[10px] font-bold text-slate-300">Prestige Jindal City</div>
-
-                        {/* Worker Bike symbol moving */}
-                        <div 
-                          className="absolute transition-all duration-1000 flex items-center space-x-1"
-                          style={{ left: `${15 + (mapPercentage * 0.55)}%` }}
-                        >
-                          <Truck className="w-5 h-5 text-brand-light transform -scale-x-100 animate-bounce" />
-                          <span className="text-[8px] bg-brand text-white px-1.5 py-0.5 rounded leading-none uppercase font-bold tracking-tight">Ramesh Kumar</span>
-                        </div>
-                      </div>
-
-                      <p className="text-[10px] text-slate-400 leading-relaxed max-w-sm">
-                        Vijay/Ramesh has departed Chikkabidarakallu dispatch base. Verification lock is active. Arriving at your doorstep in Anchepalya.
+                      <h3 className="font-poppins font-black text-slate-800 text-base">Booking Cancelled & Refunded</h3>
+                      <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">
+                        This booking has been cancelled by the administrator. A full refund of <strong>Rs. {selectedBooking.finalPrice.toLocaleString()}</strong> has been processed back to your original payment method.
                       </p>
+                      {selectedBooking.refundId && (
+                        <div className="bg-white border border-rose-100 p-3 rounded-lg max-w-xs mx-auto text-left text-[11px] space-y-1 font-mono">
+                          <div className="flex justify-between text-slate-500">
+                            <span>Refund Status:</span>
+                            <span className="text-emerald-600 font-bold uppercase">Success</span>
+                          </div>
+                          <div className="flex justify-between text-slate-500">
+                            <span>Refund Ref ID:</span>
+                            <span className="text-slate-800 font-bold select-all">{selectedBooking.refundId}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      {/* Dynamic Timeline stepper */}
+                      <div className="relative flex items-center justify-between w-full max-w-lg mx-auto py-2">
+                        {/* Background line */}
+                        <div className="absolute left-0 top-[22px] w-full h-1 bg-slate-100 -z-1"></div>
+                        
+                        {getTimelineSteps(selectedBooking.status).map((step, idx) => (
+                          <div key={idx} className="flex flex-col items-center z-10">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white shadow transition-all ${
+                              step.done ? 'bg-brand text-white' : 
+                              step.active ? 'bg-brand/20 text-brand ring-brand/10 border border-brand' : 'bg-slate-200 text-slate-400'
+                            }`}>
+                              {step.done ? '✓' : idx + 1}
+                            </span>
+                            <span className={`text-[9px] font-bold mt-2 uppercase tracking-wide ${
+                              step.active ? 'text-brand font-black' : 'text-slate-400'
+                            }`}>
+                              {step.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
 
-                  {/* Sandboxed Simulation Operations (WOW factor to test progress state changes) */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      🛠️ Sandboxed Simulation Panel (Verify stepper live updates)
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'ON_THE_WAY')}
-                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status)}
-                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
-                      >
-                        Simulate: Dispatched On The Way
-                      </button>
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'IN_PROGRESS')}
-                        disabled={['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
-                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
-                      >
-                        Simulate: Start Service Action
-                      </button>
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'COMPLETED')}
-                        disabled={selectedBooking.status !== 'IN_PROGRESS'}
-                        className="bg-brand text-white hover:bg-brand-dark text-[10px] px-3.5 py-1.5 rounded font-bold shadow-sm disabled:opacity-50"
-                      >
-                        Simulate: Complete Service
-                      </button>
-                    </div>
-                  </div>
+                      {/* GPS Anchepalya dispatch countdown mock map */}
+                      {selectedBooking.status === 'ON_THE_WAY' && (
+                        <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800 relative overflow-hidden">
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(8,145,178,0.2),transparent)] pointer-events-none"></div>
+                          
+                          <div className="flex items-center justify-between mb-4 relative z-10">
+                            <div className="flex items-center space-x-2">
+                              <span className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-ping"></span>
+                              <span className="font-poppins font-black text-xs uppercase tracking-wider text-brand-light">Live GPS Dispatch Dispatcher</span>
+                            </div>
+                            <span className="font-poppins font-black text-xl text-royal-gold animate-pulse">
+                              {formatTime(secondsLeft)}
+                            </span>
+                          </div>
+
+                          {/* Map Animation Road */}
+                          <div className="h-10 bg-slate-800/80 border border-slate-700/50 rounded-lg relative flex items-center px-4 mb-4">
+                            {/* Start (Anchepalya base) */}
+                            <div className="absolute left-3 text-[10px] font-bold text-slate-500">Anchepalya Hub</div>
+                            {/* End (Customer Doorstep) */}
+                            <div className="absolute right-3 text-[10px] font-bold text-slate-300">Prestige Jindal City</div>
+
+                            {/* Worker Bike symbol moving */}
+                            <div 
+                              className="absolute transition-all duration-1000 flex items-center space-x-1"
+                              style={{ left: `${15 + (mapPercentage * 0.55)}%` }}
+                            >
+                              <Truck className="w-5 h-5 text-brand-light transform -scale-x-100 animate-bounce" />
+                              <span className="text-[8px] bg-brand text-white px-1.5 py-0.5 rounded leading-none uppercase font-bold tracking-tight">{selectedBooking.partnerName || 'Expert'}</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-slate-400 leading-relaxed max-w-sm">
+                            Your service partner is now on the way to your doorstep. Estimated arrival: <strong>Within 9 Minutes</strong>.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {/* Detailed receipt breakdown */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-600 border-t border-slate-50 pt-4">
@@ -409,97 +406,26 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  {/* Assigned Worker Profile receipts with premium service worker illustrations */}
-                  {selectedBooking.workerId && (() => {
-                    let avatarUrl = null;
-                    if (selectedBooking.worker && selectedBooking.worker.profilePhoto) {
-                      try {
-                        const parsed = JSON.parse(selectedBooking.worker.profilePhoto);
-                        avatarUrl = parsed.profile || parsed.selfie || null;
-                      } catch (e) {
-                        avatarUrl = selectedBooking.worker.profilePhoto;
-                      }
-                    }
-                    if (avatarUrl && (avatarUrl.includes('unsplash.com') || avatarUrl.includes('sample') || avatarUrl.includes('profile.jpg') || avatarUrl.includes('selfie.jpg'))) {
-                      avatarUrl = null;
-                    }
-                    return (
-                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400 font-bold text-[8px] text-center leading-none p-1">
-                            {avatarUrl ? (
-                              <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
-                            ) : (
-                              <span>Image Not Available</span>
-                            )}
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-800 block">Assigned Service Professional</span>
-                            <span className="text-slate-400">{selectedBooking.worker && selectedBooking.worker.user ? selectedBooking.worker.user.name : 'Ramesh Kumar'}</span>
-                          </div>
+                  {/* Assigned Custom Partner Details */}
+                  {selectedBooking.partnerName && (
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-brand/5 text-brand font-black text-xs">
+                          {selectedBooking.partnerName.substring(0,2).toUpperCase()}
                         </div>
-                        <div className="flex items-center space-x-4">
-                          <span className="text-royal-gold font-bold flex items-center">
-                            <Star className="w-3.5 h-3.5 fill-current mr-0.5" /> 4.8★
-                          </span>
-                          <a href={`tel:${selectedBooking.worker && selectedBooking.worker.user ? selectedBooking.worker.user.phone : '7766554433'}`} className="p-2 bg-white rounded-full border border-slate-200 text-brand">
-                            <Phone className="w-4 h-4" />
-                          </a>
+                        <div>
+                          <span className="font-bold text-slate-850 block">Assigned Service Partner</span>
+                          <span className="text-slate-500 font-semibold">{selectedBooking.partnerName}</span>
                         </div>
                       </div>
-                    );
-                  })()}
-
-                  {/* Customer Review Feedback submission form */}
-                  {selectedBooking.status === 'COMPLETED' && (
-                    <div className="border-t border-slate-100 pt-6">
-                      <h4 className="font-poppins font-bold text-xs text-slate-400 uppercase tracking-wider mb-4">
-                        Rate Your Experience (Review System)
-                      </h4>
-
-                      {selectedBooking.review || reviewSubmitted ? (
-                        <div className="bg-cyan-50 border border-cyan-200/50 text-cyan-700 text-xs p-4 rounded-xl flex items-center justify-center space-x-2">
-                          <CheckCircle className="w-5 h-5 text-cyan-500" />
-                          <span className="font-bold">Thank you! Your verified rating and comments have been recorded.</span>
-                        </div>
-                      ) : (
-                        <form onSubmit={handleReviewSubmit} className="space-y-4 text-xs">
-                          {/* Star Score Selector */}
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-slate-700">Choose Rating:</span>
-                            <div className="flex space-x-1">
-                              {[1, 2, 3, 4, 5].map((score) => (
-                                <button
-                                  key={score}
-                                  type="button"
-                                  onClick={() => setRating(score)}
-                                  className={`p-1.5 transition-colors ${score <= rating ? 'text-royal-gold' : 'text-slate-200'}`}
-                                >
-                                  <Star className="w-6 h-6 fill-current" />
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="form-group">
-                            <textarea
-                              className="form-input min-h-[80px]"
-                              placeholder="Write a comment about Ramesh Kumar/Vijay's service..."
-                              value={comment}
-                              onChange={e => setComment(e.target.value)}
-                              required
-                            ></textarea>
-                            <label className="form-label">Write comment...</label>
-                          </div>
-
-                          <button
-                            type="submit"
-                            className="bg-brand hover:bg-brand-dark text-white font-poppins font-bold text-xs px-6 py-2.5 rounded-lg uppercase tracking-wider shadow-sm"
-                          >
-                            Submit Verified Rating
-                          </button>
-                        </form>
-                      )}
+                      <div className="flex items-center space-x-4">
+                        <span className="bg-brand/10 text-brand font-black text-[9px] px-2 py-0.5 rounded uppercase tracking-wider">
+                          Assigned
+                        </span>
+                        <a href={`tel:${selectedBooking.partnerMobile}`} className="p-2 bg-white rounded-full border border-slate-200 text-brand shadow-sm hover:bg-slate-50 transition-colors">
+                          <Phone className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
                     </div>
                   )}
 
