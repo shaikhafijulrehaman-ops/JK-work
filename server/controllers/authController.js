@@ -365,53 +365,83 @@ exports.getMe = async (req, res) => {
 // Helper to send real OTP email via Nodemailer SMTP with auto-retry
 const sendOTPEmail = async (email, otp) => {
   const nodemailer = require('nodemailer');
-  const maxMailAttempts = 3;
-  let attempt = 1;
   
-  const mailOptions = {
-    from: process.env.SMTP_FROM || 'JK Home Care <onboarding@resend.dev>',
-    to: email,
-    subject: 'JK Home Care - OTP Verification Code',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
-        <p>Hello,</p>
-        <p>Thank you for choosing JK Home Care. Use the following One-Time Password (OTP) to complete your verification:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background-color: #f1f5f9; padding: 10px 20px; border-radius: 4px; border: 1px dashed #cbd5e1;">${otp}</span>
-        </div>
-        <p style="color: #64748b; font-size: 14px;">This code is valid for 10 minutes. If you did not request this verification, please ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-        <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+  const fromEmail = process.env.SMTP_FROM || 'JK Home Care <onboarding@resend.dev>';
+  const subject = 'JK Home Care - OTP Verification Code';
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+      <p>Hello,</p>
+      <p>Thank you for choosing JK Home Care. Use the following One-Time Password (OTP) to complete your verification:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background-color: #f1f5f9; padding: 10px 20px; border-radius: 4px; border: 1px dashed #cbd5e1;">${otp}</span>
       </div>
-    `
-  };
+      <p style="color: #64748b; font-size: 14px;">This code is valid for 10 minutes. If you did not request this verification, please ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+      <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+    </div>
+  `;
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT),
-    secure: parseInt(process.env.SMTP_PORT) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+  // 1. Try sending via Nodemailer SMTP first
+  try {
+    console.log(`✉️ [Mail Gateway] Attempting SMTP email send to ${email}...`);
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT),
+      secure: parseInt(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      connectionTimeout: 5000, // 5s timeout to avoid blocking or long wait
+      greetingTimeout: 5000,
+      socketTimeout: 5000
+    });
+    
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: email,
+      subject: subject,
+      html: htmlContent
+    });
+    console.log(`✉️ OTP email sent successfully to ${email} via SMTP. MessageId: ${info.messageId}`);
+    return true;
+  } catch (smtpError) {
+    console.warn(`⚠️ [Mail Gateway Warning] SMTP send failed: ${smtpError.message}. Trying Resend REST API fallback...`);
+    
+    // 2. Fallback to Resend REST API (HTTPS port 443 - never blocked by Render)
+    const apiKey = process.env.RESEND_API_KEY || process.env.SMTP_PASS;
+    if (!apiKey) {
+      console.error('💥 [Mail Gateway Failure] No RESEND_API_KEY or SMTP_PASS found for API fallback.');
+      return false;
     }
-  });
 
-  while (attempt <= maxMailAttempts) {
     try {
-      console.log(`✉️ [Mail Gateway] Attempting SMTP email send to ${email} (Attempt ${attempt}/${maxMailAttempts})...`);
-      const info = await transporter.sendMail(mailOptions);
-      console.log(`✉️ OTP email sent successfully to ${email} via SMTP. MessageId: ${info.messageId}`);
-      return true;
-    } catch (err) {
-      console.error(`❌ [Mail Gateway Error] SMTP send failed on attempt ${attempt}:`, err.message);
-      if (attempt === maxMailAttempts) {
-        console.error(`💥 [Mail Gateway Failure] Failed to send OTP email to ${email} after ${maxMailAttempts} attempts.`);
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [email],
+          subject: subject,
+          html: htmlContent
+        })
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        console.log(`✉️ OTP email sent successfully to ${email} via Resend REST API fallback. ID: ${data.id}`);
+        return true;
+      } else {
+        console.error('💥 [Mail Gateway Failure] Resend API fallback failed:', data.message || data);
         return false;
       }
-      const backoff = attempt * 1000;
-      await new Promise(resolve => setTimeout(resolve, backoff));
-      attempt++;
+    } catch (apiError) {
+      console.error('💥 [Mail Gateway Failure] Exception during Resend API fallback:', apiError.message);
+      return false;
     }
   }
 };
