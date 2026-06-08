@@ -27,6 +27,12 @@ router.post('/coupons', protect, restrictTo('ADMIN'), adminController.createCoup
 router.put('/coupons/:id', protect, restrictTo('ADMIN'), adminController.updateCoupon);
 router.delete('/coupons/:id', protect, restrictTo('ADMIN'), adminController.deleteCoupon);
 
+// Service Partner CRUD Management
+router.get('/partners', protect, restrictTo('ADMIN'), adminController.getPartners);
+router.post('/partners', protect, restrictTo('ADMIN'), adminController.createPartner);
+router.put('/partners/:id', protect, restrictTo('ADMIN'), adminController.updatePartner);
+router.delete('/partners/:id', protect, restrictTo('ADMIN'), adminController.deletePartner);
+
 // Resource-specific admin query lists
 router.get('/bookings', protect, restrictTo('ADMIN'), adminController.getBookings);
 router.get('/customers', protect, restrictTo('ADMIN'), adminController.getCustomers);

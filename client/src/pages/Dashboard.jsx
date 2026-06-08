@@ -386,23 +386,14 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Razorpay Online Payment Checkout simulation widget */}
+                  {/* Payment pending information card */}
                   {selectedBooking.paymentStatus === 'UNPAID' && (
-                    <div className="bg-amber-50 border border-amber-200/50 rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
-                      <div className="flex items-center space-x-3 text-xs">
-                        <CreditCard className="w-8 h-8 text-amber-500 flex-shrink-0" />
-                        <div>
-                          <span className="font-bold text-amber-800 block">UPI/Razorpay Payment Verification Required</span>
-                          <span className="text-amber-600 leading-none">Your instant 9-minute service dispatch is paused until invoice is paid.</span>
-                        </div>
+                    <div className="bg-amber-50 border border-amber-200/50 rounded-xl p-5 flex items-center space-x-3 text-xs text-left">
+                      <CreditCard className="w-8 h-8 text-amber-500 flex-shrink-0" />
+                      <div>
+                        <span className="font-bold text-amber-800 block">Payment Pending</span>
+                        <span className="text-amber-600 leading-none">Please complete the payment to proceed with your service.</span>
                       </div>
-                      <button 
-                        onClick={() => simulatePayment(selectedBooking.id, 'UPI')}
-                        className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-poppins font-bold text-xs px-6 py-3 rounded-lg uppercase tracking-wider shadow-sm flex items-center justify-center space-x-1"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Pay Rs. {selectedBooking.finalPrice.toLocaleString()} Now</span>
-                      </button>
                     </div>
                   )}
 

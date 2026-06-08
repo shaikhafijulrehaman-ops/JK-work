@@ -77,7 +77,6 @@ model User {
 
   // Relations
   bookings          Booking[]
-  workerProfile     Worker?
   sessions          Session[]
   notifications     Notification[]
   auditLogs         AuditLog[]
@@ -126,45 +125,20 @@ model Service {
 
   // Relations
   bookingItems BookingItem[]
-  workerSkills WorkerSkill[]
 }
 
-model Worker {
-  id             String         @id @default(uuid())
-  userId         String         @unique
-  status         WorkerStatus   @default(AVAILABLE)
-  approvalStatus ApprovalStatus @default(PENDING)
-  aadhaar        String?
-  experienceYears Int?
-  profilePhoto   String?
-  address        String?
-  bankDetails    String?
-  emergencyContact String?
-  availability   String?
-  rating         Float          @default(5.0)
-  totalJobs      Int            @default(0)
-  commissionRate Float          @default(0.70) // 70% to worker, 30% to JK Enterprises
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
+model ServicePartner {
+  id          String    @id @default(uuid())
+  name        String
+  phone       String    @unique
+  serviceType String    // e.g. "Cleaning", "Care", "Cooking", "Shifting", "Painting", "Technical"
+  status      String    @default("AVAILABLE") // "AVAILABLE", "ON_JOB", "INACTIVE"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
   // Relations
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  skills         WorkerSkill[]
-  bookings       Booking[]
-  reviews        Review[]       @relation("WorkerReviews")
-}
-
-model WorkerSkill {
-  id        String   @id @default(uuid())
-  workerId  String
-  serviceId String
-  createdAt DateTime @default(now())
-
-  // Relations
-  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  @@unique([workerId, serviceId])
+  bookings    Booking[]
+  reviews     Review[]  @relation("PartnerReviews")
 }
 
 model PromoCode {
@@ -186,7 +160,7 @@ model PromoCode {
 model Booking {
   id            String        @id @default(uuid())
   userId        String
-  workerId      String?
+  partnerId     String?
   serviceAreaId String?       // Make serviceAreaId optional for direct payments
   status        BookingStatus @default(PENDING)
   scheduledAt   DateTime
@@ -222,7 +196,7 @@ model Booking {
 
   // Relations
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  worker        Worker?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  partner       ServicePartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   serviceArea   ServiceArea?  @relation(fields: [serviceAreaId], references: [id])
   items         BookingItem[]
   review        Review?
@@ -230,7 +204,7 @@ model Booking {
   @@index([status])
   @@index([createdAt])
   @@index([userId])
-  @@index([workerId])
+  @@index([partnerId])
 }
 
 model BookingItem {
@@ -250,7 +224,7 @@ model Review {
   id         String   @id @default(uuid())
   bookingId  String   @unique
   userId     String
-  workerId   String
+  partnerId  String
   rating     Int      // 1 to 5 stars
   comment    String?
   createdAt  DateTime @default(now())
@@ -258,7 +232,7 @@ model Review {
   // Relations
   booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   user       User     @relation("UserReviews", fields: [userId], references: [id], onDelete: Cascade)
-  worker     Worker   @relation("WorkerReviews", fields: [workerId], references: [id], onDelete: Cascade)
+  partner    ServicePartner @relation("PartnerReviews", fields: [partnerId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
@@ -328,14 +302,5 @@ model Waitlist {
   createdAt     DateTime @default(now()) @map("created_at")
 }
 
-model Customer {
-  id            String   @id @default(uuid()) // Supabase Auth User ID
-  name          String
-  email         String   @unique
-  phone         String   @unique
-  pincode       String?
-  serviceArea   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
+
 

@@ -170,7 +170,7 @@ exports.createBooking = async (req, res) => {
 };
 
 /**
- * Retrieve Bookings List (User, Worker, Admin scope)
+ * Retrieve Bookings List (User, Admin scope)
  */
 exports.getBookings = async (req, res) => {
   try {
@@ -182,16 +182,7 @@ exports.getBookings = async (req, res) => {
           service: true
         }
       },
-      worker: {
-        include: {
-          user: {
-            select: {
-              name: true,
-              phone: true
-            }
-          }
-        }
-      }
+      partner: true
     };
 
     if (req.user.role === 'ADMIN') {
@@ -199,15 +190,6 @@ exports.getBookings = async (req, res) => {
         include: includeOptions,
         orderBy: { createdAt: 'desc' }
       });
-    } else if (req.user.role === 'WORKER') {
-      const worker = await db.worker.findUnique({ where: { userId: req.user.id } });
-      if (worker) {
-        bookings = await db.booking.findMany({
-          where: { workerId: worker.id },
-          include: includeOptions,
-          orderBy: { createdAt: 'desc' }
-        });
-      }
     } else {
       bookings = await db.booking.findMany({
         where: { userId: req.user.id },
@@ -227,7 +209,7 @@ exports.getBookings = async (req, res) => {
 };
 
 /**
- * Get dynamic booking detail (including assigned worker profiles)
+ * Get dynamic booking detail (including assigned service partners)
  */
 exports.getBookingById = async (req, res) => {
   try {
@@ -239,16 +221,7 @@ exports.getBookingById = async (req, res) => {
             service: true
           }
         },
-        worker: {
-          include: {
-            user: {
-              select: {
-                name: true,
-                phone: true
-              }
-            }
-          }
-        }
+        partner: true
       }
     });
 
@@ -256,12 +229,9 @@ exports.getBookingById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking record not found.' });
     }
 
-    // Role safety gate: Only Admin, the booking owner, or the assigned worker can fetch details
+    // Role safety gate: Only Admin or the booking owner can fetch details
     if (req.user.role !== 'ADMIN' && booking.userId !== req.user.id) {
-      const worker = await db.worker.findUnique({ where: { userId: req.user.id } });
-      if (!worker || booking.workerId !== worker.id) {
-        return res.status(403).json({ success: false, message: 'Unauthorized access to booking.' });
-      }
+      return res.status(403).json({ success: false, message: 'Unauthorized access to booking.' });
     }
 
     res.status(200).json({
@@ -384,11 +354,27 @@ exports.validateCouponCode = async (req, res) => {
   }
 };
 
-exports.assignWorker = async (req, res) => {
+exports.assignPartner = async (req, res) => {
   try {
-    const { partnerName, partnerMobile } = req.body;
-    if (!partnerName || !partnerMobile) {
-      return res.status(400).json({ success: false, message: 'Please provide both Partner Name and Partner Mobile Number.' });
+    const { partnerId, partnerName, partnerMobile } = req.body;
+    
+    let finalPartnerId = partnerId || null;
+    let finalPartnerName = partnerName;
+    let finalPartnerMobile = partnerMobile;
+
+    if (partnerId) {
+      const partner = await db.servicePartner.findUnique({
+        where: { id: partnerId }
+      });
+      if (!partner) {
+        return res.status(404).json({ success: false, message: 'Service partner not found.' });
+      }
+      finalPartnerName = partner.name;
+      finalPartnerMobile = partner.phone;
+    } else {
+      if (!finalPartnerName || !finalPartnerMobile) {
+        return res.status(400).json({ success: false, message: 'Please select a Service Partner or provide Partner Name and Mobile Number.' });
+      }
     }
 
     const bookingId = req.params.id;
@@ -406,10 +392,18 @@ exports.assignWorker = async (req, res) => {
       data: {
         status: 'ASSIGNED',
         booking_status: 'Assigned',
-        partnerName,
-        partnerMobile
+        partnerId: finalPartnerId,
+        partnerName: finalPartnerName,
+        partnerMobile: finalPartnerMobile
       }
     });
+
+    if (finalPartnerId) {
+      await db.servicePartner.update({
+        where: { id: finalPartnerId },
+        data: { status: 'ON_JOB' }
+      }).catch(err => console.error('Error updating partner status:', err.message));
+    }
 
     // Create Notification
     await db.notification.create({
@@ -619,4 +613,191 @@ exports.confirmPaymentSuccess = async (req, res) => {
     
     res.status(500).json({ success: false, message: 'Unable to confirm booking. Please try again shortly.' });
   }
+};
+
+// ==================== BOOKING STATUS & REFUNDS ====================
+
+const Razorpay = require('razorpay');
+const { sendEmail } = require('../utils/email');
+
+exports.updateBookingStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'Please provide target booking status.' });
+    }
+
+    const booking = await db.booking.findUnique({ 
+      where: { id: req.params.id },
+      include: { user: true }
+    });
+    
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    // Role gate: Only Admin can update status under the new flow
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Only admins can transition booking status.' });
+    }
+
+    const updateData = { 
+      status,
+      booking_status: status === 'PENDING' ? 'New Booking' : 
+                      status === 'ASSIGNED' ? 'Assigned' : 
+                      status === 'ON_THE_WAY' ? 'On The Way' : 
+                      status === 'CANCELLED' ? 'Cancelled' : status
+    };
+
+    const customerEmail = booking.email || booking.user?.email;
+
+    if (status === 'ON_THE_WAY') {
+      await db.notification.create({
+        data: {
+          userId: booking.userId,
+          type: 'BOOKING_ALERT',
+          title: 'Partner On The Way!',
+          message: `Your professional ${booking.partnerName || 'expert'} is on the way! Estimated arrival in 9 minutes.`
+        }
+      }).catch(() => {});
+
+      if (customerEmail) {
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+            <p>Hello,</p>
+            <p>Your service partner is now <strong>On The Way</strong> for booking <strong>#${booking.id.substring(0,8).toUpperCase()}</strong>!</p>
+            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+              <p style="font-size: 16px; font-weight: bold; color: #0f172a; margin: 0;">Estimated Arrival Time: Within 9 Minutes</p>
+            </div>
+            <p><strong>Partner Name:</strong> ${booking.partnerName || 'N/A'}</p>
+            <p><strong>Partner Mobile:</strong> ${booking.partnerMobile || 'N/A'}</p>
+            <p>Please ensure someone is available at your doorstep to receive the service partner.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `;
+        sendEmail({
+          to: customerEmail,
+          subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+          html: htmlContent
+        }).catch(err => console.error('Error sending on-the-way email:', err.message));
+      }
+    }
+
+    if (status === 'CANCELLED') {
+      logActivity(req, {
+        userId: req.user.id,
+        eventType: 'BOOKING',
+        action: 'BOOKING_CANCELLED',
+        details: { bookingId: booking.id }
+      });
+
+      const paymentId = booking.paymentId || booking.transaction_id;
+      const wasPaid = booking.paymentStatus === 'PAID' || booking.payment_status === 'Paid';
+      
+      let refundId = null;
+
+      if (wasPaid && paymentId && paymentId !== 'N/A') {
+        const isSimulated = paymentId.startsWith('pay_sim_') || paymentId.startsWith('order_mock_') || !process.env.RAZORPAY_KEY_SECRET;
+        
+        if (isSimulated) {
+          refundId = `ref_sim_${Math.random().toString(36).substring(2,10)}`;
+          console.log(`✉️ [Refund System] Simulated Refund processed successfully for simulated payment ${paymentId}. Refund ID: ${refundId}`);
+        } else {
+          try {
+            console.log(`✉️ [Refund System] Initiating Razorpay Refund for payment ${paymentId}...`);
+            const razorpayClient = new Razorpay({
+              key_id: process.env.RAZORPAY_KEY_ID,
+              key_secret: process.env.RAZORPAY_KEY_SECRET
+            });
+            
+            const refund = await razorpayClient.payments.refund(paymentId, {
+              amount: Math.round(booking.finalPrice * 100), // amount in paise
+              notes: { bookingId: booking.id, reason: 'Admin cancelled booking' }
+            });
+            refundId = refund.id;
+            console.log(`✉️ [Refund System] Razorpay Refund completed. Refund ID: ${refundId}`);
+          } catch (refundError) {
+            console.error('💥 [Refund System Error] Razorpay refund failed:', refundError.message);
+            return res.status(500).json({ success: false, message: `Status update failed: Razorpay refund failed: ${refundError.message}` });
+          }
+        }
+
+        updateData.paymentStatus = 'REFUNDED';
+        updateData.payment_status = 'Refunded';
+        updateData.refundId = refundId;
+      }
+
+      await db.notification.create({
+        data: {
+          userId: booking.userId,
+          type: 'SYSTEM_ALERT',
+          title: 'Booking Cancelled & Refunded',
+          message: `Your booking #${booking.id.substring(0,8)} has been cancelled. A full refund of Rs. ${booking.finalPrice} was initiated.`
+        }
+      }).catch(() => {});
+
+      if (customerEmail) {
+        const refundDetailsHtml = refundId ? `
+          <div style="background-color: #f0fdfa; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ccfbf1;">
+            <h3 style="margin-top: 0; color: #0d9488;">Refund Confirmation</h3>
+            <p style="margin: 5px 0;"><strong>Refund Amount:</strong> Rs. ${booking.finalPrice}</p>
+            <p style="margin: 5px 0;"><strong>Refund Reference ID:</strong> ${refundId}</p>
+            <p style="margin: 5px 0; font-size: 11px; color: #0f766e;">The refunded amount will reflect in your account within 5-7 business days.</p>
+          </div>
+        ` : '';
+
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #e11d48; text-align: center;">Booking Cancelled</h2>
+            <p>Hello,</p>
+            <p>Your booking <strong>#${booking.id.substring(0,8).toUpperCase()}</strong> has been cancelled by the administrator.</p>
+            ${refundDetailsHtml}
+            <p>If you have any questions or require further assistance, please contact our customer support team.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `;
+
+        sendEmail({
+          to: customerEmail,
+          subject: `JK Home Care - Cancellation & Refund confirmation for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+          html: htmlContent
+        }).catch(err => console.error('Error sending cancellation email:', err.message));
+      }
+    }
+
+    const updated = await db.booking.update({
+      where: { id: booking.id },
+      data: updateData
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Job status transitioned successfully to ${status}.`,
+      booking: updated
+    });
+  } catch (error) {
+    console.error('Update job status error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update job status.' });
+  }
+};
+
+// ==================== DEPRECATED WORKER STUBS ====================
+
+exports.getMyJobs = async (req, res) => {
+  res.status(200).json({ success: true, bookings: [] });
+};
+
+exports.getAllWorkers = async (req, res) => {
+  res.status(200).json({ success: true, workers: [] });
+};
+
+exports.toggleWorkerStatus = async (req, res) => {
+  res.status(200).json({ success: true, message: 'Worker status updates are no longer supported.' });
+};
+
+exports.getCategoryRequests = async (req, res) => {
+  res.status(200).json({ success: true, bookings: [] });
 };

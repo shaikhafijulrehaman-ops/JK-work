@@ -115,7 +115,7 @@ app.get('/health', async (req, res) => {
   const dbHealth = await db.ping();
   res.status(200).json({
     status: 'UP',
-    database: dbHealth.connected ? 'CONNECTED' : (dbHealth.sandbox ? 'SANDBOX_FALLBACK' : 'DISCONNECTED'),
+    database: dbHealth.connected ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date()
   });
 });
@@ -129,7 +129,7 @@ app.get('/health/db', async (req, res) => {
     return res.status(503).json({ 
       status: 'DOWN', 
       database: 'DISCONNECTED', 
-      error: dbHealth.error || 'Database is offline or running in Sandbox.' 
+      error: dbHealth.error || 'Database is offline.' 
     });
   }
 });

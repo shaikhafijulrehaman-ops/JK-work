@@ -339,11 +339,10 @@ exports.getMe = async (req, res) => {
     console.log('--- BEFORE findUnique Call ---');
     console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
     console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { id: req.user.id }, include: { workerProfile: true } }, null, 2));
+    console.log('Query Parameters:', JSON.stringify({ where: { id: req.user.id } }, null, 2));
     console.log('------------------------------');
     const user = await db.user.findUnique({
-      where: { id: req.user.id },
-      include: { workerProfile: true }
+      where: { id: req.user.id }
     });
 
     if (!user) {
@@ -493,9 +492,7 @@ exports.syncSupabase = async (req, res) => {
     // Check if phone already registered by another account to prevent unique constraint crashes
     if (phone) {
       const existingPhoneUser = await db.user.findUnique({ where: { phone } });
-      const existingPhoneCustomer = await db.customer.findUnique({ where: { phone } });
-      if ((existingPhoneUser && existingPhoneUser.email !== email) || 
-          (existingPhoneCustomer && existingPhoneCustomer.email !== email)) {
+      if (existingPhoneUser && existingPhoneUser.email !== email) {
         return res.status(400).json({ 
           success: false, 
           message: 'Phone number is already registered under another account. Please use a different number or log in.' 
@@ -541,34 +538,20 @@ exports.syncSupabase = async (req, res) => {
       });
     } else {
       console.log('USER INSERT RESPONSE: User already exists in db.user', user);
+      const updateData = {};
+      if (name && !user.name) updateData.name = name;
+      if (phone && (!user.phone || user.phone === '0000000000')) updateData.phone = phone;
+      if (pincode && !user.pincode) updateData.pincode = pincode;
+      if (serviceArea && !user.serviceArea) updateData.serviceArea = serviceArea;
+      if (Object.keys(updateData).length > 0) {
+        user = await db.user.update({
+          where: { id: user.id },
+          data: updateData
+        });
+      }
     }
 
-    // Check if customer already exists
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: Customer');
-    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
-    console.log('------------------------------');
-    let customer = await db.customer.findUnique({ where: { email } });
-
-    if (!customer) {
-      // Create customer if not exists
-      customer = await db.customer.create({
-        data: {
-          id: id || user.id || undefined,
-          email,
-          name: name || 'User',
-          phone: phone || '0000000000',
-          pincode: pincode || null,
-          serviceArea: serviceArea || null
-        }
-      });
-      console.log('CUSTOMER INSERT RESPONSE: Customer created successfully', customer);
-    } else {
-      console.log('CUSTOMER INSERT RESPONSE: Customer already exists', customer);
-    }
-
-    const { accessToken, refreshToken } = signTokens(customer.id, customer.email, 'USER');
+    const { accessToken, refreshToken } = signTokens(user.id, user.email, 'USER');
 
     const cookieOptions = {
       httpOnly: true,
@@ -578,7 +561,7 @@ exports.syncSupabase = async (req, res) => {
 
     await db.session.create({
       data: {
-        userId: customer.id,
+        userId: user.id,
         refreshToken,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       }
@@ -588,21 +571,24 @@ exports.syncSupabase = async (req, res) => {
     res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
     logActivity(req, {
-      userId: customer.id,
-      userName: customer.name,
-      userEmail: customer.email,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
       userRole: 'USER',
       eventType: 'LOGIN',
       action: 'ACCOUNT_LOGIN',
-      details: { email: customer.email, role: 'USER' }
+      details: { email: user.email, role: 'USER' }
     });
 
     // WhatsApp Notification
-    sendAdminWhatsAppNotification(customer.name, customer.phone, customer.email, 'Registration / Login');
+    sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Registration / Login');
+
+    const userResponse = { ...user };
+    delete userResponse.password;
 
     res.status(200).json({
       success: true,
-      user: { ...customer, role: 'USER' },
+      user: { ...userResponse, role: 'USER' },
       token: accessToken,
       message: 'Supabase sync successful.'
     });
@@ -632,8 +618,7 @@ exports.verifyOTP = async (req, res) => {
 
     // Check if user exists
     const user = await db.user.findUnique({
-      where: { email },
-      include: { workerProfile: true }
+      where: { email }
     });
 
     if (!user) {

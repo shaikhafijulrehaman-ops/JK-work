@@ -22,13 +22,11 @@ import BookingsPage from './pages/BookingsPage';
 import AccountPage from './pages/AccountPage';
 
 // Secondary Pages (Lazy loaded in background)
-const WorkerPortal = React.lazy(() => import('./pages/WorkerPortal'));
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
 const ManageAddresses = React.lazy(() => import('./pages/ManageAddresses'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const HelpPage = React.lazy(() => import('./pages/HelpPage'));
-const PartnerRegister = React.lazy(() => import('./pages/PartnerRegister'));
 const CustomerRegister = React.lazy(() => import('./pages/CustomerRegister'));
 
 // Razorpay Compliance Policy Pages
@@ -41,7 +39,6 @@ const ContactPage = React.lazy(() => import('./pages/ContactPage'));
 // Admin Pages
 const AdminOverview = React.lazy(() => import('./pages/admin/AdminOverview'));
 const AdminBookings = React.lazy(() => import('./pages/admin/AdminBookings'));
-const AdminWorkers = React.lazy(() => import('./pages/admin/AdminWorkers'));
 const AdminServices = React.lazy(() => import('./pages/admin/AdminServices'));
 
 export default function App() {

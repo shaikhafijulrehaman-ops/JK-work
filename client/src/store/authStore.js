@@ -2,10 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../utils/api';
 
-// Safe helper for API fetch endpoints
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Synchronous initial session check to avoid flash of loading state on page mount/reload
 const getInitialUser = () => {
   try {
     const saved = localStorage.getItem('jk_user');
@@ -27,7 +25,6 @@ export const useAuthStore = create((set, get) => ({
   showLoginModal: false,
   setShowLoginModal: (show) => set({ showLoginModal: show }),
 
-
   // Check active session and refresh token
   checkSession: async () => {
     const isAlreadyAuthenticated = !!get().user;
@@ -40,7 +37,6 @@ export const useAuthStore = create((set, get) => ({
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (session) {
-        // Verify this Google user exists in our database
         try {
           const res = await fetch(`${API_URL}/auth/google-login`, {
             method: 'POST',
@@ -55,14 +51,12 @@ export const useAuthStore = create((set, get) => ({
             }
             set({ user: data.user, isAuthenticated: true, loading: false });
           } else {
-            // Email not in DB! We must sign out and clear session.
             await supabase.auth.signOut();
             localStorage.removeItem('jk_user');
             localStorage.removeItem('jk_token');
             set({ user: null, isAuthenticated: false, error: data.message || 'Account not found. Please register first.', loading: false });
           }
         } catch (e) {
-          // If connection fails, check if we can fall back to local stored user
           const storedUser = localStorage.getItem('jk_user');
           if (storedUser) {
             set({ user: JSON.parse(storedUser), isAuthenticated: true, loading: false });
@@ -71,7 +65,6 @@ export const useAuthStore = create((set, get) => ({
           }
         }
       } else {
-        // Offline preview safety fallback
         const storedUser = localStorage.getItem('jk_user');
         if (storedUser) {
           set({ user: JSON.parse(storedUser), isAuthenticated: true, loading: false });
@@ -80,7 +73,6 @@ export const useAuthStore = create((set, get) => ({
         }
       }
     } catch (e) {
-      // Offline preview safety fallback
       const storedUser = localStorage.getItem('jk_user');
       if (storedUser) {
         set({ user: JSON.parse(storedUser), isAuthenticated: true, loading: false });
@@ -90,7 +82,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Log in with Google OAuth (Real popup + simulated fallback)
+  // Log in with Google OAuth
   loginWithGoogle: async () => {
     return new Promise((resolve) => {
       set({ loading: true, error: null });
@@ -106,7 +98,6 @@ export const useAuthStore = create((set, get) => ({
           callback: async (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
               try {
-                // Fetch email from Google API using the access token
                 const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                   headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
                 });
@@ -118,7 +109,6 @@ export const useAuthStore = create((set, get) => ({
                 const userInfo = await userInfoRes.json();
                 const email = userInfo.email;
 
-                // Send email to backend validation
                 const res = await fetch(`${API_URL}/auth/google-login`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -155,56 +145,16 @@ export const useAuthStore = create((set, get) => ({
 
         client.requestAccessToken({ prompt: 'select_account' });
       } catch (e) {
-        console.warn('Google SDK not loaded, falling back to mock prompt:', e);
-        
-        // Dynamic sandbox fallback if script is blocked or offline
-        const simulatedEmail = prompt("Enter Google Email to continue (SDK fallback):", "admin@jkenterprises.com");
-        if (!simulatedEmail) {
-          set({ loading: false });
-          resolve({ success: false, error: 'Google login cancelled.' });
-          return;
-        }
-
-        fetch(`${API_URL}/auth/google-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: simulatedEmail })
-        })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              localStorage.setItem('jk_user', JSON.stringify(data.user));
-              if (data.token) {
-                localStorage.setItem('jk_token', data.token);
-              }
-              set({ user: data.user, isAuthenticated: true, loading: false });
-              resolve({ success: true, user: data.user });
-            } else {
-              set({ error: data.message, loading: false });
-              resolve({ success: false, error: data.message });
-            }
-          })
-          .catch(err => {
-            const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-            const localUserMatch = localUsers.find(u => u.email === simulatedEmail);
-            if (localUserMatch) {
-              localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-              localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
-              set({ user: localUserMatch, isAuthenticated: true, loading: false });
-              resolve({ success: true, user: localUserMatch });
-            } else {
-              const msg = 'Account not found. Please register first.';
-              set({ error: msg, loading: false });
-              resolve({ success: false, error: msg });
-            }
-          });
+        console.error('Google SDK error:', e);
+        const errMsg = 'Google Sign-In is temporarily unavailable. Please login with Email OTP.';
+        set({ error: errMsg, loading: false });
+        resolve({ success: false, error: errMsg });
       }
     });
   },
 
-  // Log in user / admin / worker
+  // Log in user / admin
   login: async (email, password) => {
-    console.log("Step 1: Login Started");
     set({ loading: true, error: null });
     try {
       const res = await fetchWithRetry(`${API_URL}/auth/login`, {
@@ -212,14 +162,11 @@ export const useAuthStore = create((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
-        timeout: 10000 // 10 seconds safety timeout
+        timeout: 10000
       });
-      console.log("Step 2: Auth Response");
       const data = await res.json();
 
       if (data.success) {
-        console.log("Step 3: Fetch User Profile");
-        console.log("Step 4: Session Created");
         localStorage.setItem('jk_user', JSON.stringify(data.user));
         if (data.token) {
           localStorage.setItem('jk_token', data.token);
@@ -227,74 +174,24 @@ export const useAuthStore = create((set, get) => ({
         set({ user: data.user, isAuthenticated: true, loading: false });
         return { success: true, user: data.user };
       } else {
-        // Dynamic offline sandboxed login backup for zero-configuration local runs
-        if (import.meta.env.MODE !== 'production' && email === 'admin@jkenterprises.com' && password === 'admin123') {
-          console.log("Step 2: Auth Response");
-          console.log("Step 3: Fetch User Profile");
-          console.log("Step 4: Session Created");
-          const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
-          localStorage.setItem('jk_user', JSON.stringify(mockUser));
-          localStorage.setItem('jk_token', 'mock-token-admin');
-          set({ user: mockUser, isAuthenticated: true, loading: false });
-          return { success: true, user: mockUser };
-        }
-
-        
         set({ error: data.message, loading: false });
         return { success: false, error: data.message, approvalStatus: data.approvalStatus, workerName: data.workerName };
       }
     } catch (e) {
       console.error('[JK Auth Monitoring] Login failure:', e);
       const isTimeout = e.name === 'AbortError' || e.message?.toLowerCase().includes('timeout') || e.message?.toLowerCase().includes('abort');
-      
-      if (import.meta.env.MODE !== 'production') {
-        // Dynamic local preview bypass - Local Storage custom registrations check
-        const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-        const localUserMatch = localUsers.find(u => u.email === email);
-        if (localUserMatch) {
-          console.log("Step 2: Auth Response");
-          console.log("Step 3: Fetch User Profile");
-          console.log("Step 4: Session Created");
-          const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-          const workerProfile = localWorkers.find(w => w.userId === localUserMatch.id);
-          
-          if (localUserMatch.role === 'WORKER' && workerProfile) {
-            // Store workerProfile inside localUserMatch so the dashboard has access to it
-            localUserMatch.workerProfile = workerProfile;
-          }
-          
-          localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-          localStorage.setItem('jk_token', `mock-token-${localUserMatch.role}-${localUserMatch.id}`);
-          set({ user: localUserMatch, isAuthenticated: true, loading: false });
-          return { success: true, user: localUserMatch };
-        }
-
-        if (email === 'admin@jkenterprises.com' && password === 'admin123') {
-          console.log("Step 2: Auth Response");
-          console.log("Step 3: Fetch User Profile");
-          console.log("Step 4: Session Created");
-          const mockUser = { id: 'user-admin', email, name: 'JK Admin', phone: '8431588235', role: 'ADMIN' };
-          localStorage.setItem('jk_user', JSON.stringify(mockUser));
-          localStorage.setItem('jk_token', 'mock-token-admin');
-          set({ user: mockUser, isAuthenticated: true, loading: false });
-          return { success: true, user: mockUser };
-        }
-      }
-
-
       const errMessage = isTimeout 
-        ? 'Unable to sign in right now. Please try again.' 
-        : 'Connection problem or slow database cold start. Please try again.';
+        ? 'Login request timed out. Please try again shortly.' 
+        : 'Connection problem or server error. Please check your connection and try again.';
       set({ error: errMessage, loading: false });
       return { success: false, error: errMessage };
     }
   },
 
-  // Register User via Supabase Auth and Sync to Backend
+  // Register User
   register: async (email, password, name, phone, role, partnerDetails = {}) => {
     set({ loading: true, error: null });
     try {
-      // 1. Create account in Supabase Auth
       console.log('AUTH RESPONSE: Initiating Supabase Auth Signup...');
       let { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -306,24 +203,11 @@ export const useAuthStore = create((set, get) => ({
 
       if (authError) {
         console.error('SUPABASE ERROR:', authError);
-        if (import.meta.env.MODE === 'production') {
-          throw authError;
-        }
-        console.warn('⚠️ AUTO-FIX: Bypassing Supabase Auth error and proceeding to Database Insert to complete onboarding flow end-to-end.');
-        
-        // Mock authData for DB insertion
-        authData = {
-          user: {
-            id: `supa-mock-${Date.now()}`,
-            email,
-            user_metadata: { name, phone, role }
-          }
-        };
+        throw authError;
       }
       
       console.log('AUTH RESPONSE: Supabase Auth Success:', authData);
 
-      // 2. Sync customer profile data into the Customers table via Backend API
       console.log('CUSTOMER INSERT RESPONSE: Syncing to backend...');
       const res = await fetchWithRetry(`${API_URL}/auth/sync-supabase`, {
         method: 'POST',
@@ -354,39 +238,14 @@ export const useAuthStore = create((set, get) => ({
         return { success: false, error: dbData.message };
       }
     } catch (e) {
-      console.error('SUPABASE ERROR OR NETWORK ERROR:', e);
-      
-      if (import.meta.env.MODE === 'production') {
-        const errMessage = 'Unable to complete registration at this time. Please check your network and try again.';
-        set({ error: errMessage, loading: false });
-        return { success: false, error: errMessage };
-      }
-      
-      // Sandbox/offline fallback for registration
-      const sandboxUser = {
-        id: `user-${Date.now()}`,
-        email,
-        name: name || 'User',
-        phone: phone || '',
-        role: role || 'USER',
-      };
-
-      // Save to local sandbox users registry for future login
-      const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-      const existingIdx = localUsers.findIndex(u => u.email === email);
-      if (existingIdx === -1) {
-        localUsers.push(sandboxUser);
-        localStorage.setItem('jk_sandbox_users', JSON.stringify(localUsers));
-      }
-
-      localStorage.setItem('jk_user', JSON.stringify(sandboxUser));
-      localStorage.setItem('jk_token', `mock-token-${sandboxUser.role}-${sandboxUser.id}`);
-      set({ user: sandboxUser, isAuthenticated: true, loading: false });
-      return { success: true, user: sandboxUser };
+      console.error('Registration error:', e);
+      const errMessage = e.message || 'Unable to complete registration at this time. Please check your network and try again.';
+      set({ error: errMessage, loading: false });
+      return { success: false, error: errMessage };
     }
   },
 
-  // Email OTP dispatch simulation
+  // Email OTP dispatch
   sendOtp: async (email) => {
     set({ loading: true, error: null });
     try {
@@ -400,16 +259,16 @@ export const useAuthStore = create((set, get) => ({
         set({ otpSent: true, simulatedOtp: data.otp, loading: false });
         return true;
       }
-      set({ loading: false });
+      set({ loading: false, error: data.message || 'Failed to send OTP.' });
       return false;
     } catch (e) {
-      const mockOtp = Math.floor(100000 + Math.random() * 900000);
-      set({ otpSent: true, simulatedOtp: mockOtp, loading: false });
-      return true;
+      console.error('Send OTP error:', e);
+      set({ loading: false, error: 'Network error sending OTP. Please check your connection and try again.' });
+      return false;
     }
   },
 
-  // Verify Email OTP log
+  // Verify Email OTP
   verifyOtp: async (email, code, isLogin = false) => {
     set({ loading: true, error: null });
     try {
@@ -442,22 +301,7 @@ export const useAuthStore = create((set, get) => ({
         return { success: false, error: data.message || 'Invalid code.' };
       }
     } catch (e) {
-      if (parseInt(code) === get().simulatedOtp) {
-        if (isLogin) {
-          const localUsers = JSON.parse(localStorage.getItem('jk_sandbox_users') || '[]');
-          const localUserMatch = localUsers.find(u => u.email === email);
-          if (localUserMatch) {
-            localStorage.setItem('jk_user', JSON.stringify(localUserMatch));
-            set({ user: localUserMatch, isAuthenticated: true, otpSent: false, loading: false });
-            return { success: true, userExists: true, user: localUserMatch };
-          }
-          set({ error: 'No user registered with this email. Please sign up first.', loading: false });
-          return { success: false, error: 'No user registered.' };
-        } else {
-          set({ otpSent: false, loading: false });
-          return { success: true, userExists: false };
-        }
-      }
+      console.error('Verify OTP error:', e);
       set({ error: 'Failed to verify verification code. Please check your network.', loading: false });
       return { success: false, error: 'Failed to verify OTP.' };
     }
@@ -476,8 +320,9 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return data;
     } catch (e) {
-      set({ loading: false });
-      return { success: true, message: 'Successfully joined waitlist (mock mode).' };
+      console.error('Join waitlist error:', e);
+      set({ loading: false, error: 'Failed to join waitlist. Please check your connection.' });
+      return { success: false, message: 'Failed to join waitlist.' };
     }
   },
 
@@ -493,9 +338,9 @@ export const useAuthStore = create((set, get) => ({
       }
       return [];
     } catch (e) {
-      set({ loading: false });
-      const local = localStorage.getItem('jk_addresses');
-      return local ? JSON.parse(local) : [];
+      console.error('Fetch addresses error:', e);
+      set({ loading: false, error: 'Failed to fetch addresses. Please check your connection.' });
+      return [];
     }
   },
 
@@ -512,22 +357,9 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return data;
     } catch (e) {
-      set({ loading: false });
-      const local = localStorage.getItem('jk_addresses');
-      const list = local ? JSON.parse(local) : [];
-      if (addressData.isDefault) {
-        list.forEach(a => a.isDefault = false);
-      }
-      const newAddr = {
-        id: `addr-${Date.now()}`,
-        userId: get().user?.id || 'mock-user',
-        ...addressData,
-        isDefault: list.length === 0 ? true : !!addressData.isDefault,
-        createdAt: new Date().toISOString()
-      };
-      list.push(newAddr);
-      localStorage.setItem('jk_addresses', JSON.stringify(list));
-      return { success: true, message: 'Address created (mock mode)', data: newAddr };
+      console.error('Add address error:', e);
+      set({ loading: false, error: 'Failed to add address. Please check your connection.' });
+      return { success: false, message: 'Failed to add address.' };
     }
   },
 
@@ -544,20 +376,9 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return data;
     } catch (e) {
-      set({ loading: false });
-      const local = localStorage.getItem('jk_addresses');
-      let list = local ? JSON.parse(local) : [];
-      if (addressData.isDefault) {
-        list.forEach(a => a.isDefault = false);
-      }
-      list = list.map(a => {
-        if (a.id === id) {
-          return { ...a, ...addressData, updatedAt: new Date().toISOString() };
-        }
-        return a;
-      });
-      localStorage.setItem('jk_addresses', JSON.stringify(list));
-      return { success: true, message: 'Address updated (mock mode)' };
+      console.error('Edit address error:', e);
+      set({ loading: false, error: 'Failed to edit address. Please check your connection.' });
+      return { success: false, message: 'Failed to edit address.' };
     }
   },
 
@@ -570,16 +391,9 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return data;
     } catch (e) {
-      set({ loading: false });
-      const local = localStorage.getItem('jk_addresses');
-      let list = local ? JSON.parse(local) : [];
-      const wasDefault = list.find(a => a.id === id)?.isDefault;
-      list = list.filter(a => a.id !== id);
-      if (wasDefault && list.length > 0) {
-        list[0].isDefault = true;
-      }
-      localStorage.setItem('jk_addresses', JSON.stringify(list));
-      return { success: true, message: 'Address deleted (mock mode)' };
+      console.error('Remove address error:', e);
+      set({ loading: false, error: 'Failed to delete address. Please check your connection.' });
+      return { success: false, message: 'Failed to delete address.' };
     }
   },
 
@@ -592,15 +406,9 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return data;
     } catch (e) {
-      set({ loading: false });
-      const local = localStorage.getItem('jk_addresses');
-      let list = local ? JSON.parse(local) : [];
-      list = list.map(a => {
-        a.isDefault = (a.id === id);
-        return a;
-      });
-      localStorage.setItem('jk_addresses', JSON.stringify(list));
-      return { success: true, message: 'Default address updated (mock mode)' };
+      console.error('Set default address error:', e);
+      set({ loading: false, error: 'Failed to set default address. Please check your connection.' });
+      return { success: false, message: 'Failed to set default address.' };
     }
   },
 

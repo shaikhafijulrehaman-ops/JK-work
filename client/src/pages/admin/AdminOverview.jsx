@@ -18,7 +18,7 @@ import {
 
 const AdminAnalyticsTab = React.lazy(() => import('./AdminAnalyticsTab'));
 const AdminPaymentsTab = React.lazy(() => import('./AdminPaymentsTab'));
-const AdminWorkersTab = React.lazy(() => import('./AdminWorkersTab'));
+
 
 const formatLogDetails = (log) => {
   let details = {};
@@ -88,6 +88,13 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   // Database States
   const [bookings, setBookings] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+  const [editingPartnerId, setEditingPartnerId] = useState(null);
+  const [partnerFormName, setPartnerFormName] = useState('');
+  const [partnerFormPhone, setPartnerFormPhone] = useState('');
+  const [partnerFormServiceType, setPartnerFormServiceType] = useState('Cleaning');
+  const [partnerFormStatus, setPartnerFormStatus] = useState('AVAILABLE');
   const [customers, setCustomers] = useState([]);
   const [services, setServices] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -121,6 +128,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Partner Assignment Input States
+  const [partnerIdInput, setPartnerIdInput] = useState('');
   const [partnerNameInput, setPartnerNameInput] = useState('');
   const [partnerMobileInput, setPartnerMobileInput] = useState('');
 
@@ -132,9 +140,11 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   useEffect(() => {
     if (selectedBooking) {
+      setPartnerIdInput(selectedBooking.partnerId || '');
       setPartnerNameInput(selectedBooking.partnerName || '');
       setPartnerMobileInput(selectedBooking.partnerMobile || '');
     } else {
+      setPartnerIdInput('');
       setPartnerNameInput('');
       setPartnerMobileInput('');
     }
@@ -720,7 +730,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   // Fetch page specific data
   const fetchTabSpecificData = async (tab, forceRefetch = false) => {
     // If it's one of the extracted tabs, they handle their own data loading
-    if (['analytics', 'payments', 'partner-approvals', 'partners'].includes(tab)) {
+    if (['analytics', 'payments', 'partner-approvals'].includes(tab)) {
       setTabLoading(false);
       setLoading(false);
       return;
@@ -769,13 +779,29 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           throw new Error('Failed to retrieve dashboard analytics');
         }
       } else if (tab === 'bookings') {
-        const res = await fetchWithRetry('/api/admin/bookings', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
-          setBookings(data.bookings || []);
-          setCache(`tab_bookings`, data.bookings || []);
+        const [bookingsRes, partnersRes] = await Promise.all([
+          fetchWithRetry('/api/admin/bookings', { credentials: 'include' }),
+          fetchWithRetry('/api/admin/partners', { credentials: 'include' }).catch(() => null)
+        ]);
+        const bookingsData = await bookingsRes.json();
+        const partnersData = partnersRes ? await partnersRes.json() : { success: false };
+        if (bookingsData.success) {
+          setBookings(bookingsData.bookings || []);
+          setCache(`tab_bookings`, bookingsData.bookings || []);
+          if (partnersData.success) {
+            setPartners(partnersData.partners || []);
+          }
         } else {
           throw new Error('Failed to retrieve bookings.');
+        }
+      } else if (tab === 'partners') {
+        const res = await fetchWithRetry('/api/admin/partners', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setPartners(data.partners || []);
+          setCache(`tab_partners`, data.partners || []);
+        } else {
+          throw new Error('Failed to retrieve service partners.');
         }
       } else if (tab === 'customers') {
         const res = await fetchWithRetry('/api/admin/customers', { credentials: 'include' });
@@ -950,19 +976,22 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     setSelectedWorker(null);
   };
 
-  const handleAssignPartner = async (bookingId, partnerName, partnerMobile) => {
+  const handleAssignPartner = async (bookingId, partnerId, partnerName, partnerMobile) => {
     try {
       const res = await fetch(`/api/bookings/${bookingId}/assign`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
         credentials: 'include',
-        body: JSON.stringify({ partnerName, partnerMobile })
+        body: JSON.stringify({ partnerId, partnerName, partnerMobile })
       });
       if (res.ok) {
         const data = await res.json();
         addNotification('Partner Assigned', 'Service partner successfully assigned.');
         if (selectedBooking && selectedBooking.id === bookingId) {
-          setSelectedBooking(data.booking || { ...selectedBooking, partnerName, partnerMobile, status: 'ASSIGNED' });
+          setSelectedBooking(data.booking || { ...selectedBooking, partnerId, partnerName, partnerMobile, status: 'ASSIGNED' });
         }
         fetchAllData();
       } else {
@@ -973,12 +1002,48 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       if (import.meta.env.MODE === 'production') {
         addNotification('Operation Failed', 'Database connection error. Unable to assign partner.');
       } else {
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, partnerName, partnerMobile, status: 'ASSIGNED' } : b));
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, partnerId, partnerName, partnerMobile, status: 'ASSIGNED' } : b));
         if (selectedBooking && selectedBooking.id === bookingId) {
-          setSelectedBooking({ ...selectedBooking, partnerName, partnerMobile, status: 'ASSIGNED' });
+          setSelectedBooking({ ...selectedBooking, partnerId, partnerName, partnerMobile, status: 'ASSIGNED' });
         }
         addNotification('Partner Assigned', 'Service partner successfully assigned (Sandbox mode).');
       }
+    }
+  };
+
+  const handlePartnerFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!partnerFormName || !partnerFormPhone || !partnerFormServiceType) {
+      addNotification('Validation Error', 'Please fill in all fields.');
+      return;
+    }
+    const payload = {
+      name: partnerFormName,
+      phone: partnerFormPhone,
+      serviceType: partnerFormServiceType,
+      status: partnerFormStatus
+    };
+    try {
+      const url = editingPartnerId ? `/api/admin/partners/${editingPartnerId}` : '/api/admin/partners';
+      const method = editingPartnerId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification('Success', data.message || 'Service partner saved successfully.');
+        setIsPartnerModalOpen(false);
+        fetchTabSpecificData('partners', true);
+      } else {
+        addNotification('Operation Failed', data.message || 'Unable to save partner.');
+      }
+    } catch (err) {
+      addNotification('Operation Failed', 'Database connection error.');
     }
   };
 
@@ -1244,6 +1309,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                     { id: 'audit-logs', label: 'Audit Center', icon: ShieldCheck },
                     { id: 'bookings', label: 'Bookings', icon: Calendar },
                     { id: 'customers', label: 'Customers', icon: Award },
+                    { id: 'partners', label: 'Service Partners', icon: Users },
                     { id: 'payments', label: 'Payments', icon: Landmark },
                     { id: 'services', label: 'Services', icon: Layers },
                     { id: 'coupons', label: 'Coupons', icon: Percent },
@@ -1319,6 +1385,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
               { id: 'audit-logs', label: 'Audit Center', icon: ShieldCheck },
               { id: 'bookings', label: 'Bookings', icon: Calendar },
               { id: 'customers', label: 'Customers', icon: Award },
+              { id: 'partners', label: 'Service Partners', icon: Users },
               { id: 'payments', label: 'Payments', icon: Landmark },
               { id: 'services', label: 'Services', icon: Layers },
               { id: 'coupons', label: 'Coupons', icon: Percent },
@@ -2220,13 +2287,129 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                   </div>
                 )}
 
+                {/* ==================== TAB 5.5: SERVICE PARTNER MANAGEMENT ==================== */}
+                {activeTab === 'partners' && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <h2 className="font-poppins font-black text-2xl text-slate-800 text-left">Service Partners Registry</h2>
+                        <p className="text-xs text-slate-400 mt-1 text-left font-semibold">Onboard and manage trained home care professionals and dispatch status</p>
+                      </div>
+                      
+                      <button 
+                        onClick={() => {
+                          setEditingPartnerId(null);
+                          setPartnerFormName('');
+                          setPartnerFormPhone('');
+                          setPartnerFormServiceType('Cleaning');
+                          setPartnerFormStatus('AVAILABLE');
+                          setIsPartnerModalOpen(true);
+                        }}
+                        className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[10.5px] uppercase px-5 py-3 rounded-xl transition-all shadow-md shadow-brand/10 flex items-center space-x-1.5 self-start cursor-pointer animate-transition"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Onboard New Partner</span>
+                      </button>
+                    </div>
+
+                    {/* Partners List Table */}
+                    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden text-left">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                            <tr>
+                              <th className="p-4">Partner Name</th>
+                              <th className="p-4">Phone Number</th>
+                              <th className="p-4">Service Category</th>
+                              <th className="p-4">Status</th>
+                              <th className="p-4">Registration Date</th>
+                              <th className="p-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                            {partners.map(p => (
+                              <tr key={p.id} className="hover:bg-slate-50/50">
+                                <td className="p-4 font-bold text-slate-800 flex items-center space-x-3">
+                                  <div className="w-8 h-8 rounded-full bg-brand/5 text-brand font-black flex items-center justify-center text-xs">
+                                    {p.name.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <span>{p.name}</span>
+                                </td>
+                                <td className="p-4 font-mono text-slate-500">{p.phone}</td>
+                                <td className="p-4">
+                                  <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold">
+                                    {p.serviceType}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                                    p.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800' :
+                                    p.status === 'ON_JOB' ? 'bg-amber-100 text-amber-800 animate-pulse' :
+                                    'bg-slate-100 text-slate-500'
+                                  }`}>
+                                    {p.status}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-slate-400 text-[11px]">{new Date(p.createdAt).toLocaleDateString()}</td>
+                                <td className="p-4 text-right space-x-2">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingPartnerId(p.id);
+                                      setPartnerFormName(p.name);
+                                      setPartnerFormPhone(p.phone);
+                                      setPartnerFormServiceType(p.serviceType);
+                                      setPartnerFormStatus(p.status);
+                                      setIsPartnerModalOpen(true);
+                                    }}
+                                    className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold text-[9px] uppercase px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button 
+                                    onClick={async () => {
+                                      if (confirm(`Are you sure you want to delete ${p.name}?`)) {
+                                        try {
+                                          const res = await fetch(`/api/admin/partners/${p.id}`, {
+                                            method: 'DELETE',
+                                            headers: { 'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}` }
+                                          });
+                                          const data = await res.json();
+                                          if (data.success) {
+                                            addNotification('Partner Deleted', 'Service partner removed successfully.');
+                                            setPartners(prev => prev.filter(item => item.id !== p.id));
+                                          } else {
+                                            addNotification('Operation Failed', data.message || 'Unable to delete partner.');
+                                          }
+                                        } catch (err) {
+                                          addNotification('Operation Failed', 'Database connection error.');
+                                        }
+                                      }
+                                    }}
+                                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-extrabold text-[9px] uppercase px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {partners.length === 0 && (
+                              <tr>
+                                <td colSpan="6" className="p-12 text-center text-slate-400 font-medium">No service partners registered yet</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* ==================== TAB 6: PAYMENT MANAGEMENT ==================== */}
                 {activeTab === 'payments' && (
                   <React.Suspense fallback={<TableSkeleton cols={6} rows={5} />}>
                     <AdminPaymentsTab />
                   </React.Suspense>
                 )}
-
                 {/* ==================== TAB 7: SERVICES ANALYTICS ==================== */}
                 {activeTab === 'services' && (
                   <div className="space-y-6">
@@ -2893,181 +3076,101 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         </div>
       </main>
 
-      {/* ==================== DRAWER 1: PARTNER VERIFICATION SIDE DRAWER ==================== */}
+      {/* ==================== MODAL 1: SERVICE PARTNER ONBOARD / EDIT MODAL ==================== */}
       <AnimatePresence>
-        {selectedWorker && (
-          <>
+        {isPartnerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedWorker(null)}
-              className="fixed inset-0 bg-slate-900 z-40 cursor-pointer"
+              onClick={() => setIsPartnerModalOpen(false)}
+              className="fixed inset-0 bg-slate-900 cursor-pointer"
             />
 
             <motion.div 
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.25 }}
-              className="fixed top-0 right-0 w-[480px] h-full bg-white border-l border-slate-200 shadow-2xl z-50 flex flex-col justify-between"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl relative overflow-hidden z-10 flex flex-col p-6 space-y-4 text-left"
             >
-              {/* Drawer Header */}
-              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                <div>
-                  <h3 className="font-poppins font-black text-sm text-slate-800">Audit Application</h3>
-                  <span className="text-[9px] font-black text-brand tracking-widest uppercase mt-0.5 block">{selectedWorker.user?.name}</span>
-                </div>
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="font-poppins font-black text-sm text-slate-800">
+                  {editingPartnerId ? 'Edit Service Partner' : 'Onboard New Partner'}
+                </h3>
                 <button 
-                  onClick={() => setSelectedWorker(null)}
-                  className="p-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-700 shadow-sm"
+                  onClick={() => setIsPartnerModalOpen(false)}
+                  className="p-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-700 shadow-sm cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Drawer Body */}
-              <div className="p-6 overflow-y-auto flex-1 space-y-6 bg-white">
-                
-                {/* Real User Data Profile Panel */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Application Information</h4>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Full Name</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{selectedWorker.user?.name || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Mobile Number</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block font-mono">{selectedWorker.user?.phone || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Email</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{selectedWorker.user?.email || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Service Category</span>
-                      <span className="font-bold text-brand mt-0.5 block">
-                        {selectedWorker.skills?.[0]?.service?.name || 'N/A'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Experience</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{selectedWorker.experienceYears ? `${selectedWorker.experienceYears} Years` : 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Address</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{selectedWorker.address || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Pincode</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block font-mono">{selectedWorker.user?.pincode || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Availability</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{selectedWorker.availability || 'Full Time'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Registration Date</span>
-                      <span className="font-bold text-slate-800 mt-0.5 block">{new Date(selectedWorker.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Application Status</span>
-                      <span className="bg-amber-100 text-amber-800 font-extrabold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-block mt-0.5">
-                        {selectedWorker.approvalStatus}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-200 pt-3 space-y-3">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold block">Bank Details</span>
-                    <div className="grid grid-cols-2 gap-4 text-xs bg-white p-3.5 rounded-xl border border-slate-150 shadow-inner">
-                      <div>
-                        <span className="text-[9px] text-slate-400 block font-medium">Account Holder</span>
-                        <span className="font-bold text-slate-800 mt-0.5 block">{parseJson(selectedWorker.bankDetails).holderName || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 block font-medium">Bank Name</span>
-                        <span className="font-bold text-slate-800 mt-0.5 block">{parseJson(selectedWorker.bankDetails).bankName || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 block font-medium">Account Number</span>
-                        <span className="font-bold text-slate-800 mt-0.5 block font-mono">{parseJson(selectedWorker.bankDetails).accountNumber || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 block font-medium">UPI ID</span>
-                        <span className="font-bold text-brand mt-0.5 block font-mono">{parseJson(selectedWorker.bankDetails).upi || 'N/A'}</span>
-                      </div>
-                    </div>
-                  </div>
+              <form onSubmit={handlePartnerFormSubmit} className="space-y-4 text-xs">
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Partner Full Name *</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Ramesh Kumar"
+                    value={partnerFormName}
+                    onChange={(e) => setPartnerFormName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                    required
+                  />
                 </div>
 
-                {/* Verification Documents & Viewer */}
-                <div className="space-y-4">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Verification Documents</h4>
-                  
-                  {renderDocumentPreview('Selfie Scanning Photo', parseJson(selectedWorker.profilePhoto).selfie)}
-                  {renderDocumentPreview('Aadhaar Card Front Scan', parseJson(selectedWorker.aadhaar).front)}
-                  {renderDocumentPreview('Aadhaar Card Back Scan', parseJson(selectedWorker.aadhaar).back)}
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Phone Number *</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 9876543210"
+                    value={partnerFormPhone}
+                    onChange={(e) => setPartnerFormPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                    required
+                  />
                 </div>
 
-                {/* Verification Audit Checklist */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <h4 className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-brand" />
-                    <span>Verification Checklist</span>
-                  </h4>
-                  
-                  <div className="space-y-2.5">
-                    {[
-                      { id: 'identity', label: `Verify Aadhaar Name matches "${selectedWorker.user?.name}"` },
-                      { id: 'mobile', label: `Verify Mobile Number is "${selectedWorker.user?.phone}"` },
-                      { id: 'experience', label: `Verify Category & Experience is "${selectedWorker.skills?.[0]?.service?.name || 'Helper'}"` },
-                      { id: 'area', label: `Verify Address is inside "${selectedWorker.address || 'Anchepalya'}"` },
-                      { id: 'bank', label: `Verify Bank Account matches "${parseJson(selectedWorker.bankDetails).holderName || 'Name'}"` }
-                    ].map(item => (
-                      <label key={item.id} className="flex items-center space-x-3 text-xs text-slate-600 font-semibold cursor-pointer select-none">
-                        <input 
-                          type="checkbox"
-                          checked={checklist[item.id]}
-                          onChange={(e) => setChecklist(prev => ({ ...prev, [item.id]: e.target.checked }))}
-                          className="rounded text-brand focus:ring-0 bg-white border-slate-300 cursor-pointer" 
-                        />
-                        <span>{item.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Service Category *</label>
+                  <select 
+                    value={partnerFormServiceType}
+                    onChange={(e) => setPartnerFormServiceType(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                    required
+                  >
+                    <option value="Cleaning">Cleaning</option>
+                    <option value="Care">Care</option>
+                    <option value="Cooking">Cooking</option>
+                    <option value="Shifting">Shifting</option>
+                    <option value="Painting">Painting</option>
+                    <option value="Technical">Technical</option>
+                  </select>
                 </div>
 
-              </div>
-
-              {/* Drawer Footer Actions */}
-              <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-2">
-                <button 
-                  onClick={() => handleRejectPartner(selectedWorker.id)}
-                  className="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[10px] uppercase py-3 rounded-xl transition-all shadow-md shadow-rose-600/10"
-                >
-                  Reject Account
-                </button>
-
-                <button 
-                  onClick={() => handleMoveToReview(selectedWorker.id)}
-                  className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold text-[10px] uppercase px-4 py-3 rounded-xl transition-all shadow-sm"
-                >
-                  Under Review
-                </button>
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Status</label>
+                  <select 
+                    value={partnerFormStatus}
+                    onChange={(e) => setPartnerFormStatus(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none focus:border-brand focus:bg-white transition-all font-semibold"
+                    required
+                  >
+                    <option value="AVAILABLE">AVAILABLE</option>
+                    <option value="ON_JOB">ON_JOB</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
 
                 <button 
-                  disabled={!checklist.identity || !checklist.mobile || !checklist.experience || !checklist.area || !checklist.bank}
-                  onClick={() => handleApprovePartner(selectedWorker.id)}
-                  className="flex-1 bg-brand disabled:bg-slate-200 hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase py-3 rounded-xl transition-all disabled:text-slate-450 disabled:cursor-not-allowed shadow-md shadow-brand/10 disabled:shadow-none"
+                  type="submit"
+                  className="w-full bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase py-3 rounded-xl transition-all shadow-md shadow-brand/10 cursor-pointer mt-4"
                 >
-                  Approve Partner
+                  <span>{editingPartnerId ? 'Save Changes' : 'Onboard Partner'}</span>
                 </button>
-              </div>
-
+              </form>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
@@ -3155,33 +3258,51 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
                   {/* Assign/Reassign Partner Form */}
                   {selectedBooking.status !== 'CANCELLED' && (
-                    <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
+                    <div className="mt-4 border-t border-slate-100 pt-4 space-y-3 text-left">
                       <h5 className="text-[10px] font-bold text-slate-500 uppercase font-poppins">Assign / Change Partner</h5>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Partner Name"
-                          value={partnerNameInput}
-                          onChange={(e) => setPartnerNameInput(e.target.value)}
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-brand w-full"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Mobile Number"
-                          value={partnerMobileInput}
-                          onChange={(e) => setPartnerMobileInput(e.target.value)}
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-brand w-full"
-                        />
-                      </div>
+                      
+                      <select
+                        value={partnerIdInput}
+                        onChange={(e) => {
+                          const p = partners.find(item => item.id === e.target.value);
+                          if (p) {
+                            setPartnerIdInput(p.id);
+                            setPartnerNameInput(p.name);
+                            setPartnerMobileInput(p.phone);
+                          } else {
+                            setPartnerIdInput('');
+                            setPartnerNameInput('');
+                            setPartnerMobileInput('');
+                          }
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-brand w-full font-semibold cursor-pointer"
+                      >
+                        <option value="">Select Service Partner...</option>
+                        {partners
+                          .filter(p => !selectedBooking.serviceCategory || p.serviceType === selectedBooking.serviceCategory)
+                          .map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.serviceType} - {p.status})
+                            </option>
+                          ))}
+                        {/* Fallback to all partners if none match category */}
+                        {partners.filter(p => p.serviceType === selectedBooking.serviceCategory).length === 0 && 
+                          partners.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.serviceType} - {p.status})
+                            </option>
+                          ))}
+                      </select>
+
                       <button
                         onClick={() => {
-                          if (!partnerNameInput || !partnerMobileInput) {
-                            addNotification('Validation Error', 'Please enter both partner name and mobile number.');
+                          if (!partnerIdInput) {
+                            addNotification('Validation Error', 'Please select a partner from the dropdown.');
                             return;
                           }
-                          handleAssignPartner(selectedBooking.id, partnerNameInput, partnerMobileInput);
+                          handleAssignPartner(selectedBooking.id, partnerIdInput, partnerNameInput, partnerMobileInput);
                         }}
-                        className="w-full bg-brand hover:bg-brand/90 text-white font-extrabold text-[10px] uppercase py-2 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1"
+                        className="w-full bg-brand hover:bg-brand/90 text-white font-extrabold text-[10px] uppercase py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1 cursor-pointer"
                       >
                         <span>Assign Partner</span>
                       </button>

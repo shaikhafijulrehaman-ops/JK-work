@@ -94,7 +94,8 @@ exports.getDashboardData = async (req, res) => {
     });
 
     // Fetch other lists
-    const workers = [];
+    const partners = await db.servicePartner.findMany({}).catch(() => []);
+    const workers = partners;
 
     const dbCustomers = await db.user.findMany({
       where: { role: 'USER' },
@@ -130,6 +131,7 @@ exports.getDashboardData = async (req, res) => {
       success: true,
       bookings,
       workers,
+      partners,
       customers,
       services,
       coupons,
@@ -399,6 +401,90 @@ exports.getAuditLogs = async (req, res) => {
   } catch (error) {
     console.error('Error fetching audit logs:', error);
     res.status(500).json({ success: false, message: 'Server error fetching audit logs.' });
+  }
+};
+
+// ==================== SERVICE PARTNER CRUD ====================
+
+// Get all partners
+exports.getPartners = async (req, res) => {
+  try {
+    const partners = await db.servicePartner.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.status(200).json({ success: true, partners });
+  } catch (error) {
+    console.error('Error fetching service partners:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching partners' });
+  }
+};
+
+// Create a new partner
+exports.createPartner = async (req, res) => {
+  try {
+    const { name, phone, serviceType, status } = req.body;
+    if (!name || !phone || !serviceType) {
+      return res.status(400).json({ success: false, message: 'Name, phone, and serviceType are required.' });
+    }
+    const existing = await db.servicePartner.findUnique({ where: { phone } });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'A service partner with this phone number already exists.' });
+    }
+    const partner = await db.servicePartner.create({
+      data: {
+        name,
+        phone,
+        serviceType,
+        status: status || 'AVAILABLE'
+      }
+    });
+    res.status(201).json({ success: true, message: 'Service partner created successfully.', partner });
+  } catch (error) {
+    console.error('Error creating service partner:', error);
+    res.status(500).json({ success: false, message: 'Server error creating service partner' });
+  }
+};
+
+// Update partner
+exports.updatePartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, serviceType, status } = req.body;
+    const existing = await db.servicePartner.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Service partner not found.' });
+    }
+    if (phone && phone !== existing.phone) {
+      const existingPhone = await db.servicePartner.findUnique({ where: { phone } });
+      if (existingPhone) {
+        return res.status(400).json({ success: false, message: 'A service partner with this phone number already exists.' });
+      }
+    }
+    const updated = await db.servicePartner.update({
+      where: { id },
+      data: {
+        name: name || existing.name,
+        phone: phone || existing.phone,
+        serviceType: serviceType || existing.serviceType,
+        status: status || existing.status
+      }
+    });
+    res.status(200).json({ success: true, message: 'Service partner updated successfully.', partner: updated });
+  } catch (error) {
+    console.error('Error updating service partner:', error);
+    res.status(500).json({ success: false, message: 'Server error updating service partner' });
+  }
+};
+
+// Delete partner
+exports.deletePartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.servicePartner.delete({ where: { id } });
+    res.status(200).json({ success: true, message: 'Service partner deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting service partner:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting service partner' });
   }
 };
 

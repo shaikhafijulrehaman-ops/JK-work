@@ -9,7 +9,6 @@ const { authLimiter, bookingLimiter } = require('../middlewares/rateLimiter');
 const authCtrl = require('../controllers/authController');
 const serviceCtrl = require('../controllers/serviceController');
 const bookingCtrl = require('../controllers/bookingController');
-const workerCtrl = require('../controllers/workerController');
 const reviewCtrl = require('../controllers/reviewController');
 const paymentCtrl = require('../controllers/paymentController');
 const aiAgentCtrl = require('../controllers/aiAgentController');
@@ -53,16 +52,16 @@ router.post('/bookings', protect, bookingLimiter, bookingCtrl.createBooking);
 router.post('/bookings/payment-success', protect, bookingCtrl.confirmPaymentSuccess);
 router.get('/bookings', protect, bookingCtrl.getBookings);
 router.get('/bookings/:id', protect, bookingCtrl.getBookingById);
-router.put('/bookings/:id/assign', protect, restrictTo('ADMIN'), bookingCtrl.assignWorker);
-router.put('/bookings/:id/status', protect, workerCtrl.updateJobStatus);
+router.put('/bookings/:id/assign', protect, restrictTo('ADMIN'), bookingCtrl.assignPartner);
+router.put('/bookings/:id/status', protect, restrictTo('ADMIN'), bookingCtrl.updateBookingStatus);
 router.put('/bookings/:id/accept', protect, restrictTo('WORKER'), bookingCtrl.acceptBookingByPartner);
 router.put('/bookings/:id/reject', protect, restrictTo('WORKER'), bookingCtrl.rejectBookingByPartner);
 
 // ==================== WORKERS & PAYROLL LEDGER ====================
-router.get('/workers', protect, restrictTo('ADMIN'), workerCtrl.getAllWorkers);
-router.put('/workers/:id/status', protect, restrictTo('ADMIN'), workerCtrl.toggleWorkerStatus);
-router.get('/workers/jobs', protect, restrictTo('WORKER'), workerCtrl.getMyJobs);
-router.get('/workers/requests', protect, restrictTo('WORKER'), workerCtrl.getCategoryRequests);
+router.get('/workers', protect, restrictTo('ADMIN'), bookingCtrl.getAllWorkers);
+router.put('/workers/:id/status', protect, restrictTo('ADMIN'), bookingCtrl.toggleWorkerStatus);
+router.get('/workers/jobs', protect, restrictTo('WORKER'), bookingCtrl.getMyJobs);
+router.get('/workers/requests', protect, restrictTo('WORKER'), bookingCtrl.getCategoryRequests);
 
 // ==================== REVIEWS & RATINGS ====================
 router.post('/reviews', protect, reviewCtrl.submitReview);

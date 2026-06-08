@@ -335,36 +335,7 @@ export default function BookingsPage() {
                     </div>
                   )}
 
-                  {/* Simulation action items */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4.5 space-y-3 text-left">
-                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-brand animate-pulse" />
-                      <span>Dispatch Status Simulator (Grade flow updates)</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 select-none">
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'ON_THE_WAY')}
-                        disabled={['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED', 'PENDING_PARTNER_ACCEPTANCE'].includes(selectedBooking.status)}
-                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors"
-                      >
-                        Depart On The Way
-                      </button>
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'IN_PROGRESS')}
-                        disabled={['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(selectedBooking.status)}
-                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors"
-                      >
-                        Start Service Call
-                      </button>
-                      <button 
-                        onClick={() => updateJobStatus(selectedBooking.id, 'COMPLETED')}
-                        disabled={selectedBooking.status !== 'IN_PROGRESS'}
-                        className="bg-brand text-white hover:bg-brand-dark text-[10px] px-3.5 py-2 rounded-xl font-bold shadow-xs disabled:opacity-50 transition-all"
-                      >
-                        Complete Invoice
-                      </button>
-                    </div>
-                  </div>
+
 
                   {/* Invoice Summary Details */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-600 border-t border-slate-100 pt-5 text-left">
