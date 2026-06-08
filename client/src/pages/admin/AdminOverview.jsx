@@ -124,6 +124,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [partnerNameInput, setPartnerNameInput] = useState('');
   const [partnerMobileInput, setPartnerMobileInput] = useState('');
 
+  // Custom Assign Partner Modal States
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignModalBookingId, setAssignModalBookingId] = useState(null);
+  const [assignModalPartnerName, setAssignModalPartnerName] = useState('');
+  const [assignModalPartnerMobile, setAssignModalPartnerMobile] = useState('');
+
   useEffect(() => {
     if (selectedBooking) {
       setPartnerNameInput(selectedBooking.partnerName || '');
@@ -2113,17 +2119,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                     onChange={async (e) => {
                                       const nextStatus = e.target.value;
                                       if (nextStatus === 'ASSIGNED') {
-                                        const partnerName = window.prompt("Enter Service Partner Name:");
-                                        if (!partnerName) {
-                                          addNotification('Assignment Cancelled', 'Partner Name is required.');
-                                          return;
-                                        }
-                                        const partnerMobile = window.prompt("Enter Service Partner Mobile Number:");
-                                        if (!partnerMobile) {
-                                          addNotification('Assignment Cancelled', 'Partner Mobile Number is required.');
-                                          return;
-                                        }
-                                        await handleAssignPartner(b.id, partnerName, partnerMobile);
+                                        setAssignModalBookingId(b.id);
+                                        setAssignModalPartnerName(b.partnerName || '');
+                                        setAssignModalPartnerMobile(b.partnerMobile || '');
+                                        setAssignModalOpen(true);
                                       } else {
                                         await handleChangeBookingStatus(b.id, nextStatus);
                                         setBookings(prev => prev.map(item => item.id === b.id ? { ...item, status: nextStatus, booking_status: nextStatus } : item));
@@ -3203,6 +3202,104 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                     </div>
                   )}
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== CUSTOM MODAL: PARTNER ASSIGNMENT MODAL ==================== */}
+      <AnimatePresence>
+        {assignModalOpen && assignModalBookingId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setAssignModalOpen(false);
+                setAssignModalBookingId(null);
+                setAssignModalPartnerName('');
+                setAssignModalPartnerMobile('');
+              }}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white border border-slate-100 rounded-2xl p-6 max-w-[380px] w-full relative z-10 space-y-4 shadow-xl text-left"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="font-poppins font-bold text-sm text-slate-855">
+                  Assign Partner Details
+                </h3>
+                <button 
+                  onClick={() => {
+                    setAssignModalOpen(false);
+                    setAssignModalBookingId(null);
+                    setAssignModalPartnerName('');
+                    setAssignModalPartnerMobile('');
+                  }}
+                  className="p-1.5 rounded bg-white border border-slate-200 text-slate-400 hover:text-slate-650 shadow-sm transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase font-poppins mb-1.5">Service Partner Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter Partner Name"
+                    value={assignModalPartnerName}
+                    onChange={(e) => setAssignModalPartnerName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-brand font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase font-poppins mb-1.5">Service Partner Mobile</label>
+                  <input
+                    type="text"
+                    placeholder="Enter Mobile Number"
+                    value={assignModalPartnerMobile}
+                    onChange={(e) => setAssignModalPartnerMobile(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-brand font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-2 pt-3 border-t border-slate-100 mt-4">
+                <button
+                  onClick={() => {
+                    setAssignModalOpen(false);
+                    setAssignModalBookingId(null);
+                    setAssignModalPartnerName('');
+                    setAssignModalPartnerMobile('');
+                  }}
+                  className="flex-1 bg-white hover:bg-slate-50 text-slate-500 font-extrabold text-[10px] uppercase py-2.5 rounded-xl border border-slate-200 transition-all shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!assignModalPartnerName || !assignModalPartnerMobile) {
+                      addNotification('Validation Error', 'Please enter both partner name and mobile number.');
+                      return;
+                    }
+                    await handleAssignPartner(assignModalBookingId, assignModalPartnerName, assignModalPartnerMobile);
+                    setAssignModalOpen(false);
+                    setAssignModalBookingId(null);
+                    setAssignModalPartnerName('');
+                    setAssignModalPartnerMobile('');
+                  }}
+                  className="flex-1 bg-brand hover:bg-brand/90 text-white font-extrabold text-[10px] uppercase py-2.5 rounded-xl transition-all shadow-sm"
+                >
+                  Assign Partner
+                </button>
               </div>
             </motion.div>
           </div>
