@@ -54,6 +54,7 @@ router.get('/bookings', protect, bookingCtrl.getBookings);
 router.get('/bookings/:id', protect, bookingCtrl.getBookingById);
 router.put('/bookings/:id/assign', protect, restrictTo('ADMIN'), bookingCtrl.assignPartner);
 router.put('/bookings/:id/status', protect, restrictTo('ADMIN'), bookingCtrl.updateBookingStatus);
+router.post('/bookings/:id/verify-arrival', protect, bookingCtrl.verifyArrival);
 router.put('/bookings/:id/accept', protect, restrictTo('WORKER'), bookingCtrl.acceptBookingByPartner);
 router.put('/bookings/:id/reject', protect, restrictTo('WORKER'), bookingCtrl.rejectBookingByPartner);
 

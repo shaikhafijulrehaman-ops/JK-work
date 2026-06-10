@@ -33,6 +33,7 @@ router.post('/partners', protect, restrictTo('ADMIN'), adminController.createPar
 router.put('/partners/:id', protect, restrictTo('ADMIN'), adminController.updatePartner);
 router.delete('/partners/:id', protect, restrictTo('ADMIN'), adminController.deletePartner);
 router.get('/partners/performance', protect, restrictTo('ADMIN'), adminController.getPartnersPerformance);
+router.post('/partners/:id/refresh-payout', protect, restrictTo('ADMIN'), adminController.refreshPartnerPayout);
 
 // Customer Ratings
 router.get('/reviews', protect, restrictTo('ADMIN'), adminController.getReviews);

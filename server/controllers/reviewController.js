@@ -7,7 +7,7 @@ const { logStatusHistory, syncPartnerPerformance } = require('./bookingControlle
  */
 exports.submitReview = async (req, res) => {
   try {
-    const { bookingId, rating, appreciation, complaint, comment } = req.body;
+    const { bookingId, rating, customerOpinion } = req.body;
 
     if (!bookingId || !rating) {
       return res.status(400).json({ success: false, message: 'Please supply bookingId and rating score.' });
@@ -31,9 +31,9 @@ exports.submitReview = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized. You did not place this booking.' });
     }
 
-    // Under the new workflow, status must be ON_THE_WAY to complete the service. We also support COMPLETED for flexibility.
-    if (booking.status !== 'ON_THE_WAY' && booking.status !== 'COMPLETED') {
-      return res.status(400).json({ success: false, message: 'Work can only be completed and reviewed when the partner is on the way.' });
+    // Under the new workflow, status must be ARRIVED to complete the service. We also support COMPLETED for flexibility.
+    if (booking.status !== 'ARRIVED' && booking.status !== 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Work can only be completed and reviewed when the partner has arrived.' });
     }
 
     if (!booking.partnerId) {
@@ -51,10 +51,13 @@ exports.submitReview = async (req, res) => {
         }
       });
 
-      // 2. Update service partner status to AVAILABLE
+      // 2. Update service partner status to AVAILABLE and increment current revenue
       await tx.servicePartner.update({
         where: { id: booking.partnerId },
-        data: { status: 'AVAILABLE' }
+        data: { 
+          status: 'AVAILABLE',
+          currentRevenue: { increment: booking.finalPrice }
+        }
       });
 
       // 3. Create or update Review (upsert to handle admin resets without failing)
@@ -62,9 +65,7 @@ exports.submitReview = async (req, res) => {
         where: { bookingId },
         update: {
           rating: score,
-          comment: comment || '',
-          appreciation: appreciation || '',
-          complaint: complaint || '',
+          customerOpinion: customerOpinion || '-',
           createdAt: new Date()
         },
         create: {
@@ -72,9 +73,7 @@ exports.submitReview = async (req, res) => {
           userId: req.user.id,
           partnerId: booking.partnerId,
           rating: score,
-          comment: comment || '',
-          appreciation: appreciation || '',
-          complaint: complaint || ''
+          customerOpinion: customerOpinion || '-'
         }
       });
 

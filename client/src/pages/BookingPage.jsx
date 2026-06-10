@@ -145,6 +145,12 @@ export default function BookingPage() {
 
   // Pre-fill fields and fetch saved address on mount
   useEffect(() => {
+    if (sessionStorage.getItem('payment_completed') === 'true') {
+      sessionStorage.removeItem('payment_completed');
+      navigate('/bookings');
+      return;
+    }
+
     const fetchSavedAddress = async () => {
       try {
         const res = await fetch('/api/addresses', {
@@ -579,6 +585,8 @@ ${payId}
 Booking Time:
 ${formattedDate}`;
 
+        sessionStorage.setItem('payment_completed', 'true');
+
         setTimeout(() => {
           try {
             const encodedText = encodeURIComponent(waMessage);
@@ -586,7 +594,7 @@ ${formattedDate}`;
           } catch (waError) {
             console.error('[JK Booking Monitoring] WhatsApp redirect failure:', waError);
           }
-        }, 1500);
+        }, 1000);
 
       } else {
         setErrorMsg(data.message || 'Payment capture failed. Please contact support.');
@@ -774,7 +782,7 @@ ${formattedDate}`;
             <div className="pt-4 flex flex-col items-center space-y-3.5">
               <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
-                Redirecting to WhatsApp in 1.5s...
+                Redirecting to WhatsApp in 1s...
               </p>
             </div>
           </div>

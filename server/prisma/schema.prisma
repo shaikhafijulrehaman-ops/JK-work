@@ -34,6 +34,7 @@ enum BookingStatus {
   PARTNER_ACCEPTED
   ASSIGNED
   ON_THE_WAY
+  ARRIVED
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -128,19 +129,24 @@ model Service {
 }
 
 model ServicePartner {
-  id          String    @id @default(uuid())
-  name        String
-  phone       String    @unique
-  email       String    @unique
-  serviceType String    // e.g. "Cleaning", "Care", "Cooking", "Shifting", "Painting", "Technical"
-  status      String    @default("AVAILABLE") // "AVAILABLE", "ON_JOB", "INACTIVE"
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  name            String
+  phone           String    @unique
+  email           String    @unique
+  serviceType     String    // e.g. "Cleaning", "Care", "Cooking", "Shifting", "Painting", "Technical"
+  status          String    @default("AVAILABLE") // "AVAILABLE", "ON_JOB", "INACTIVE"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   
   // Relations
-  bookings    Booking[]
-  reviews     Review[]  @relation("PartnerReviews")
-  performance PartnerPerformance?
+  bookings        Booking[]
+  reviews         Review[]  @relation("PartnerReviews")
+  performance     PartnerPerformance?
+  payoutHistories PayoutHistory[]
+
+  // Weekly Payout System
+  lastPayoutDate  DateTime?
+  currentRevenue  Float     @default(0.0)
 }
 
 model PromoCode {
@@ -195,6 +201,12 @@ model Booking {
   partnerName    String?
   partnerMobile  String?
   refundId       String?
+  arrivalOtp     String?
+  otpVerified    Boolean       @default(false)
+  arrivalTime    DateTime?
+  otpGeneratedAt DateTime?
+  otpVerifiedAt  DateTime?
+  emailSent      Boolean       @default(false)
 
   // Relations
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -230,10 +242,9 @@ model Review {
   userId       String
   partnerId    String
   rating       Int      // 1 to 5 stars
-  comment      String?
-  appreciation String?
-  complaint    String?
-  createdAt    DateTime @default(now())
+  comment         String?
+  customerOpinion String?
+  createdAt       DateTime @default(now())
 
   // Relations
   booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -348,6 +359,14 @@ model Waitlist {
   latitude      Float?
   longitude     Float?
   createdAt     DateTime @default(now()) @map("created_at")
+}
+
+model PayoutHistory {
+  id          String         @id @default(uuid())
+  partnerId   String
+  amount      Float
+  payoutDate  DateTime       @default(now())
+  partner     ServicePartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 }
 
 

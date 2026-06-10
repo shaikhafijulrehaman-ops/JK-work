@@ -517,18 +517,60 @@ exports.getReviews = async (req, res) => {
   }
 };
 
+function getPayoutCountdown(lastPayoutDate) {
+  if (!lastPayoutDate) return { eligible: true, text: 'Available Now' };
+  
+  const eligibilityTime = new Date(lastPayoutDate).getTime() + 7 * 24 * 60 * 60 * 1000;
+  const now = new Date().getTime();
+  const diff = eligibilityTime - now;
+  
+  if (diff <= 0) {
+    return { eligible: true, text: 'Available Now' };
+  }
+  
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+  
+  let countdownText = '';
+  if (days > 0) {
+    countdownText += `${days} Day${days > 1 ? 's' : ''} `;
+  }
+  countdownText += `${hours} Hour${hours > 1 ? 's' : ''}`;
+  
+  return {
+    eligible: false,
+    text: countdownText,
+    nextPayoutDate: new Date(eligibilityTime),
+    days,
+    hours,
+    minutes
+  };
+}
+
 // Get all service partners overview performance metrics
 exports.getPartnersPerformance = async (req, res) => {
   try {
     const partners = await db.servicePartner.findMany({
       include: {
-        performance: true
+        performance: true,
+        reviews: {
+          include: {
+            user: {
+              select: { name: true }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
+        }
       },
       orderBy: { name: 'asc' }
     });
 
     const performance = partners.map(p => {
       const perf = p.performance || {};
+      const countdown = getPayoutCountdown(p.lastPayoutDate);
       return {
         id: p.id,
         partnerId: p.id,
@@ -542,7 +584,21 @@ exports.getPartnersPerformance = async (req, res) => {
         averageRating: perf.averageRating || 0.0,
         activeJobs: perf.activeJobs || 0,
         completedJobs: perf.completedJobs || 0,
-        cancelledJobs: perf.cancelledJobs || 0
+        cancelledJobs: perf.cancelledJobs || 0,
+        // Weekly Payout tracking
+        lastPayoutDate: p.lastPayoutDate,
+        currentRevenue: p.currentRevenue,
+        payoutCountdown: countdown.text,
+        payoutEligible: countdown.eligible,
+        // Customer reviews/feedback list
+        customerFeedback: p.reviews.map(r => ({
+          id: r.id,
+          rating: r.rating,
+          comment: r.comment,
+          customerOpinion: r.customerOpinion,
+          customerName: r.user?.name || 'Customer',
+          createdAt: r.createdAt
+        }))
       };
     });
 
@@ -550,6 +606,66 @@ exports.getPartnersPerformance = async (req, res) => {
   } catch (error) {
     console.error('Error fetching partner performance:', error);
     res.status(500).json({ success: false, message: 'Server error fetching partner performance.' });
+  }
+};
+
+// Refresh partner weekly revenue payout
+exports.refreshPartnerPayout = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = await db.servicePartner.findUnique({
+      where: { id }
+    });
+
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Service partner not found.' });
+    }
+
+    // Payout eligibility check: once every 7 days
+    if (partner.lastPayoutDate) {
+      const nextAvailableTime = new Date(partner.lastPayoutDate).getTime() + 7 * 24 * 60 * 60 * 1000;
+      if (new Date().getTime() < nextAvailableTime) {
+        const timeDiff = nextAvailableTime - new Date().getTime();
+        const days = Math.floor(timeDiff / (24 * 60 * 60 * 1000));
+        const hours = Math.floor((timeDiff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        return res.status(400).json({
+          success: false,
+          message: `Payout not eligible yet. Available in ${days} days ${hours} hours.`
+        });
+      }
+    }
+
+    const payoutAmount = partner.currentRevenue;
+
+    // Transaction to reset revenue, record payout history, and update payout date
+    const updatedPartner = await db.transaction(async (tx) => {
+      // 1. Create Payout History record
+      await tx.payoutHistory.create({
+        data: {
+          partnerId: id,
+          amount: payoutAmount,
+          payoutDate: new Date()
+        }
+      });
+
+      // 2. Update partner current revenue and last payout date
+      return await tx.servicePartner.update({
+        where: { id },
+        data: {
+          currentRevenue: 0.0,
+          lastPayoutDate: new Date()
+        }
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Revenue payout refreshed successfully. Current weekly revenue reset to ₹0.',
+      partner: updatedPartner
+    });
+  } catch (error) {
+    console.error('Error refreshing partner payout:', error);
+    res.status(500).json({ success: false, message: 'Server error refreshing partner payout.' });
   }
 };
 

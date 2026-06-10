@@ -55,20 +55,22 @@ const DashboardSkeleton = () => (
 );
 
 export default function Dashboard() {
-  const { bookings, fetchBookings, updateJobStatus, submitReview, simulatePayment, loading } = useBookingStore();
+  const { bookings, fetchBookings, updateJobStatus, submitReview, verifyArrival, simulatePayment, loading } = useBookingStore();
   const { user } = useAuthStore();
   const { addNotification } = useNotificationStore();
 
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState('');
-  const [appreciation, setAppreciation] = useState('');
-  const [complaint, setComplaint] = useState('');
+  const [customerOpinion, setCustomerOpinion] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState(null);
+
+  const [otpInput, setOtpInput] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState(null);
 
   // Clear feedback validation state when opening/closing
   useEffect(() => {
@@ -98,7 +100,7 @@ export default function Dashboard() {
   // Mock GPS bike animation percentage loop
   useEffect(() => {
     let interval = null;
-    if (selectedBooking && ['ASSIGNED', 'ON_THE_WAY'].includes(selectedBooking.status)) {
+    if (selectedBooking && selectedBooking.status === 'ASSIGNED') {
       interval = setInterval(() => {
         setMapPercentage((prev) => (prev >= 100 ? 0 : prev + 1));
       }, 300);
@@ -113,16 +115,14 @@ export default function Dashboard() {
     if (!selectedBooking) return;
     setIsSubmittingFeedback(true);
     setFeedbackError(null);
-    const ok = await submitReview(selectedBooking.id, rating, comment, appreciation, complaint);
+    const ok = await submitReview(selectedBooking.id, rating, customerOpinion);
     setIsSubmittingFeedback(false);
     if (ok) {
       setReviewSubmitted(true);
       addNotification('Review Submitted', 'Thank you for confirming completion and leaving feedback!');
       setTimeout(() => {
         setReviewSubmitted(false);
-        setComment('');
-        setAppreciation('');
-        setComplaint('');
+        setCustomerOpinion('');
         setIsFeedbackOpen(false);
       }, 3000);
     } else {
@@ -131,12 +131,30 @@ export default function Dashboard() {
     }
   };
 
+  const handleVerifyArrival = async (e) => {
+    e.preventDefault();
+    if (otpInput.length !== 4) {
+      setOtpError('Please enter a valid 4-digit OTP.');
+      return;
+    }
+    setIsVerifyingOtp(true);
+    setOtpError(null);
+    const res = await verifyArrival(selectedBooking.id, otpInput);
+    setIsVerifyingOtp(false);
+    if (res.success) {
+      setOtpInput('');
+      addNotification('Arrival Verified', 'Service partner arrival verified successfully!');
+    } else {
+      setOtpError(res.error || 'Incorrect OTP. Arrival verification failed.');
+    }
+  };
+
   const getTimelineSteps = (status) => {
     return [
-      { name: 'Pending', active: true, done: ['ASSIGNED', 'ON_THE_WAY', 'COMPLETED'].includes(status) },
-      { name: 'Assigned', active: ['ASSIGNED', 'ON_THE_WAY', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'COMPLETED'].includes(status) },
-      { name: 'On The Way', active: ['ON_THE_WAY', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
-      { name: 'Completed', active: status === 'COMPLETED', done: status === 'COMPLETED' }
+      { name: 'Pending', active: true, done: ['ASSIGNED', 'ARRIVED', 'COMPLETED'].includes(status) },
+      { name: 'Assigned', active: ['ASSIGNED', 'ARRIVED', 'COMPLETED'].includes(status), done: ['ARRIVED', 'COMPLETED'].includes(status) },
+      { name: 'Arrived', active: ['ARRIVED', 'COMPLETED'].includes(status), done: ['ARRIVED', 'COMPLETED'].includes(status) },
+      { name: 'Completed', active: ['ARRIVED', 'COMPLETED'].includes(status), done: status === 'COMPLETED' }
     ];
   };
 
@@ -187,8 +205,8 @@ export default function Dashboard() {
                         Ref: #{b.id.substring(0, 8).toUpperCase()}
                       </span>
                       <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full leading-none ${
-                        b.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700' :
-                        b.status === 'ON_THE_WAY' ? 'bg-cyan-100 text-cyan-700' :
+                        b.status === 'CANCELLED' ? 'bg-rose-105 text-rose-700' :
+                        b.status === 'ARRIVED' ? 'bg-teal-100 text-teal-700' :
                         b.status === 'ASSIGNED' ? 'bg-emerald-100 text-emerald-800' :
                         'bg-amber-100 text-amber-700'
                       }`}>
@@ -232,7 +250,7 @@ export default function Dashboard() {
                     
                     <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${
                       selectedBooking.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700 font-bold' :
-                      selectedBooking.status === 'ON_THE_WAY' ? 'bg-cyan-100 text-cyan-700 font-bold' :
+                      selectedBooking.status === 'ARRIVED' ? 'bg-teal-100 text-teal-700 font-bold' :
                       selectedBooking.status === 'ASSIGNED' ? 'bg-emerald-100 text-emerald-800 font-bold' :
                       'bg-amber-100 text-amber-700'
                     }`}>
@@ -288,7 +306,7 @@ export default function Dashboard() {
                       </div>
 
                       {/* Operational dispatch tracker section */}
-                      {['ASSIGNED', 'ON_THE_WAY'].includes(selectedBooking.status) && (
+                      {['ASSIGNED', 'ARRIVED'].includes(selectedBooking.status) && (
                         <div className="bg-slate-900 text-white rounded-xl p-6 border border-slate-800 relative overflow-hidden text-left shadow-xl animate-fade-up">
                           <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(6,182,212,0.15),transparent)] pointer-events-none"></div>
                           
@@ -322,34 +340,77 @@ export default function Dashboard() {
                             <div className="col-span-2 pt-2 border-t border-slate-700/30">
                               <span className="text-slate-400 font-bold block mb-0.5">Estimated Arrival Status:</span>
                               <span className="font-extrabold text-amber-400 text-xs flex items-center">
-                                {selectedBooking.status === 'ON_THE_WAY' 
-                                  ? 'Travelling - Arriving at doorstep in Chikkabidarakallu / Anchepalya zone shortly.' 
-                                  : 'Dispatcher assigned. Preparing to depart Chikkabidarakallu dispatch base.'}
+                                {selectedBooking.status === 'ARRIVED'
+                                  ? 'Arrived - Service partner has arrived at your doorstep.'
+                                  : 'Travelling - Service partner is on the way to your doorstep.'}
                               </span>
                             </div>
                           </div>
+
+                          {/* OTP input field for ASSIGNED status */}
+                          {selectedBooking.status === 'ASSIGNED' && (
+                            <form onSubmit={handleVerifyArrival} className="mt-4 pt-4 border-t border-slate-700/30 space-y-3 relative z-10">
+                              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-cyan-450">
+                                Verify Service Partner Arrival
+                              </span>
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                <input 
+                                  type="text"
+                                  maxLength="4"
+                                  placeholder="[ _ _ _ _ ]"
+                                  value={otpInput}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 4) setOtpInput(val);
+                                  }}
+                                  className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono font-bold tracking-widest text-center focus:outline-none focus:border-cyan-400 w-full sm:w-40"
+                                  required
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={isVerifyingOtp}
+                                  className="bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-750 text-white font-poppins font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider shadow-md cursor-pointer transition-all flex items-center justify-center space-x-1.5 w-full sm:w-auto"
+                                >
+                                  {isVerifyingOtp ? 'Verifying...' : 'Verify Arrival'}
+                                </button>
+                              </div>
+                              {otpError && (
+                                <p className="text-rose-400 text-[10px] font-extrabold mt-1">{otpError}</p>
+                              )}
+                            </form>
+                          )}
+
+                          {/* Success Message for verified arrival */}
+                          {selectedBooking.status === 'ARRIVED' && (
+                            <div className="bg-emerald-950 border border-emerald-800/40 text-emerald-400 text-[11px] p-3.5 rounded-xl flex items-center space-x-2 font-bold mb-1 relative z-10 shadow-inner">
+                              <CheckCircle className="w-4.5 h-4.5 text-emerald-450" />
+                              <span>Service Partner Arrival Verified</span>
+                            </div>
+                          )}
 
                           {/* Small animated bike/rider moving effect */}
-                          <div className="h-12 bg-slate-800/80 border border-slate-700/50 rounded-xl relative flex items-center px-4 select-none overflow-hidden">
-                            <div className="absolute left-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Anchepalya Hub</div>
-                            <div className="absolute right-3 text-[9px] font-bold text-slate-300 uppercase tracking-wider">Your Doorstep</div>
+                          {selectedBooking.status !== 'ARRIVED' && (
+                            <div className="h-12 bg-slate-800/80 border border-slate-700/50 rounded-xl relative flex items-center px-4 select-none overflow-hidden">
+                              <div className="absolute left-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Anchepalya Hub</div>
+                              <div className="absolute right-3 text-[9px] font-bold text-slate-300 uppercase tracking-wider">Your Doorstep</div>
 
-                            {/* Road Line */}
-                            <div className="absolute left-20 right-20 h-0.5 border-t border-dashed border-slate-600/50"></div>
+                              {/* Road Line */}
+                              <div className="absolute left-20 right-20 h-0.5 border-t border-dashed border-slate-600/50"></div>
 
-                            {/* Bike Animation */}
-                            <div className="absolute left-1/4 animate-bike-travel flex items-center space-x-2">
-                              <span className="text-2xl animate-bounce">🚲</span>
-                              <span className="text-[9px] bg-brand text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-tight shadow shadow-brand/20">
-                                {selectedBooking.partnerName?.split(' ')[0] || 'Worker'}
-                              </span>
+                              {/* Bike Animation */}
+                              <div className="absolute left-1/4 animate-bike-travel flex items-center space-x-2">
+                                <span className="text-2xl animate-bounce">🚲</span>
+                                <span className="text-[9px] bg-brand text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-tight shadow shadow-brand/20">
+                                  {selectedBooking.partnerName?.split(' ')[0] || 'Worker'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       )}
 
-                      {/* Customer controlled completion button for ON_THE_WAY status */}
-                      {selectedBooking.status === 'ON_THE_WAY' && (
+                      {/* Customer controlled completion button for ARRIVED status */}
+                      {selectedBooking.status === 'ARRIVED' && (
                         <button 
                           onClick={() => setIsConfirmOpen(true)}
                           className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-poppins font-black text-xs py-4 rounded-2xl uppercase tracking-widest shadow-lg flex items-center justify-center space-x-2 cursor-pointer animate-transition"
@@ -471,9 +532,33 @@ export default function Dashboard() {
                       </h4>
 
                       {selectedBooking.review || reviewSubmitted ? (
-                        <div className="bg-cyan-50 border border-cyan-200/50 text-cyan-700 text-xs p-4 rounded-xl flex items-center justify-center space-x-2">
-                          <CheckCircle className="w-5 h-5 text-cyan-500" />
-                          <span className="font-bold">Thank you! Your verified rating and comments have been recorded.</span>
+                        <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-2xl space-y-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-slate-700">Your Rating:</span>
+                            <div className="flex space-x-0.5">
+                              {[1, 2, 3, 4, 5].map((score) => {
+                                const finalRating = selectedBooking.review?.rating || rating;
+                                return (
+                                  <Star
+                                    key={score}
+                                    className={`w-4 h-4 fill-current ${score <= finalRating ? 'text-amber-500' : 'text-slate-200'}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {(selectedBooking.review?.customerOpinion || customerOpinion) && (
+                            <div className="text-left bg-white p-3 rounded-xl border border-slate-100">
+                              <span className="text-slate-400 font-bold block mb-1 text-[9px] uppercase tracking-wider">Your Feedback:</span>
+                              <p className="text-slate-750 font-semibold italic text-xs leading-normal">
+                                "{selectedBooking.review?.customerOpinion || customerOpinion}"
+                              </p>
+                            </div>
+                          )}
+                          <div className="bg-emerald-50 border border-emerald-200/20 text-emerald-700 text-[10px] p-2.5 rounded-xl flex items-center justify-center space-x-1.5 font-bold shadow-inner">
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                            <span>Rating & Feedback Recorded</span>
+                          </div>
                         </div>
                       ) : (
                         <form onSubmit={handleReviewSubmit} className="space-y-4 text-xs">
@@ -496,10 +581,9 @@ export default function Dashboard() {
                           <div className="space-y-1.5 text-left">
                             <textarea
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[80px]"
-                              placeholder="Write a comment about your home service professional's grade of work..."
-                              value={comment}
-                              onChange={e => setComment(e.target.value)}
-                              required
+                              placeholder="Share your experience with the service partner..."
+                              value={customerOpinion}
+                              onChange={e => setCustomerOpinion(e.target.value)}
                             ></textarea>
                           </div>
 
@@ -598,10 +682,34 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {reviewSubmitted ? (
-                <div className="bg-cyan-50 border border-cyan-200/50 text-cyan-700 text-xs p-4 rounded-xl flex items-center justify-center space-x-2">
-                  <CheckCircle className="w-5 h-5 text-cyan-500" />
-                  <span className="font-bold">Thank you! Your feedback has been submitted successfully.</span>
+              {selectedBooking.review || reviewSubmitted ? (
+                <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-2xl space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-slate-700">Your Rating:</span>
+                    <div className="flex space-x-0.5">
+                      {[1, 2, 3, 4, 5].map((score) => {
+                        const finalRating = selectedBooking.review?.rating || rating;
+                        return (
+                          <Star
+                            key={score}
+                            className={`w-4 h-4 fill-current ${score <= finalRating ? 'text-amber-500' : 'text-slate-200'}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {(selectedBooking.review?.customerOpinion || customerOpinion) && (
+                    <div className="text-left bg-white p-3 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 font-bold block mb-1 text-[9px] uppercase tracking-wider">Your Feedback:</span>
+                      <p className="text-slate-755 font-semibold italic text-xs leading-normal">
+                        "{selectedBooking.review?.customerOpinion || customerOpinion}"
+                      </p>
+                    </div>
+                  )}
+                  <div className="bg-emerald-50 border border-emerald-200/20 text-emerald-700 text-[10px] p-2.5 rounded-xl flex items-center justify-center space-x-1.5 font-bold shadow-inner">
+                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    <span>Feedback Recorded Successfully</span>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleReviewSubmit} className="space-y-4 text-xs">
@@ -622,32 +730,12 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Appreciation (Optional)</label>
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Customer Opinion (Optional)</label>
                     <textarea 
-                      placeholder="What did you appreciate about the service? (e.g. punctual, polite, efficient...)"
-                      value={appreciation}
-                      onChange={(e) => setAppreciation(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Complaint / Feedback (Optional)</label>
-                    <textarea 
-                      placeholder="Any complaints or suggestions for improvements?"
-                      value={complaint}
-                      onChange={(e) => setComplaint(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">General Comment</label>
-                    <textarea 
-                      placeholder="Additional remarks..."
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
+                      placeholder="Share your experience with the service partner..."
+                      value={customerOpinion}
+                      onChange={(e) => setCustomerOpinion(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[100px]"
                     />
                   </div>
 

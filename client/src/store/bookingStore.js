@@ -118,8 +118,35 @@ export const useBookingStore = create((set, get) => ({
     }
   },
 
-  // Save Customer Rating
-  submitReview: async (bookingId, rating, comment, appreciation, complaint) => {
+  // Verify Service Partner Arrival via OTP
+  verifyArrival: async (bookingId, otp) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await fetch(`${API_URL}/bookings/${bookingId}/verify-arrival`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+        },
+        body: JSON.stringify({ otp })
+      });
+      const data = await res.json();
+      set({ loading: false });
+      if (data.success) {
+        await get().fetchBookings(true);
+        return { success: true, message: data.message };
+      }
+      set({ error: data.message });
+      return { success: false, error: data.message };
+    } catch (e) {
+      console.error('[JK Booking Monitoring] API/Database failure: verifyArrival failed', e);
+      const errMsg = 'Failed to verify partner arrival. Please check your connection.';
+      set({ error: errMsg, loading: false });
+      return { success: false, error: errMsg };
+    }
+  },
+
+  submitReview: async (bookingId, rating, customerOpinion) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/reviews`, {
@@ -128,7 +155,7 @@ export const useBookingStore = create((set, get) => ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
         },
-        body: JSON.stringify({ bookingId, rating, comment, appreciation, complaint })
+        body: JSON.stringify({ bookingId, rating, customerOpinion })
       });
       const data = await res.json();
       set({ loading: false });

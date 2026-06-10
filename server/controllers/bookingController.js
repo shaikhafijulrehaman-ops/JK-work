@@ -25,6 +25,21 @@ Time: ${time}
 const workerRejections = {};
 exports.workerRejections = workerRejections;
 
+const sanitizeBookingForUser = (booking, user) => {
+  if (!user || user.role !== 'ADMIN') {
+    if (Array.isArray(booking)) {
+      return booking.map(b => {
+        const { arrivalOtp, ...rest } = b;
+        return rest;
+      });
+    } else if (booking) {
+      const { arrivalOtp, ...rest } = booking;
+      return rest;
+    }
+  }
+  return booking;
+};
+
 
 /**
  * Create a new service booking
@@ -164,7 +179,7 @@ exports.createBooking = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Service booking placed successfully.',
-      booking
+      booking: sanitizeBookingForUser(booking, req.user)
     });
   } catch (error) {
     console.error('Create booking error:', error);
@@ -185,7 +200,8 @@ exports.getBookings = async (req, res) => {
           service: true
         }
       },
-      partner: true
+      partner: true,
+      review: true
     };
 
     if (req.user.role === 'ADMIN') {
@@ -203,7 +219,7 @@ exports.getBookings = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      bookings
+      bookings: sanitizeBookingForUser(bookings, req.user)
     });
   } catch (error) {
     console.error('Get bookings error:', error);
@@ -224,7 +240,8 @@ exports.getBookingById = async (req, res) => {
             service: true
           }
         },
-        partner: true
+        partner: true,
+        review: true
       }
     });
 
@@ -239,7 +256,7 @@ exports.getBookingById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      booking
+      booking: sanitizeBookingForUser(booking, req.user)
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to retrieve booking detail.' });
@@ -391,6 +408,50 @@ exports.assignPartner = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
+    // ── PARTNER AVAILABILITY CHECK ──
+    // If partner is ON_JOB, only allow if they are already assigned to THIS booking
+    if (partner && partner.status === 'ON_JOB' && booking.partnerId !== finalPartnerId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Service partner "${partner.name}" is currently assigned to another booking. Please select an available partner.` 
+      });
+    }
+
+    const isSamePartner = finalPartnerId 
+      ? (booking.partnerId === finalPartnerId) 
+      : (booking.partnerName === finalPartnerName && booking.partnerMobile === finalPartnerMobile);
+
+    // ── DUPLICATE GUARD: Same partner already assigned + emails already sent ──
+    if (booking.status === 'ASSIGNED' && isSamePartner && booking.arrivalOtp && booking.emailSent) {
+      return res.status(200).json({
+        success: true,
+        message: 'Partner is already assigned to this booking. OTP and emails were already sent.',
+        booking: sanitizeBookingForUser(booking, req.user)
+      });
+    }
+
+    // ── OTP LOGIC: Reuse existing OTP for same partner, generate new for different partner ──
+    let arrivalOtp;
+    let otpGeneratedAt;
+    if (isSamePartner && booking.arrivalOtp) {
+      arrivalOtp = booking.arrivalOtp;
+      otpGeneratedAt = booking.otpGeneratedAt || new Date();
+    } else {
+      arrivalOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      otpGeneratedAt = new Date();
+    }
+
+    // ── Release old partner if switching to a different one ──
+    if (booking.partnerId && !isSamePartner) {
+      await db.servicePartner.update({
+        where: { id: booking.partnerId },
+        data: { status: 'AVAILABLE' }
+      }).catch(err => console.error('Error releasing old partner:', err.message));
+    }
+
+    // ── Determine if emails need sending ──
+    const shouldSendEmail = !(isSamePartner && booking.emailSent);
+
     const updated = await db.booking.update({
       where: { id: bookingId },
       data: {
@@ -398,10 +459,17 @@ exports.assignPartner = async (req, res) => {
         booking_status: 'Assigned',
         partnerId: finalPartnerId,
         partnerName: finalPartnerName,
-        partnerMobile: finalPartnerMobile
+        partnerMobile: finalPartnerMobile,
+        arrivalOtp: arrivalOtp,
+        otpVerified: false,
+        arrivalTime: null,
+        otpGeneratedAt: otpGeneratedAt,
+        otpVerifiedAt: null,
+        emailSent: shouldSendEmail ? false : true // Will be set true after send
       }
     });
 
+    // Set new partner to ON_JOB
     if (finalPartnerId) {
       await db.servicePartner.update({
         where: { id: finalPartnerId },
@@ -409,15 +477,17 @@ exports.assignPartner = async (req, res) => {
       }).catch(err => console.error('Error updating partner status:', err.message));
     }
 
-    // Create Notification
-    await db.notification.create({
-      data: {
-        userId: booking.userId,
-        type: 'WORKER_ASSIGNMENT',
-        title: 'Partner Assigned!',
-        message: `Your professional ${finalPartnerName} (${finalPartnerMobile}) has been assigned to your booking. Check dashboard for details.`
-      }
-    }).catch(() => {});
+    // Create Notification (only for new assignments)
+    if (!isSamePartner || !booking.emailSent) {
+      await db.notification.create({
+        data: {
+          userId: booking.userId,
+          type: 'WORKER_ASSIGNMENT',
+          title: 'Partner Assigned!',
+          message: `Your professional ${finalPartnerName} (${finalPartnerMobile}) has been assigned to your booking. Check dashboard for details.`
+        }
+      }).catch(() => {});
+    }
 
     // Log Activity
     logActivity(req, {
@@ -435,82 +505,95 @@ exports.assignPartner = async (req, res) => {
       await syncPartnerPerformance(finalPartnerId);
     }
 
-    // Send Email to Customer & Partner
-    const { sendEmail } = require('../utils/email');
-    const customerEmail = booking.email || booking.user?.email;
-    if (customerEmail) {
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
-          <p>Hello,</p>
-          <p>A service partner has been successfully assigned to your booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
-          <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-            <h3 style="margin-top: 0; color: #0f172a;">Assigned Partner Details:</h3>
-            <p style="margin: 5px 0;"><strong>Name:</strong> ${finalPartnerName}</p>
-            <p style="margin: 5px 0;"><strong>Mobile:</strong> ${finalPartnerMobile}</p>
-            <p style="margin: 5px 0;"><strong>Service Type:</strong> ${booking.serviceCategory || 'Home Service'}</p>
-            <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
-          </div>
-          <p>They will contact you shortly regarding their arrival. You can track their status in real-time on your dashboard.</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-          <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
-        </div>
-      `;
-      sendEmail({
-        to: customerEmail,
-        subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
-        html: htmlContent
-      }).then(async () => {
-        await db.emailLog.create({
-          data: {
-            to: customerEmail,
-            subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
-            body: htmlContent,
-            bookingId: bookingId
-          }
-        }).catch(err => console.error('Error logging customer email:', err.message));
-      }).catch(err => console.error('Error sending customer email:', err.message));
-    }
+    // ── SEND EMAILS ONLY IF NOT ALREADY SENT ──
+    if (shouldSendEmail) {
+      const { sendEmail } = require('../utils/email');
+      const customerEmail = booking.email || booking.user?.email;
 
-    if (partner && partner.email) {
-      const partnerHtmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #06b6d4; text-align: center;">JK Home Care - New Job Assigned</h2>
-          <p>Hello ${partner.name},</p>
-          <p>You have been assigned a new booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
-          <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-            <h3 style="margin-top: 0; color: #0f172a;">Customer & Job Details:</h3>
-            <p style="margin: 5px 0;"><strong>Customer Name:</strong> ${booking.customer_name || booking.user?.name || 'Customer'}</p>
-            <p style="margin: 5px 0;"><strong>Customer Phone:</strong> ${booking.phone || booking.user?.phone || 'N/A'}</p>
-            <p style="margin: 5px 0;"><strong>Customer Address:</strong> ${booking.address}</p>
-            <p style="margin: 5px 0;"><strong>Service Details:</strong> ${booking.service_name || 'Home Service'}</p>
-            <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
+      // Email to Customer
+      if (customerEmail) {
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
+            <p>Hello,</p>
+            <p>A service partner has been successfully assigned to your booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
+            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+              <h3 style="margin-top: 0; color: #0f172a;">Assigned Partner Details:</h3>
+              <p style="margin: 5px 0;"><strong>Name:</strong> ${finalPartnerName}</p>
+              <p style="margin: 5px 0;"><strong>Mobile:</strong> ${finalPartnerMobile}</p>
+              <p style="margin: 5px 0;"><strong>Service Type:</strong> ${booking.serviceCategory || 'Home Service'}</p>
+              <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
+            </div>
+            <p>Please ask the service partner for the arrival verification OTP when they reach your doorstep, and enter it on your dashboard to confirm their arrival.</p>
+            <p>They will contact you shortly regarding their arrival. You can track their status in real-time on your dashboard.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
           </div>
-          <p>Please contact the customer immediately and arrive at their location on time.</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-          <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
-        </div>
-      `;
-      sendEmail({
-        to: partner.email,
-        subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
-        html: partnerHtmlContent
-      }).then(async () => {
-        await db.emailLog.create({
-          data: {
-            to: partner.email,
-            subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
-            body: partnerHtmlContent,
-            bookingId: bookingId
-          }
-        }).catch(err => console.error('Error logging partner email:', err.message));
-      }).catch(err => console.error('Error sending partner email:', err.message));
+        `;
+        sendEmail({
+          to: customerEmail,
+          subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
+          html: htmlContent
+        }).then(async () => {
+          await db.emailLog.create({
+            data: {
+              to: customerEmail,
+              subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
+              body: htmlContent,
+              bookingId: bookingId
+            }
+          }).catch(err => console.error('Error logging customer email:', err.message));
+        }).catch(err => console.error('Error sending customer email:', err.message));
+      }
+
+      // Email to Service Partner (with OTP)
+      if (partner && partner.email) {
+        const partnerHtmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #06b6d4; text-align: center;">JK Home Care - New Job Assigned</h2>
+            <p>Hello ${partner.name},</p>
+            <p>You have been assigned a new booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
+            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+              <h3 style="margin-top: 0; color: #0f172a;">Customer & Job Details:</h3>
+              <p style="margin: 5px 0;"><strong>Customer Name:</strong> ${booking.customer_name || booking.user?.name || 'Customer'}</p>
+              <p style="margin: 5px 0;"><strong>Customer Phone:</strong> ${booking.phone || booking.user?.phone || 'N/A'}</p>
+              <p style="margin: 5px 0;"><strong>Customer Address:</strong> ${booking.address}</p>
+              <p style="margin: 5px 0;"><strong>Service Details:</strong> ${booking.service_name || 'Home Service'}</p>
+              <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
+              <p style="margin: 5px 0; font-size: 16px; color: #06b6d4;"><strong>Arrival OTP:</strong> ${arrivalOtp}</p>
+            </div>
+            <p>Please contact the customer immediately, arrive at their location on time, and share the above 4-digit Arrival OTP with them so they can verify your arrival on the platform.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+          </div>
+        `;
+        sendEmail({
+          to: partner.email,
+          subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
+          html: partnerHtmlContent
+        }).then(async () => {
+          await db.emailLog.create({
+            data: {
+              to: partner.email,
+              subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
+              body: partnerHtmlContent,
+              bookingId: bookingId
+            }
+          }).catch(err => console.error('Error logging partner email:', err.message));
+        }).catch(err => console.error('Error sending partner email:', err.message));
+      }
+
+      // Mark emails as sent
+      await db.booking.update({
+        where: { id: bookingId },
+        data: { emailSent: true }
+      }).catch(err => console.error('Error marking emailSent:', err.message));
     }
 
     res.status(200).json({
       success: true,
       message: 'Partner assigned successfully.',
-      booking: updated
+      booking: sanitizeBookingForUser(updated, req.user)
     });
   } catch (error) {
     console.error('Assign partner error:', error);
@@ -552,6 +635,28 @@ exports.confirmPaymentSuccess = async (req, res) => {
 
     if (!booking_id || !customer_name || !phone || !service_name || !amount || !address) {
       return res.status(400).json({ success: false, message: 'Please provide all required transaction fields.' });
+    }
+
+    // Idempotency Check: If booking already exists, return it with success
+    const existingBooking = await db.booking.findUnique({
+      where: { id: booking_id },
+      include: {
+        items: {
+          include: {
+            service: true
+          }
+        },
+        partner: true,
+        review: true
+      }
+    });
+
+    if (existingBooking) {
+      return res.status(200).json({
+        success: true,
+        message: 'Booking already confirmed.',
+        booking: sanitizeBookingForUser(existingBooking, req.user)
+      });
     }
 
     // ACID transaction: booking + coupon + customer update + notifications
@@ -779,58 +884,19 @@ exports.updateBookingStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'In Progress status is no longer supported.' });
     }
 
+    if (status === 'ON_THE_WAY') {
+      return res.status(400).json({ success: false, message: 'On The Way status is no longer supported.' });
+    }
+
     const updateData = { 
       status,
       booking_status: status === 'PENDING' ? 'New Booking' : 
                       status === 'ASSIGNED' ? 'Assigned' : 
-                      status === 'ON_THE_WAY' ? 'On The Way' : 
+                      status === 'ARRIVED' ? 'Arrived' : 
                       status === 'CANCELLED' ? 'Cancelled' : status
     };
 
     const customerEmail = booking.email || booking.user?.email;
-
-    if (status === 'ON_THE_WAY') {
-      await db.notification.create({
-        data: {
-          userId: booking.userId,
-          type: 'BOOKING_ALERT',
-          title: 'Partner On The Way!',
-          message: `Your professional ${booking.partnerName || 'expert'} is on the way! Estimated arrival in 9 minutes.`
-        }
-      }).catch(() => {});
-
-      if (customerEmail) {
-        const htmlContent = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <h2 style="color: #06b6d4; text-align: center;">JK Home Care</h2>
-            <p>Hello,</p>
-            <p>Your service partner is now <strong>On The Way</strong> for booking <strong>#${booking.id.substring(0,8).toUpperCase()}</strong>!</p>
-            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
-              <p style="font-size: 16px; font-weight: bold; color: #0f172a; margin: 0;">Estimated Arrival Time: Within 9 Minutes</p>
-            </div>
-            <p><strong>Partner Name:</strong> ${booking.partnerName || 'N/A'}</p>
-            <p><strong>Partner Mobile:</strong> ${booking.partnerMobile || 'N/A'}</p>
-            <p>Please ensure someone is available at your doorstep to receive the service partner.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-            <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
-          </div>
-        `;
-        sendEmail({
-          to: customerEmail,
-          subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
-          html: htmlContent
-        }).then(async () => {
-          await db.emailLog.create({
-            data: {
-              to: customerEmail,
-              subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
-              body: htmlContent,
-              bookingId: booking.id
-            }
-          }).catch(err => console.error('Error logging customer on the way email:', err.message));
-        }).catch(err => console.error('Error sending on-the-way email:', err.message));
-      }
-    }
 
     if (status === 'CANCELLED') {
       logActivity(req, {
@@ -948,6 +1014,86 @@ exports.updateBookingStatus = async (req, res) => {
   }
 };
 
+exports.verifyArrival = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const bookingId = req.params.id;
+
+    if (!otp) {
+      return res.status(400).json({ success: false, message: 'Please provide the 4-digit arrival OTP.' });
+    }
+
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    // Role protection: Only the customer who placed the booking can verify arrival
+    if (booking.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Only the booking customer can verify arrival.' });
+    }
+
+    // Idempotency: If arrival was already verified, return success to sync frontend state
+    if (booking.status === 'ARRIVED' || booking.status === 'COMPLETED') {
+      return res.status(200).json({
+        success: true,
+        message: 'Arrival has already been verified.',
+        booking
+      });
+    }
+
+    if (booking.status !== 'ASSIGNED') {
+      return res.status(400).json({ success: false, message: 'Service partner must be assigned to verify arrival.' });
+    }
+
+    if (booking.arrivalOtp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: 'Incorrect OTP. Verification failed.' });
+    }
+
+    // Update booking status to ARRIVED
+    const updated = await db.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: 'ARRIVED',
+        booking_status: 'Arrived',
+        otpVerified: true,
+        arrivalTime: new Date(),
+        otpVerifiedAt: new Date()
+      }
+    });
+
+    // Log status history
+    await logStatusHistory(bookingId, 'ARRIVED');
+
+    // Create Notification
+    await db.notification.create({
+      data: {
+        userId: booking.userId,
+        type: 'SYSTEM_ALERT',
+        title: 'Arrival Verified!',
+        message: `Service partner arrival has been verified successfully.`
+      }
+    }).catch(() => {});
+
+    // Sync partner performance
+    if (booking.partnerId) {
+      await syncPartnerPerformance(booking.partnerId);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Service Partner Arrival Verified',
+      booking: sanitizeBookingForUser(updated, req.user)
+    });
+  } catch (error) {
+    console.error('Verify arrival error:', error);
+    res.status(500).json({ success: false, message: 'Failed to verify partner arrival.' });
+  }
+};
+
 // ==================== DEPRECATED WORKER STUBS ====================
 
 exports.getMyJobs = async (req, res) => {
@@ -993,7 +1139,7 @@ async function syncPartnerPerformance(partnerId) {
 
     const completedJobs = bookings.filter(b => b.status === 'COMPLETED').length;
     const cancelledJobs = bookings.filter(b => b.status === 'CANCELLED').length;
-    const activeJobs = bookings.filter(b => ['ASSIGNED', 'ON_THE_WAY'].includes(b.status)).length;
+    const activeJobs = bookings.filter(b => ['ASSIGNED', 'ARRIVED'].includes(b.status)).length;
     
     const totalRevenue = bookings
       .filter(b => b.status === 'COMPLETED')

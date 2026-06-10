@@ -46,7 +46,7 @@ export default function AccountPage() {
 
   // Filter bookings for this customer
   const userBookings = bookings.filter(b => b.userId === user?.id || !b.userId); // sandbox safety fallback
-  const upcomingBookings = userBookings.filter(b => ['PENDING', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS'].includes(b.status));
+  const upcomingBookings = userBookings.filter(b => ['PENDING', 'ASSIGNED', 'ARRIVED'].includes(b.status));
   const completedBookings = userBookings.filter(b => b.status === 'COMPLETED');
   const cancelledBookings = userBookings.filter(b => b.status === 'CANCELLED');
 
