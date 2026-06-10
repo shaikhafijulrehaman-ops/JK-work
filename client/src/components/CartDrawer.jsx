@@ -21,7 +21,7 @@ import {
 export default function CartDrawer({ isOpen, onClose }) {
   const { items, pincode, isPincodeValid, checkPincode, applyCoupon, couponCode, discountPct, getSummary, clearCart, updateQty, removeItem } = useCartStore();
   const { createBooking } = useBookingStore();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const { addNotification } = useNotificationStore();
   const navigate = useNavigate();
 
@@ -29,14 +29,47 @@ export default function CartDrawer({ isOpen, onClose }) {
   const [couponInput, setCouponInput] = useState(couponCode);
   const [couponMsg, setCouponMsg] = useState('');
   
-  const [address, setAddress] = useState('Flat 402, Block A, Prestige Jindal City, Anchepalya, Bengaluru - 560073');
-  const [phone, setPhone] = useState('9876543210');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [slot, setSlot] = useState('10:00 AM - 11:00 AM');
   const [date, setDate] = useState('2026-05-24');
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutBooking, setCheckoutBooking] = useState(null);
   const [isPaid, setIsPaid] = useState(false);
+
+  React.useEffect(() => {
+    const fetchSavedAddress = async () => {
+      try {
+        const res = await fetch('/api/addresses', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+          }
+        });
+        const data = await res.json();
+        if (data.success && data.data && data.data.length > 0) {
+          const defaultAddress = data.data.find(addr => addr.isDefault) || data.data[0];
+          if (defaultAddress) {
+            const parts = [
+              defaultAddress.houseFlat,
+              defaultAddress.landmark,
+              defaultAddress.street
+            ].filter(Boolean).join(', ');
+            setAddress(parts);
+          }
+        } else {
+          setAddress('');
+        }
+      } catch (err) {
+        console.error('Error fetching saved addresses:', err);
+      }
+    };
+
+    if (isAuthenticated && user) {
+      setPhone(user.phone || '');
+      fetchSavedAddress();
+    }
+  }, [isAuthenticated, user, isOpen]);
 
   const { subtotal, discount, platformFee, total } = getSummary();
 

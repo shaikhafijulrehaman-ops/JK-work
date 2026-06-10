@@ -32,6 +32,10 @@ router.get('/partners', protect, restrictTo('ADMIN'), adminController.getPartner
 router.post('/partners', protect, restrictTo('ADMIN'), adminController.createPartner);
 router.put('/partners/:id', protect, restrictTo('ADMIN'), adminController.updatePartner);
 router.delete('/partners/:id', protect, restrictTo('ADMIN'), adminController.deletePartner);
+router.get('/partners/performance', protect, restrictTo('ADMIN'), adminController.getPartnersPerformance);
+
+// Customer Ratings
+router.get('/reviews', protect, restrictTo('ADMIN'), adminController.getReviews);
 
 // Resource-specific admin query lists
 router.get('/bookings', protect, restrictTo('ADMIN'), adminController.getBookings);

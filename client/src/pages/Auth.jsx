@@ -169,6 +169,7 @@ export default function Auth() {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required 
+                    autoComplete="off"
                   />
                   <label className="form-label flex items-center space-x-1">
                     <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
@@ -183,6 +184,7 @@ export default function Auth() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required 
+                    autoComplete="new-password"
                   />
                   <label className="form-label flex items-center space-x-1">
                     <Lock className="w-3.5 h-3.5 inline mr-1" /> Password
@@ -238,6 +240,7 @@ export default function Auth() {
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required 
+                      autoComplete="off"
                     />
                     <label className="form-label flex items-center space-x-1">
                       <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
@@ -253,12 +256,12 @@ export default function Auth() {
                         value={otpCode}
                         onChange={e => setOtpCode(e.target.value)}
                         required 
+                        autoComplete="one-time-code"
                       />
                       <label className="form-label flex items-center space-x-1">
                         <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
                       </label>
                     </div>
-
                   </div>
                 )}
               </div>
@@ -478,6 +481,7 @@ export default function Auth() {
                               value={email}
                               onChange={e => setEmail(e.target.value)}
                               required 
+                              autoComplete="email"
                             />
                             <label className="form-label flex items-center space-x-1">
                               <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
@@ -492,6 +496,7 @@ export default function Auth() {
                               value={password}
                               onChange={e => setPassword(e.target.value)}
                               required 
+                              autoComplete="current-password"
                             />
                             <label className="form-label flex items-center space-x-1">
                               <Lock className="w-3.5 h-3.5 inline mr-1" /> Password
@@ -554,28 +559,29 @@ export default function Auth() {
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 required 
+                                autoComplete="email"
                               />
                               <label className="form-label flex items-center space-x-1">
                                 <Mail className="w-3.5 h-3.5 inline mr-1" /> Email Address
                               </label>
                             </div>
                           ) : (
-                            <div className="space-y-3">
-                              <div className="form-group">
-                                <input 
-                                  type="text" 
-                                  className="form-input" 
-                                  placeholder="OTP Code"
-                                  value={otpCode}
-                                  onChange={e => setOtpCode(e.target.value)}
-                                  required 
-                                />
-                                <label className="form-label flex items-center space-x-1">
-                                  <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
-                                </label>
-                              </div>
-
-                            </div>
+                             <div className="space-y-3">
+                               <div className="form-group">
+                                 <input 
+                                   type="text" 
+                                   className="form-input" 
+                                   placeholder="OTP Code"
+                                   value={otpCode}
+                                   onChange={e => setOtpCode(e.target.value)}
+                                   required 
+                                   autoComplete="one-time-code"
+                                 />
+                                 <label className="form-label flex items-center space-x-1">
+                                   <Key className="w-3.5 h-3.5 inline mr-1" /> OTP Code (Console log)
+                                 </label>
+                               </div>
+                             </div>
                           )}
                         </div>
 

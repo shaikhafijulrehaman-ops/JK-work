@@ -115,6 +115,9 @@ exports.createBooking = async (req, res) => {
       }
     });
 
+    // Log status history
+    await logStatusHistory(booking.id, 'PENDING');
+
     // Audit Logging
     logActivity(req, {
       userId: req.user.id,
@@ -361,9 +364,10 @@ exports.assignPartner = async (req, res) => {
     let finalPartnerId = partnerId || null;
     let finalPartnerName = partnerName;
     let finalPartnerMobile = partnerMobile;
+    let partner = null;
 
     if (partnerId) {
-      const partner = await db.servicePartner.findUnique({
+      partner = await db.servicePartner.findUnique({
         where: { id: partnerId }
       });
       if (!partner) {
@@ -411,7 +415,7 @@ exports.assignPartner = async (req, res) => {
         userId: booking.userId,
         type: 'WORKER_ASSIGNMENT',
         title: 'Partner Assigned!',
-        message: `Your professional ${partnerName} (${partnerMobile}) has been assigned to your booking. Check dashboard for details.`
+        message: `Your professional ${finalPartnerName} (${finalPartnerMobile}) has been assigned to your booking. Check dashboard for details.`
       }
     }).catch(() => {});
 
@@ -420,10 +424,18 @@ exports.assignPartner = async (req, res) => {
       userId: req.user.id,
       eventType: 'BOOKING',
       action: 'BOOKING_ASSIGNED',
-      details: { bookingId, partnerName, partnerMobile }
+      details: { bookingId, partnerName: finalPartnerName, partnerMobile: finalPartnerMobile }
     });
 
-    // Send Email to Customer
+    // Log status history
+    await logStatusHistory(bookingId, 'ASSIGNED');
+
+    // Sync partner performance
+    if (finalPartnerId) {
+      await syncPartnerPerformance(finalPartnerId);
+    }
+
+    // Send Email to Customer & Partner
     const { sendEmail } = require('../utils/email');
     const customerEmail = booking.email || booking.user?.email;
     if (customerEmail) {
@@ -434,8 +446,10 @@ exports.assignPartner = async (req, res) => {
           <p>A service partner has been successfully assigned to your booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
           <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
             <h3 style="margin-top: 0; color: #0f172a;">Assigned Partner Details:</h3>
-            <p style="margin: 5px 0;"><strong>Name:</strong> ${partnerName}</p>
-            <p style="margin: 5px 0;"><strong>Mobile:</strong> ${partnerMobile}</p>
+            <p style="margin: 5px 0;"><strong>Name:</strong> ${finalPartnerName}</p>
+            <p style="margin: 5px 0;"><strong>Mobile:</strong> ${finalPartnerMobile}</p>
+            <p style="margin: 5px 0;"><strong>Service Type:</strong> ${booking.serviceCategory || 'Home Service'}</p>
+            <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
           </div>
           <p>They will contact you shortly regarding their arrival. You can track their status in real-time on your dashboard.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
@@ -446,7 +460,51 @@ exports.assignPartner = async (req, res) => {
         to: customerEmail,
         subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
         html: htmlContent
-      }).catch(err => console.error('Error sending assignment email:', err.message));
+      }).then(async () => {
+        await db.emailLog.create({
+          data: {
+            to: customerEmail,
+            subject: `JK Home Care - Partner Assigned for Booking #${bookingId.substring(0,8).toUpperCase()}`,
+            body: htmlContent,
+            bookingId: bookingId
+          }
+        }).catch(err => console.error('Error logging customer email:', err.message));
+      }).catch(err => console.error('Error sending customer email:', err.message));
+    }
+
+    if (partner && partner.email) {
+      const partnerHtmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #06b6d4; text-align: center;">JK Home Care - New Job Assigned</h2>
+          <p>Hello ${partner.name},</p>
+          <p>You have been assigned a new booking <strong>#${bookingId.substring(0,8).toUpperCase()}</strong>.</p>
+          <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; color: #0f172a;">Customer & Job Details:</h3>
+            <p style="margin: 5px 0;"><strong>Customer Name:</strong> ${booking.customer_name || booking.user?.name || 'Customer'}</p>
+            <p style="margin: 5px 0;"><strong>Customer Phone:</strong> ${booking.phone || booking.user?.phone || 'N/A'}</p>
+            <p style="margin: 5px 0;"><strong>Customer Address:</strong> ${booking.address}</p>
+            <p style="margin: 5px 0;"><strong>Service Details:</strong> ${booking.service_name || 'Home Service'}</p>
+            <p style="margin: 5px 0;"><strong>Booking ID:</strong> ${bookingId}</p>
+          </div>
+          <p>Please contact the customer immediately and arrive at their location on time.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+          <p style="text-align: center; color: #94a3b8; font-size: 12px;">© 2026 JK Home Care. All rights reserved.</p>
+        </div>
+      `;
+      sendEmail({
+        to: partner.email,
+        subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
+        html: partnerHtmlContent
+      }).then(async () => {
+        await db.emailLog.create({
+          data: {
+            to: partner.email,
+            subject: `JK Home Care - New Job Assigned: Booking #${bookingId.substring(0,8).toUpperCase()}`,
+            body: partnerHtmlContent,
+            bookingId: bookingId
+          }
+        }).catch(err => console.error('Error logging partner email:', err.message));
+      }).catch(err => console.error('Error sending partner email:', err.message));
     }
 
     res.status(200).json({
@@ -486,7 +544,10 @@ exports.confirmPaymentSuccess = async (req, res) => {
       notes, 
       transaction_id,
       coupon_code,
-      discount_applied
+      discount_applied,
+      rawAddress,
+      landmark,
+      altPhone
     } = req.body;
 
     if (!booking_id || !customer_name || !phone || !service_name || !amount || !address) {
@@ -497,13 +558,19 @@ exports.confirmPaymentSuccess = async (req, res) => {
     const booking = await db.transaction(async (tx) => {
       // 1. Verify/fetch serviceArea pincode
       const serviceArea = await tx.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
-      const serviceAreaId = serviceArea ? serviceArea.id : 'sa-sample';
+      const serviceAreaId = serviceArea ? serviceArea.id : null;
 
       // 2. Resolve service reference
       const matchingService = await tx.service.findFirst({
         where: { name: { contains: service_name } }
       });
-      const serviceId = matchingService ? matchingService.id : 's-1';
+      let serviceId;
+      if (matchingService) {
+        serviceId = matchingService.id;
+      } else {
+        const fallbackService = await tx.service.findFirst();
+        serviceId = fallbackService ? fallbackService.id : 's-1';
+      }
 
       // 3. Create the Booking entry (this updates customer history and booking count automatically)
       const newBooking = await tx.booking.create({
@@ -541,12 +608,21 @@ exports.confirmPaymentSuccess = async (req, res) => {
               data: [
                 {
                   serviceId: serviceId,
+                  role: undefined, // ignore
                   quantity: 1,
                   price: parseFloat(amount)
                 }
               ]
             }
           }
+        }
+      });
+
+      // 3.5 Log status history
+      await tx.bookingStatusHistory.create({
+        data: {
+          bookingId: booking_id,
+          status: 'PENDING'
         }
       });
 
@@ -568,6 +644,60 @@ exports.confirmPaymentSuccess = async (req, res) => {
           message: `Your booking #${booking_id} for ${service_name} has been processed successfully.`
         }
       });
+
+      // 5.5 Update User's default profile area and pincode
+      await tx.user.update({
+        where: { id: req.user.id },
+        data: {
+          pincode: pincode || undefined,
+          serviceArea: area || undefined
+        }
+      });
+
+      // 5.6 Save or update Address in user's saved addresses registry
+      if (rawAddress) {
+        const addrRecord = await tx.address.findFirst({
+          where: {
+            userId: req.user.id,
+            houseFlat: rawAddress,
+            street: area || ''
+          }
+        });
+
+        if (!addrRecord) {
+          // Set all other addresses as non-default
+          await tx.address.updateMany({
+            where: { userId: req.user.id },
+            data: { isDefault: false }
+          });
+
+          await tx.address.create({
+            data: {
+              userId: req.user.id,
+              houseFlat: rawAddress,
+              street: area || '',
+              landmark: landmark || null,
+              altMobile: altPhone || null,
+              isDefault: true
+            }
+          });
+        } else {
+          // Make it default and update details
+          await tx.address.updateMany({
+            where: { userId: req.user.id },
+            data: { isDefault: false }
+          });
+
+          await tx.address.update({
+            where: { id: addrRecord.id },
+            data: {
+              landmark: landmark || null,
+              altMobile: altPhone || null,
+              isDefault: true
+            }
+          });
+        }
+      }
 
       return newBooking;
     });
@@ -641,6 +771,14 @@ exports.updateBookingStatus = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized. Only admins can transition booking status.' });
     }
 
+    if (status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Only customers can confirm work completion.' });
+    }
+
+    if (status === 'IN_PROGRESS') {
+      return res.status(400).json({ success: false, message: 'In Progress status is no longer supported.' });
+    }
+
     const updateData = { 
       status,
       booking_status: status === 'PENDING' ? 'New Booking' : 
@@ -681,6 +819,15 @@ exports.updateBookingStatus = async (req, res) => {
           to: customerEmail,
           subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
           html: htmlContent
+        }).then(async () => {
+          await db.emailLog.create({
+            data: {
+              to: customerEmail,
+              subject: `JK Home Care - Partner On The Way for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+              body: htmlContent,
+              bookingId: booking.id
+            }
+          }).catch(err => console.error('Error logging customer on the way email:', err.message));
         }).catch(err => console.error('Error sending on-the-way email:', err.message));
       }
     }
@@ -764,6 +911,15 @@ exports.updateBookingStatus = async (req, res) => {
           to: customerEmail,
           subject: `JK Home Care - Cancellation & Refund confirmation for Booking #${booking.id.substring(0,8).toUpperCase()}`,
           html: htmlContent
+        }).then(async () => {
+          await db.emailLog.create({
+            data: {
+              to: customerEmail,
+              subject: `JK Home Care - Cancellation & Refund confirmation for Booking #${booking.id.substring(0,8).toUpperCase()}`,
+              body: htmlContent,
+              bookingId: booking.id
+            }
+          }).catch(err => console.error('Error logging cancellation email:', err.message));
         }).catch(err => console.error('Error sending cancellation email:', err.message));
       }
     }
@@ -772,6 +928,14 @@ exports.updateBookingStatus = async (req, res) => {
       where: { id: booking.id },
       data: updateData
     });
+
+    // Log status history
+    await logStatusHistory(booking.id, status);
+
+    // Sync partner performance
+    if (booking.partnerId) {
+      await syncPartnerPerformance(booking.partnerId);
+    }
 
     res.status(200).json({
       success: true,
@@ -801,3 +965,70 @@ exports.toggleWorkerStatus = async (req, res) => {
 exports.getCategoryRequests = async (req, res) => {
   res.status(200).json({ success: true, bookings: [] });
 };
+
+async function logStatusHistory(bookingId, status) {
+  try {
+    await db.bookingStatusHistory.create({
+      data: {
+        bookingId,
+        status
+      }
+    });
+  } catch (err) {
+    console.error(`Error logging status history for booking ${bookingId}:`, err.message);
+  }
+}
+
+async function syncPartnerPerformance(partnerId) {
+  if (!partnerId) return;
+  try {
+    const partner = await db.servicePartner.findUnique({
+      where: { id: partnerId }
+    });
+    if (!partner) return;
+
+    const bookings = await db.booking.findMany({
+      where: { partnerId }
+    });
+
+    const completedJobs = bookings.filter(b => b.status === 'COMPLETED').length;
+    const cancelledJobs = bookings.filter(b => b.status === 'CANCELLED').length;
+    const activeJobs = bookings.filter(b => ['ASSIGNED', 'ON_THE_WAY'].includes(b.status)).length;
+    
+    const totalRevenue = bookings
+      .filter(b => b.status === 'COMPLETED')
+      .reduce((sum, b) => sum + (b.finalPrice || 0), 0);
+
+    const reviews = await db.review.findMany({
+      where: { partnerId }
+    });
+    const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+    const averageRating = reviews.length > 0 ? totalRating / reviews.length : 0.0;
+
+    await db.partnerPerformance.upsert({
+      where: { partnerId },
+      update: {
+        totalJobs: completedJobs,
+        totalRevenue,
+        averageRating,
+        activeJobs,
+        completedJobs,
+        cancelledJobs
+      },
+      create: {
+        partnerId,
+        totalJobs: completedJobs,
+        totalRevenue,
+        averageRating,
+        activeJobs,
+        completedJobs,
+        cancelledJobs
+      }
+    });
+  } catch (err) {
+    console.error(`Error syncing partner performance for ${partnerId}:`, err.message);
+  }
+}
+
+exports.logStatusHistory = logStatusHistory;
+exports.syncPartnerPerformance = syncPartnerPerformance;

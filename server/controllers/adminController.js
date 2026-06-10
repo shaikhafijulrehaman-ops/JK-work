@@ -422,18 +422,23 @@ exports.getPartners = async (req, res) => {
 // Create a new partner
 exports.createPartner = async (req, res) => {
   try {
-    const { name, phone, serviceType, status } = req.body;
-    if (!name || !phone || !serviceType) {
-      return res.status(400).json({ success: false, message: 'Name, phone, and serviceType are required.' });
+    const { name, phone, email, serviceType, status } = req.body;
+    if (!name || !phone || !email || !serviceType) {
+      return res.status(400).json({ success: false, message: 'Name, phone, email, and serviceType are required.' });
     }
-    const existing = await db.servicePartner.findUnique({ where: { phone } });
-    if (existing) {
+    const existingPhone = await db.servicePartner.findUnique({ where: { phone } });
+    if (existingPhone) {
       return res.status(400).json({ success: false, message: 'A service partner with this phone number already exists.' });
+    }
+    const existingEmail = await db.servicePartner.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(400).json({ success: false, message: 'A service partner with this email address already exists.' });
     }
     const partner = await db.servicePartner.create({
       data: {
         name,
         phone,
+        email,
         serviceType,
         status: status || 'AVAILABLE'
       }
@@ -449,7 +454,7 @@ exports.createPartner = async (req, res) => {
 exports.updatePartner = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, serviceType, status } = req.body;
+    const { name, phone, email, serviceType, status } = req.body;
     const existing = await db.servicePartner.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Service partner not found.' });
@@ -460,11 +465,18 @@ exports.updatePartner = async (req, res) => {
         return res.status(400).json({ success: false, message: 'A service partner with this phone number already exists.' });
       }
     }
+    if (email && email !== existing.email) {
+      const existingEmail = await db.servicePartner.findUnique({ where: { email } });
+      if (existingEmail) {
+        return res.status(400).json({ success: false, message: 'A service partner with this email address already exists.' });
+      }
+    }
     const updated = await db.servicePartner.update({
       where: { id },
       data: {
         name: name || existing.name,
         phone: phone || existing.phone,
+        email: email || existing.email,
         serviceType: serviceType || existing.serviceType,
         status: status || existing.status
       }
@@ -485,6 +497,59 @@ exports.deletePartner = async (req, res) => {
   } catch (error) {
     console.error('Error deleting service partner:', error);
     res.status(500).json({ success: false, message: 'Server error deleting service partner' });
+  }
+};
+
+// Get all customer reviews (Ratings & Complaints)
+exports.getReviews = async (req, res) => {
+  try {
+    const reviews = await db.review.findMany({
+      include: {
+        user: { select: { name: true } },
+        partner: { select: { name: true, serviceType: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.status(200).json({ success: true, reviews });
+  } catch (error) {
+    console.error('Error fetching admin reviews:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching reviews' });
+  }
+};
+
+// Get all service partners overview performance metrics
+exports.getPartnersPerformance = async (req, res) => {
+  try {
+    const partners = await db.servicePartner.findMany({
+      include: {
+        performance: true
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    const performance = partners.map(p => {
+      const perf = p.performance || {};
+      return {
+        id: p.id,
+        partnerId: p.id,
+        partnerName: p.name,
+        serviceType: p.serviceType,
+        email: p.email,
+        phone: p.phone,
+        status: p.status,
+        totalJobsCompleted: perf.completedJobs || 0,
+        totalRevenueGenerated: perf.totalRevenue || 0.0,
+        averageRating: perf.averageRating || 0.0,
+        activeJobs: perf.activeJobs || 0,
+        completedJobs: perf.completedJobs || 0,
+        cancelledJobs: perf.cancelledJobs || 0
+      };
+    });
+
+    res.status(200).json({ success: true, performances: performance, performance });
+  } catch (error) {
+    console.error('Error fetching partner performance:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching partner performance.' });
   }
 };
 

@@ -1,11 +1,13 @@
 const db = require('../db');
+const { logStatusHistory, syncPartnerPerformance } = require('./bookingController');
 
 /**
  * Submit a rating and review for a completed service call
+ * This transitions booking to COMPLETED, partner to AVAILABLE, logs history & revenue.
  */
 exports.submitReview = async (req, res) => {
   try {
-    const { bookingId, rating, comment } = req.body;
+    const { bookingId, rating, appreciation, complaint, comment } = req.body;
 
     if (!bookingId || !rating) {
       return res.status(400).json({ success: false, message: 'Please supply bookingId and rating score.' });
@@ -16,7 +18,10 @@ exports.submitReview = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Rating must be an integer between 1 and 5 stars.' });
     }
 
-    const booking = await db.booking.findUnique({ where: { id: bookingId } });
+    const booking = await db.booking.findUnique({ 
+      where: { id: bookingId } 
+    });
+    
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking record not found.' });
     }
@@ -26,52 +31,104 @@ exports.submitReview = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized. You did not place this booking.' });
     }
 
-    if (booking.status !== 'COMPLETED') {
-      return res.status(400).json({ success: false, message: 'Reviews can only be submitted for completed service calls.' });
+    // Under the new workflow, status must be ON_THE_WAY to complete the service. We also support COMPLETED for flexibility.
+    if (booking.status !== 'ON_THE_WAY' && booking.status !== 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Work can only be completed and reviewed when the partner is on the way.' });
     }
 
-    if (!booking.workerId) {
-      return res.status(400).json({ success: false, message: 'This booking has no assigned worker to review.' });
+    if (!booking.partnerId) {
+      return res.status(400).json({ success: false, message: 'This booking has no assigned service partner to review.' });
     }
 
-    // Check if review already exists
-    const existingReview = await db.booking.findUnique({
-      where: { id: bookingId },
-      include: { review: true }
+    // ACID transaction: Update Booking status, ServicePartner status, upsert Review, upsert RevenueData
+    const result = await db.transaction(async (tx) => {
+      // 1. Update booking status
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: 'COMPLETED',
+          booking_status: 'Completed'
+        }
+      });
+
+      // 2. Update service partner status to AVAILABLE
+      await tx.servicePartner.update({
+        where: { id: booking.partnerId },
+        data: { status: 'AVAILABLE' }
+      });
+
+      // 3. Create or update Review (upsert to handle admin resets without failing)
+      const review = await tx.review.upsert({
+        where: { bookingId },
+        update: {
+          rating: score,
+          comment: comment || '',
+          appreciation: appreciation || '',
+          complaint: complaint || '',
+          createdAt: new Date()
+        },
+        create: {
+          bookingId,
+          userId: req.user.id,
+          partnerId: booking.partnerId,
+          rating: score,
+          comment: comment || '',
+          appreciation: appreciation || '',
+          complaint: complaint || ''
+        }
+      });
+
+      // 4. Create or update RevenueData (upsert to avoid unique key conflicts)
+      await tx.revenueData.upsert({
+        where: { bookingId },
+        update: {
+          amount: booking.finalPrice,
+          partnerId: booking.partnerId,
+          partnerName: booking.partnerName,
+          date: new Date()
+        },
+        create: {
+          bookingId: bookingId,
+          amount: booking.finalPrice,
+          partnerId: booking.partnerId,
+          partnerName: booking.partnerName,
+          date: new Date()
+        }
+      });
+
+      // 5. Create booking status history
+      await tx.bookingStatusHistory.create({
+        data: {
+          bookingId,
+          status: 'COMPLETED'
+        }
+      });
+
+      return { review, updatedBooking };
     });
-    if (existingReview && existingReview.review) {
-      return res.status(400).json({ success: false, message: 'You have already submitted a review for this booking.' });
-    }
 
-    // Create Review
-    const review = await db.review.create({
-      data: {
-        bookingId,
-        userId: req.user.id,
-        workerId: booking.workerId,
-        rating: score,
-        comment: comment || ''
-      }
-    });
+    // Sync partner performance (outside transaction to avoid pool deadlock during heavy queries)
+    await syncPartnerPerformance(booking.partnerId);
 
     res.status(201).json({
       success: true,
-      message: 'Thank you for your rating! Review saved successfully.',
-      review
+      message: 'Thank you for your rating! Service has been confirmed as completed.',
+      review: result.review,
+      booking: result.updatedBooking
     });
   } catch (error) {
     console.error('Submit review error:', error);
-    res.status(500).json({ success: false, message: 'Failed to save review.' });
+    res.status(500).json({ success: false, message: 'Failed to complete service and save review.' });
   }
 };
 
 /**
- * Get all reviews for a specific worker
+ * Get all reviews for a specific partner
  */
 exports.getWorkerReviews = async (req, res) => {
   try {
     const reviews = await db.review.findMany({
-      where: { workerId: req.params.workerId }
+      where: { partnerId: req.params.workerId }
     });
 
     res.status(200).json({

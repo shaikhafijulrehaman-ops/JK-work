@@ -94,7 +94,11 @@ const activeModels = [
   'notification',
   'auditLog',
   'address',
-  'waitlist'
+  'waitlist',
+  'emailLog',
+  'bookingStatusHistory',
+  'partnerPerformance',
+  'revenueData'
 ];
 
 activeModels.forEach(modelName => {

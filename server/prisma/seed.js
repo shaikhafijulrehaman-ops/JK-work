@@ -12,8 +12,11 @@ async function main() {
   await prisma.review.deleteMany({});
   await prisma.bookingItem.deleteMany({});
   await prisma.booking.deleteMany({});
-  await prisma.workerSkill.deleteMany({});
-  await prisma.worker.deleteMany({});
+  await prisma.emailLog.deleteMany({}).catch(() => {});
+  await prisma.bookingStatusHistory.deleteMany({}).catch(() => {});
+  await prisma.partnerPerformance.deleteMany({}).catch(() => {});
+  await prisma.revenueData.deleteMany({}).catch(() => {});
+  await prisma.servicePartner.deleteMany({});
   await prisma.session.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.service.deleteMany({});
@@ -24,7 +27,6 @@ async function main() {
 
   // 2. Hash Passwords
   const adminPassword = await bcrypt.hash('admin123', 10);
-  const workerPassword = await bcrypt.hash('worker123', 10);
   const customerPassword = await bcrypt.hash('customer123', 10);
 
   // 3. Create Service Areas
@@ -171,86 +173,67 @@ async function main() {
     },
   });
 
+  const customer = await prisma.user.create({
+    data: {
+      email: 'customer@jkenterprises.com',
+      password: customerPassword,
+      name: 'Test Customer',
+      phone: '9988776655',
+      role: 'USER',
+      isEmailVerified: true,
+      isPhoneVerified: true,
+    },
+  });
+
   console.log('Base accounts seeded.');
 
-  // 7. Create Workers & Associate relational skills
-  const workersData = [
+  // 7. Create Service Partners
+  const partnersData = [
     {
-      email: 'ramesh@jkenterprises.com',
       name: 'Ramesh Kumar',
       phone: '7766554433',
-      rating: 4.8,
-      commissionRate: 0.75, // 75% Ramesh, 25% JK
-      skills: ['Full House Deep Cleaning', 'Bathroom Deep Cleaning', 'Full Kitchen Cleaning', 'Dust Cleaning', 'Pest Control'],
+      email: 'ramesh@jkenterprises.com',
+      serviceType: 'Cleaning'
     },
     {
-      email: 'vijay@jkenterprises.com',
       name: 'Vijay Kumar',
       phone: '8877665544',
-      rating: 4.9,
-      commissionRate: 0.70,
-      skills: ['Electrician Service'],
+      email: 'vijay@jkenterprises.com',
+      serviceType: 'Technical'
     },
     {
-      email: 'anitha@jkenterprises.com',
       name: 'Anitha Reddy',
       phone: '9988776655',
-      rating: 4.7,
-      commissionRate: 0.80,
-      skills: ['Baby Care', 'Cooking Service'],
+      email: 'anitha@jkenterprises.com',
+      serviceType: 'Care'
     },
     {
-      email: 'suresh@jkenterprises.com',
       name: 'Suresh Prasad',
       phone: '6655443322',
-      rating: 4.6,
-      commissionRate: 0.70,
-      skills: ['House Shifting'],
+      email: 'suresh@jkenterprises.com',
+      serviceType: 'Shifting'
     },
     {
-      email: 'sharma@jkenterprises.com',
       name: 'Rakesh Sharma',
       phone: '5544332211',
-      rating: 4.8,
-      commissionRate: 0.75,
-      skills: ['House Painting', 'Security Provider'],
-    },
+      email: 'sharma@jkenterprises.com',
+      serviceType: 'Painting'
+    }
   ];
 
-  for (const w of workersData) {
-    const user = await prisma.user.create({
+  for (const p of partnersData) {
+    await prisma.servicePartner.create({
       data: {
-        email: w.email,
-        password: workerPassword,
-        name: w.name,
-        phone: w.phone,
-        role: 'WORKER',
-        isEmailVerified: true,
-        isPhoneVerified: true,
-      },
-    });
-
-    const worker = await prisma.worker.create({
-      data: {
-        userId: user.id,
-        status: 'AVAILABLE',
-        rating: w.rating,
-        commissionRate: w.commissionRate,
-      },
-    });
-
-    for (const skillName of w.skills) {
-      const s = dbServices[skillName];
-      if (s) {
-        await prisma.workerSkill.create({
-          data: {
-            workerId: worker.id,
-            serviceId: s.id,
-          },
-        });
+        name: p.name,
+        phone: p.phone,
+        email: p.email,
+        serviceType: p.serviceType,
+        status: 'AVAILABLE'
       }
-    }
+    });
   }
+
+  console.log('Service partners seeded.');
 
   // 8. Seed Audit Logs for logins
   await prisma.auditLog.createMany({
@@ -269,8 +252,6 @@ async function main() {
     ]
   });
   console.log('Audit logs seeded.');
-
-  console.log('Workers and skills seeded successfully.');
   console.log('Seeding complete!');
 }
 

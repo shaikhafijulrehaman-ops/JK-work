@@ -39,12 +39,18 @@ export const fetchWithTimeout = async (url, options = {}) => {
 };
 
 export const fetchWithRetry = async (url, options = {}) => {
-  const { retries = 3, backoff = 1000, ...rest } = options;
+  const { retries = 3, backoff = 1000, headers = {}, ...rest } = options;
+  
+  const token = localStorage.getItem('jk_token');
+  const mergedHeaders = {
+    ...headers,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
   
   let lastError;
   for (let i = 0; i <= retries; i++) {
     try {
-      const response = await fetchWithTimeout(url, { ...rest });
+      const response = await fetchWithTimeout(url, { headers: mergedHeaders, ...rest });
       return response;
     } catch (error) {
       lastError = error;

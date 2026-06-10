@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Clock, MapPin, Phone, CreditCard, Calendar, 
   CheckCircle, Truck, Activity, Star, ShieldCheck, Smartphone, 
-  ChevronRight, Sparkles, FileText, AlertCircle, ShoppingBag
+  ChevronRight, Sparkles, FileText, AlertCircle, ShoppingBag,
+  Check, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -54,11 +55,24 @@ export default function BookingsPage() {
   
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [appreciation, setAppreciation] = useState('');
+  const [complaint, setComplaint] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(null);
 
-  // Live map routing countdown variables
+  // Clear feedback validation state when opening/closing
+  useEffect(() => {
+    if (!isFeedbackOpen) {
+      setFeedbackError(null);
+      setIsSubmittingFeedback(false);
+    }
+  }, [isFeedbackOpen]);
+
+  // Live map routing percentage
   const [mapPercentage, setMapPercentage] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState(540); // 9 minutes = 540s
 
   const handleBack = () => navigate('/account');
 
@@ -76,24 +90,15 @@ export default function BookingsPage() {
     }
   }, [bookings]);
 
-  // Handle mock GPS worker routing animations
+  // Mock GPS bike animation percentage loop
   useEffect(() => {
     let interval = null;
-    if (selectedBooking && selectedBooking.status === 'ON_THE_WAY') {
+    if (selectedBooking && ['ASSIGNED', 'ON_THE_WAY'].includes(selectedBooking.status)) {
       interval = setInterval(() => {
-        setMapPercentage((prev) => {
-          if (prev >= 100) {
-            updateJobStatus(selectedBooking.id, 'IN_PROGRESS');
-            addNotification('Service Call Started!', 'Your professional has arrived at your doorstep and started the job.');
-            return 0;
-          }
-          return prev + 1;
-        });
-        setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 540));
-      }, 1000);
+        setMapPercentage((prev) => (prev >= 100 ? 0 : prev + 1));
+      }, 300);
     } else {
       setMapPercentage(0);
-      setSecondsLeft(540);
     }
     return () => clearInterval(interval);
   }, [selectedBooking]);
@@ -101,23 +106,31 @@ export default function BookingsPage() {
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     if (!selectedBooking) return;
-    const ok = await submitReview(selectedBooking.id, rating, comment);
+    setIsSubmittingFeedback(true);
+    setFeedbackError(null);
+    const ok = await submitReview(selectedBooking.id, rating, comment, appreciation, complaint);
+    setIsSubmittingFeedback(false);
     if (ok) {
       setReviewSubmitted(true);
-      addNotification('Review Submitted', 'Thank you for grading your service worker!');
+      addNotification('Review Submitted', 'Thank you for confirming completion and leaving feedback!');
       setTimeout(() => {
         setReviewSubmitted(false);
         setComment('');
+        setAppreciation('');
+        setComplaint('');
+        setIsFeedbackOpen(false);
       }, 3000);
+    } else {
+      const storeError = useBookingStore.getState().error;
+      setFeedbackError(storeError || 'Failed to submit review. Please try again.');
     }
   };
 
   const getTimelineSteps = (status) => {
     return [
-      { name: 'Pending', active: true, done: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'Assigned', active: ['PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'On The Way', active: ['ON_THE_WAY', 'IN_PROGRESS', 'COMPLETED'].includes(status), done: ['IN_PROGRESS', 'COMPLETED'].includes(status) },
-      { name: 'In Progress', active: ['IN_PROGRESS', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
+      { name: 'Pending', active: true, done: ['ASSIGNED', 'ON_THE_WAY', 'COMPLETED'].includes(status) },
+      { name: 'Assigned', active: ['ASSIGNED', 'ON_THE_WAY', 'COMPLETED'].includes(status), done: ['ON_THE_WAY', 'COMPLETED'].includes(status) },
+      { name: 'On The Way', active: ['ON_THE_WAY', 'COMPLETED'].includes(status), done: status === 'COMPLETED' },
       { name: 'Completed', active: status === 'COMPLETED', done: status === 'COMPLETED' }
     ];
   };
@@ -131,7 +144,7 @@ export default function BookingsPage() {
   // Filter bookings based on selected status tabs
   const filteredBookings = bookings.filter(b => {
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'ACTIVE') return ['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY', 'IN_PROGRESS'].includes(b.status);
+    if (activeTab === 'ACTIVE') return ['PENDING', 'PENDING_PARTNER_ACCEPTANCE', 'PARTNER_ACCEPTED', 'ASSIGNED', 'ON_THE_WAY'].includes(b.status);
     if (activeTab === 'COMPLETED') return b.status === 'COMPLETED';
     if (activeTab === 'CANCELLED') return b.status === 'CANCELLED';
     return true;
@@ -301,38 +314,76 @@ export default function BookingsPage() {
                     ))}
                   </div>
 
-                  {/* Simulated Bike GPS Map countdown */}
-                  {selectedBooking.status === 'ON_THE_WAY' && (
-                    <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-850 relative overflow-hidden text-left shadow-lg">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(8,145,178,0.18),transparent)] pointer-events-none"></div>
+                  {/* Operational dispatch tracker section */}
+                  {['ASSIGNED', 'ON_THE_WAY'].includes(selectedBooking.status) && (
+                    <div className="bg-slate-900 text-white rounded-3xl p-6 border border-slate-800 relative overflow-hidden text-left shadow-xl animate-fade-up">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(6,182,212,0.15),transparent)] pointer-events-none"></div>
                       
-                      <div className="flex items-center justify-between mb-4 relative z-10">
-                        <div className="flex items-center space-x-2">
-                          <span className="w-2 h-2 bg-cyan-400 rounded-full animate-ping"></span>
-                          <span className="font-poppins font-black text-xs uppercase tracking-wider text-brand-light">Live GPS Dispatch Active</span>
-                        </div>
-                        <span className="font-poppins font-black text-lg text-amber-400 animate-pulse">
-                          {formatTime(secondsLeft)}
+                      <div className="flex items-center space-x-2.5 mb-4 relative z-10">
+                        <span className="w-2.5 h-2.5 bg-cyan-450 rounded-full animate-ping"></span>
+                        <span className="font-poppins font-black text-xs uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                          🚲 Professional Worker Coming
                         </span>
                       </div>
 
-                      <div className="h-10 bg-slate-800/80 border border-slate-700/50 rounded-lg relative flex items-center px-4 mb-4 select-none">
-                        <div className="absolute left-3 text-[9px] font-bold text-slate-500">Anchepalya Hub</div>
-                        <div className="absolute right-3 text-[9px] font-bold text-slate-300">Your Location</div>
-
-                        <div 
-                          className="absolute transition-all duration-1000 flex items-center space-x-1"
-                          style={{ left: `${15 + (mapPercentage * 0.55)}%` }}
-                        >
-                          <Truck className="w-5 h-5 text-brand-light transform -scale-x-100 animate-bounce" />
-                          <span className="text-[8px] bg-brand text-white px-1.5 py-0.5 rounded leading-none uppercase font-bold tracking-tight">Ramesh Kumar</span>
+                      {/* Info grid */}
+                      <div className="grid grid-cols-2 gap-4 mb-5 text-[11px] relative z-10 bg-slate-800/40 p-4 rounded-2xl border border-slate-700/30">
+                        <div>
+                          <span className="text-slate-400 font-bold block mb-0.5">Service Partner Name:</span>
+                          <span className="font-extrabold text-white text-xs">{selectedBooking.partnerName || 'Expert Partner'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-bold block mb-0.5">Service Partner Phone:</span>
+                          <a href={`tel:${selectedBooking.partnerMobile}`} className="font-extrabold text-cyan-400 text-xs hover:underline">
+                            +91 {selectedBooking.partnerMobile || 'N/A'}
+                          </a>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-bold block mb-0.5">Service Type:</span>
+                          <span className="font-extrabold text-white text-xs">{selectedBooking.serviceCategory || 'Home Service'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-bold block mb-0.5">Booking ID:</span>
+                          <span className="font-extrabold text-slate-350 text-xs font-mono">{selectedBooking.id}</span>
+                        </div>
+                        <div className="col-span-2 pt-2 border-t border-slate-700/30">
+                          <span className="text-slate-400 font-bold block mb-0.5">Estimated Arrival Status:</span>
+                          <span className="font-extrabold text-amber-400 text-xs flex items-center">
+                            {selectedBooking.status === 'ON_THE_WAY' 
+                              ? 'Travelling - Arriving at doorstep in Chikkabidarakallu / Anchepalya zone shortly.' 
+                              : 'Dispatcher assigned. Preparing to depart Chikkabidarakallu dispatch base.'}
+                          </span>
                         </div>
                       </div>
 
-                      <p className="text-[10px] text-slate-400 leading-normal max-w-sm">
-                        Vijay/Ramesh has departed Chikkabidarakallu dispatch base. Verification code is active. Professional arriving at doorstep in Anchepalya.
-                      </p>
+                      {/* Small animated bike/rider moving effect */}
+                      <div className="h-12 bg-slate-800/80 border border-slate-700/50 rounded-xl relative flex items-center px-4 select-none overflow-hidden">
+                        <div className="absolute left-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Anchepalya Hub</div>
+                        <div className="absolute right-3 text-[9px] font-bold text-slate-300 uppercase tracking-wider">Your Doorstep</div>
+
+                        {/* Road Line */}
+                        <div className="absolute left-20 right-20 h-0.5 border-t border-dashed border-slate-600/50"></div>
+
+                        {/* Bike Animation */}
+                        <div className="absolute left-1/4 animate-bike-travel flex items-center space-x-2">
+                          <span className="text-2xl animate-bounce">🚲</span>
+                          <span className="text-[9px] bg-brand text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-tight shadow shadow-brand/20">
+                            {selectedBooking.partnerName?.split(' ')[0] || 'Worker'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {/* Customer controlled completion button for ON_THE_WAY status */}
+                  {selectedBooking.status === 'ON_THE_WAY' && (
+                    <button 
+                      onClick={() => setIsConfirmOpen(true)}
+                      className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-poppins font-black text-xs py-4 rounded-2xl uppercase tracking-widest shadow-lg flex items-center justify-center space-x-2 cursor-pointer animate-transition"
+                    >
+                      <CheckCircle className="w-4.5 h-4.5" />
+                      <span>Confirm Work Completed</span>
+                    </button>
                   )}
 
 
@@ -425,46 +476,28 @@ export default function BookingsPage() {
                     </div>
                   )}
 
-                  {/* Assigned Worker Profile component */}
-                  {selectedBooking.workerId && (() => {
-                    let avatarUrl = null;
-                    if (selectedBooking.worker && selectedBooking.worker.profilePhoto) {
-                      try {
-                        const parsed = JSON.parse(selectedBooking.worker.profilePhoto);
-                        avatarUrl = parsed.profile || parsed.selfie || null;
-                      } catch (e) {
-                        avatarUrl = selectedBooking.worker.profilePhoto;
-                      }
-                    }
-                    if (avatarUrl && (avatarUrl.includes('unsplash.com') || avatarUrl.includes('sample') || avatarUrl.includes('profile.jpg') || avatarUrl.includes('selfie.jpg'))) {
-                      avatarUrl = null;
-                    }
-                    return (
-                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between text-xs text-left">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-400 font-bold text-[8px] text-center leading-none p-1">
-                            {avatarUrl ? (
-                              <img src={avatarUrl} alt="Professional avatar" className="w-full h-full object-cover" />
-                            ) : (
-                              <span>Image Not Available</span>
-                            )}
-                          </div>
-                          <div>
-                            <span className="font-extrabold text-slate-800 block">Assigned Service Professional</span>
-                            <span className="text-slate-400 font-semibold">{selectedBooking.worker && selectedBooking.worker.user ? selectedBooking.worker.user.name : 'Ramesh Kumar'}</span>
-                          </div>
+                  {/* Assigned Partner Profile component */}
+                  {selectedBooking.partnerId && (
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 flex items-center justify-between text-xs text-left">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-brand/20 shadow-xs flex-shrink-0 flex items-center justify-center bg-brand/5 text-brand font-black text-xs">
+                          {selectedBooking.partnerName?.substring(0, 2).toUpperCase() || 'SP'}
                         </div>
-                        <div className="flex items-center space-x-4">
-                          <span className="text-royal-gold font-black flex items-center">
-                            <Star className="w-3.5 h-3.5 fill-current mr-0.5" /> 4.8★
-                          </span>
-                          <a href={`tel:${selectedBooking.worker && selectedBooking.worker.user ? selectedBooking.worker.user.phone : '7766554433'}`} className="p-2.5 bg-white rounded-full border border-slate-200 text-brand">
-                            <Phone className="w-4 h-4" />
-                          </a>
+                        <div>
+                          <span className="font-extrabold text-slate-800 block">Assigned Service Professional</span>
+                          <span className="text-slate-400 font-semibold">{selectedBooking.partnerName}</span>
                         </div>
                       </div>
-                    );
-                  })()}
+                      <div className="flex items-center space-x-4">
+                        <span className="text-amber-500 font-black flex items-center">
+                          <Star className="w-3.5 h-3.5 fill-current mr-0.5" /> 4.8★
+                        </span>
+                        <a href={`tel:${selectedBooking.partnerMobile}`} className="p-2.5 bg-white rounded-full border border-slate-200 text-brand shadow-sm hover:bg-slate-50 transition-colors">
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Customer Review Feedback submission form */}
                   {selectedBooking.status === 'COMPLETED' && (
@@ -531,6 +564,161 @@ export default function BookingsPage() {
         )}
 
       </div>
+
+      {/* ==================== CONFIRMATION POPUP ==================== */}
+      <AnimatePresence>
+        {isConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsConfirmOpen(false)}
+              className="fixed inset-0 bg-slate-900 cursor-pointer"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm shadow-2xl relative overflow-hidden z-10 flex flex-col p-6 space-y-4 text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-cyan-50 text-cyan-600 flex items-center justify-center mx-auto"><Check className="w-6 h-6" /></div>
+              <h3 className="font-poppins font-black text-slate-850 text-sm">
+                Has your service been completed successfully?
+              </h3>
+              <p className="text-[11px] text-slate-400 font-semibold leading-relaxed">
+                Please confirm only if the doorstep professional has completed the requested service items to your satisfaction.
+              </p>
+              <div className="flex space-x-3.5 pt-2">
+                <button 
+                  onClick={() => setIsConfirmOpen(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-500 font-poppins font-black text-[10px] uppercase py-3 rounded-xl tracking-wider cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    setIsConfirmOpen(false);
+                    setIsFeedbackOpen(true);
+                  }}
+                  className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-poppins font-black text-[10px] uppercase py-3 rounded-xl tracking-wider cursor-pointer shadow-md shadow-cyan-600/10 transition-colors"
+                >
+                  Yes, Complete Service
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== FEEDBACK & RATINGS FORM MODAL ==================== */}
+      <AnimatePresence>
+        {isFeedbackOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsFeedbackOpen(false)}
+              className="fixed inset-0 bg-slate-900 cursor-pointer"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl relative overflow-hidden z-10 flex flex-col p-6 space-y-4 text-left"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="font-poppins font-black text-sm text-slate-800">
+                  Rate Your Experience
+                </h3>
+                <button 
+                  onClick={() => setIsFeedbackOpen(false)}
+                  className="p-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-700 shadow-sm cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {reviewSubmitted ? (
+                <div className="bg-cyan-50 border border-cyan-200/50 text-cyan-700 text-xs p-4 rounded-xl flex items-center justify-center space-x-2">
+                  <CheckCircle className="w-5 h-5 text-cyan-500" />
+                  <span className="font-bold">Thank you! Your feedback has been submitted successfully.</span>
+                </div>
+              ) : (
+                <form onSubmit={handleReviewSubmit} className="space-y-4 text-xs">
+                  <div className="flex items-center space-x-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                    <span className="font-bold text-slate-750">Service Rating *</span>
+                    <div className="flex space-x-1">
+                      {[1, 2, 3, 4, 5].map((score) => (
+                        <button
+                          key={score}
+                          type="button"
+                          onClick={() => setRating(score)}
+                          className={`p-1 transition-colors cursor-pointer ${score <= rating ? 'text-amber-500' : 'text-slate-200'}`}
+                        >
+                          <Star className="w-6 h-6 fill-current" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Appreciation (Optional)</label>
+                    <textarea 
+                      placeholder="What did you appreciate about the service? (e.g. punctual, polite, efficient...)"
+                      value={appreciation}
+                      onChange={(e) => setAppreciation(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Complaint / Feedback (Optional)</label>
+                    <textarea 
+                      placeholder="Any complaints or suggestions for improvements?"
+                      value={complaint}
+                      onChange={(e) => setComplaint(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">General Comment</label>
+                    <textarea 
+                      placeholder="Additional remarks..."
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all font-semibold min-h-[60px]"
+                    />
+                  </div>
+
+                  {feedbackError && (
+                    <div className="text-red-500 text-[10px] font-extrabold text-center mt-3 bg-rose-500/5 border border-rose-500/10 p-2.5 rounded-xl select-none leading-normal">
+                      {feedbackError}
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit"
+                    disabled={isSubmittingFeedback}
+                    className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-poppins font-black text-[10px] uppercase py-3.5 rounded-xl transition-all shadow-md shadow-cyan-600/10 cursor-pointer mt-4 flex items-center justify-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmittingFeedback ? (
+                      <>
+                        <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1"></span>
+                        <span>SUBMITTING...</span>
+                      </>
+                    ) : (
+                      <span>SUBMIT FEEDBACK</span>
+                    )}
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

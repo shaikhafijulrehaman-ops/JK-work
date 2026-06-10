@@ -286,5 +286,17 @@ iframe[class*="vercel"] {
   height: 0 !important;
 }
 
+/* Animated Bike Travel */
+@keyframes bikeTravel {
+  0% { left: 10%; transform: scaleX(-1); }
+  48% { transform: scaleX(-1); }
+  50% { left: 75%; transform: scaleX(1); }
+  98% { transform: scaleX(1); }
+  100% { left: 10%; transform: scaleX(-1); }
+}
+.animate-bike-travel {
+  animation: bikeTravel 12s ease-in-out infinite;
+}
+
 
 

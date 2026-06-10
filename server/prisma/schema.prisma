@@ -131,6 +131,7 @@ model ServicePartner {
   id          String    @id @default(uuid())
   name        String
   phone       String    @unique
+  email       String    @unique
   serviceType String    // e.g. "Cleaning", "Care", "Cooking", "Shifting", "Painting", "Technical"
   status      String    @default("AVAILABLE") // "AVAILABLE", "ON_JOB", "INACTIVE"
   createdAt   DateTime  @default(now())
@@ -139,6 +140,7 @@ model ServicePartner {
   // Relations
   bookings    Booking[]
   reviews     Review[]  @relation("PartnerReviews")
+  performance PartnerPerformance?
 }
 
 model PromoCode {
@@ -200,6 +202,8 @@ model Booking {
   serviceArea   ServiceArea?  @relation(fields: [serviceAreaId], references: [id])
   items         BookingItem[]
   review        Review?
+  statusHistory BookingStatusHistory[]
+  revenue       RevenueData?
 
   @@index([status])
   @@index([createdAt])
@@ -221,18 +225,62 @@ model BookingItem {
 }
 
 model Review {
-  id         String   @id @default(uuid())
-  bookingId  String   @unique
-  userId     String
-  partnerId  String
-  rating     Int      // 1 to 5 stars
-  comment    String?
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  bookingId    String   @unique
+  userId       String
+  partnerId    String
+  rating       Int      // 1 to 5 stars
+  comment      String?
+  appreciation String?
+  complaint    String?
+  createdAt    DateTime @default(now())
 
   // Relations
   booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   user       User     @relation("UserReviews", fields: [userId], references: [id], onDelete: Cascade)
   partner    ServicePartner @relation("PartnerReviews", fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+model EmailLog {
+  id        String   @id @default(uuid())
+  to        String
+  subject   String
+  body      String
+  bookingId String?
+  sentAt    DateTime @default(now())
+}
+
+model BookingStatusHistory {
+  id        String   @id @default(uuid())
+  bookingId String
+  status    String
+  changedAt DateTime @default(now())
+  
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model PartnerPerformance {
+  id            String         @id @default(uuid())
+  partnerId     String         @unique
+  totalJobs     Int            @default(0)
+  totalRevenue  Float          @default(0.0)
+  averageRating Float          @default(0.0)
+  activeJobs    Int            @default(0)
+  completedJobs Int            @default(0)
+  cancelledJobs Int            @default(0)
+  
+  partner       ServicePartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+model RevenueData {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  amount      Float
+  partnerId   String?
+  partnerName String?
+  date        DateTime @default(now())
+  
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 }
 
 model Notification {

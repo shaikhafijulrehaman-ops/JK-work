@@ -451,7 +451,6 @@ export default function CustomerSignup({ onBack }) {
                             OTP Sent successfully to <strong className="text-slate-950">{email}</strong>
                           </span>
                         </div>
-
                       </div>
 
                       <div className="form-group">

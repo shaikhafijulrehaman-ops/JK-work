@@ -119,7 +119,7 @@ export const useBookingStore = create((set, get) => ({
   },
 
   // Save Customer Rating
-  submitReview: async (bookingId, rating, comment) => {
+  submitReview: async (bookingId, rating, comment, appreciation, complaint) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch(`${API_URL}/reviews`, {
@@ -128,7 +128,7 @@ export const useBookingStore = create((set, get) => ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
         },
-        body: JSON.stringify({ bookingId, rating, comment })
+        body: JSON.stringify({ bookingId, rating, comment, appreciation, complaint })
       });
       const data = await res.json();
       set({ loading: false });
