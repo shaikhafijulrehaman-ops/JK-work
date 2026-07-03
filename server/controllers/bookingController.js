@@ -701,7 +701,13 @@ exports.confirmPaymentSuccess = async (req, res) => {
         booking = await db.transaction(async (tx) => {
           // 1. Verify/fetch serviceArea pincode
           const serviceArea = await tx.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
-          const serviceAreaId = serviceArea ? serviceArea.id : null;
+          let serviceAreaId = serviceArea ? serviceArea.id : null;
+          if (!serviceAreaId) {
+            const fallbackArea = await tx.serviceArea.findFirst({
+              where: { isActive: true }
+            });
+            serviceAreaId = fallbackArea ? fallbackArea.id : null;
+          }
 
           // 2. Resolve service reference
           const matchingService = await tx.service.findFirst({

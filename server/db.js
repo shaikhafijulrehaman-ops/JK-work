@@ -36,7 +36,7 @@ const db = {
   transaction: async (fn) => {
     const maxAttempts = 3;
     let attempt = 1;
-    const queryTimeoutMs = 15000;
+    const queryTimeoutMs = 45000;
 
     while (true) {
       let timeoutId;
