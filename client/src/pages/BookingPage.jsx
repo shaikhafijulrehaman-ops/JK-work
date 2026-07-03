@@ -109,6 +109,42 @@ export default function BookingPage() {
   const [transactionId, setTransactionId] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [whatsAppRedirected, setWhatsAppRedirected] = useState(false);
+
+  // Detect page restore from bfcache (Back button) or visibility change (returning from WhatsApp)
+  // and mark WhatsApp redirect as completed to prevent re-redirect
+  useEffect(() => {
+    const checkRedirectStatus = () => {
+      if (bookingState === 'PAYMENT_SUCCESS' && tempBookingId) {
+        const redirectKey = `jk_wa_redirected_${tempBookingId}`;
+        if (localStorage.getItem(redirectKey)) {
+          setWhatsAppRedirected(true);
+        }
+      }
+    };
+
+    // Handle bfcache restoration (browser Back button)
+    const handlePageShow = (e) => {
+      if (e.persisted) {
+        checkRedirectStatus();
+      }
+    };
+
+    // Handle returning from WhatsApp (tab becomes visible again)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkRedirectStatus();
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [bookingState, tempBookingId]);
 
   // Coupon states
   const [couponCode, setCouponCode] = useState('');
@@ -587,14 +623,22 @@ ${formattedDate}`;
 
         sessionStorage.setItem('payment_completed', 'true');
 
-        setTimeout(() => {
-          try {
-            const encodedText = encodeURIComponent(waMessage);
-            window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
-          } catch (waError) {
-            console.error('[JK Booking Monitoring] WhatsApp redirect failure:', waError);
-          }
-        }, 1000);
+        // Mark WhatsApp redirect for this booking so it only fires once
+        const redirectKey = `jk_wa_redirected_${tempBookingId}`;
+        if (!localStorage.getItem(redirectKey)) {
+          localStorage.setItem(redirectKey, 'true');
+          setTimeout(() => {
+            try {
+              const encodedText = encodeURIComponent(waMessage);
+              window.location.href = `https://wa.me/918431588235?text=${encodedText}`;
+            } catch (waError) {
+              // WhatsApp redirect failed silently
+            }
+          }, 1000);
+        } else {
+          // Already redirected for this booking
+          setWhatsAppRedirected(true);
+        }
 
       } else {
         setErrorMsg(data.message || 'Payment capture failed. Please contact support.');
@@ -778,13 +822,35 @@ ${formattedDate}`;
               </div>
             </div>
 
-            {/* Loading Dispatch Spinner */}
-            <div className="pt-4 flex flex-col items-center space-y-3.5">
-              <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
-                Redirecting to WhatsApp in 1s...
-              </p>
-            </div>
+            {/* Post-payment action area */}
+            {whatsAppRedirected ? (
+              /* Already redirected — show success confirmation */
+              <div className="pt-4 flex flex-col items-center space-y-4">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-500" />
+                  <p className="text-xs text-emerald-600 font-bold">
+                    Booking Confirmed Successfully
+                  </p>
+                </div>
+                <p className="text-[10.5px] text-slate-400 font-semibold max-w-[280px] mx-auto leading-relaxed">
+                  Your booking has been created successfully. Track your service anytime from My Bookings.
+                </p>
+                <button
+                  onClick={() => navigate('/my-bookings')}
+                  className="w-full bg-slate-950 hover:bg-slate-800 text-white font-poppins font-black text-xs py-4 rounded-xl uppercase tracking-widest shadow-lg flex items-center justify-center space-x-2 transition-all"
+                >
+                  <span>Track Your Service</span>
+                </button>
+              </div>
+            ) : (
+              /* First visit — show redirect spinner */
+              <div className="pt-4 flex flex-col items-center space-y-3.5">
+                <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
+                  Redirecting to WhatsApp in 1s...
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           /* ==================== FORM ENTRY STATE ==================== */
