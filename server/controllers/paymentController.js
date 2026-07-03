@@ -205,36 +205,49 @@ exports.verifyPayment = async (req, res) => {
 
     // Update booking if bookingId is provided
     if (bookingId) {
-      const booking = await db.booking.findUnique({ where: { id: bookingId } });
-      if (booking) {
-        await db.booking.update({
-          where: { id: booking.id },
-          data: {
-            paymentStatus: 'PAID',
-            payment_status: 'Paid',
-            transaction_id: razorpay_payment_id,
-            paymentId: razorpay_payment_id,
-            paymentMethod: 'CARD'
-          }
-        });
+      let verifyAttempts = 0;
+      const maxVerifyAttempts = 3;
+      while (verifyAttempts < maxVerifyAttempts) {
+        try {
+          verifyAttempts++;
+          const booking = await db.booking.findUnique({ where: { id: bookingId } });
+          if (booking) {
+            await db.booking.update({
+              where: { id: booking.id },
+              data: {
+                paymentStatus: 'PAID',
+                payment_status: 'Paid',
+                transaction_id: razorpay_payment_id,
+                paymentId: razorpay_payment_id,
+                paymentMethod: 'CARD'
+              }
+            });
 
-        // Audit Log
-        logActivity(req, {
-          userId: booking.userId,
-          eventType: 'PAYMENT',
-          action: 'PAYMENT_SUCCESS',
-          details: { bookingId: booking.id, amount: booking.finalPrice, paymentId: razorpay_payment_id }
-        });
+            // Audit Log
+            logActivity(req, {
+              userId: booking.userId,
+              eventType: 'PAYMENT',
+              action: 'PAYMENT_SUCCESS',
+              details: { bookingId: booking.id, amount: booking.finalPrice, paymentId: razorpay_payment_id }
+            });
 
-        // Notify User
-        await db.notification.create({
-          data: {
-            userId: booking.userId,
-            type: 'PAYMENT_SUCCESS',
-            title: 'Payment Confirmed!',
-            message: `Your payment of Rs. ${booking.finalPrice} has been verified successfully. Ref: ${razorpay_payment_id}.`
+            // Notify User
+            await db.notification.create({
+              data: {
+                userId: booking.userId,
+                type: 'PAYMENT_SUCCESS',
+                title: 'Payment Confirmed!',
+                message: `Your payment of Rs. ${booking.finalPrice} has been verified successfully. Ref: ${razorpay_payment_id}.`
+              }
+            }).catch(() => {});
           }
-        }).catch(() => {});
+          break; // Success! Exit retry loop
+        } catch (dbErr) {
+          console.warn(`⚠️  [Payment Verification] DB update attempt ${verifyAttempts} failed: ${dbErr.message}`);
+          if (verifyAttempts < maxVerifyAttempts) {
+            await new Promise(resolve => setTimeout(resolve, verifyAttempts * 500));
+          }
+        }
       }
     }
 

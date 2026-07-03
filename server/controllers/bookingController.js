@@ -659,153 +659,206 @@ exports.confirmPaymentSuccess = async (req, res) => {
       });
     }
 
-    // ACID transaction: booking + coupon + customer update + notifications
-    const booking = await db.transaction(async (tx) => {
-      // 1. Verify/fetch serviceArea pincode
-      const serviceArea = await tx.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
-      const serviceAreaId = serviceArea ? serviceArea.id : null;
-
-      // 2. Resolve service reference
-      const matchingService = await tx.service.findFirst({
-        where: { name: { contains: service_name } }
-      });
-      let serviceId;
-      if (matchingService) {
-        serviceId = matchingService.id;
-      } else {
-        const fallbackService = await tx.service.findFirst();
-        serviceId = fallbackService ? fallbackService.id : 's-1';
-      }
-
-      // 3. Create the Booking entry (this updates customer history and booking count automatically)
-      const newBooking = await tx.booking.create({
-        data: {
-          id: booking_id,
-          userId: req.user.id,
-          serviceAreaId: serviceAreaId,
-          status: 'PENDING',
-          scheduledAt: new Date(),
-          timeSlot: 'Instant Dispatch',
-          address: address,
-          phone: phone,
-          totalPrice: parseFloat(amount) + parseFloat(discount_applied || 0),
-          discountApplied: parseFloat(discount_applied || 0.0),
-          finalPrice: parseFloat(amount),
-          paymentStatus: 'PAID',
-          paymentMethod: 'CARD',
-          paymentId: transaction_id,
-          serviceCategory: matchingService ? matchingService.category : 'General',
-          couponCode: coupon_code || null,
-          
-          customer_name,
-          email,
-          service_name,
-          amount: parseFloat(amount),
-          area,
-          pincode,
-          notes,
-          payment_status: 'Paid',
-          transaction_id,
-          booking_status: 'New Booking',
-          
+    // Idempotency Check 2: If a booking with the same transaction_id / paymentId already exists, return it
+    if (transaction_id) {
+      const duplicatePaymentBooking = await db.booking.findFirst({
+        where: {
+          OR: [
+            { paymentId: transaction_id },
+            { transaction_id: transaction_id }
+          ]
+        },
+        include: {
           items: {
-            createMany: {
-              data: [
-                {
-                  serviceId: serviceId,
-                  role: undefined, // ignore
-                  quantity: 1,
-                  price: parseFloat(amount)
-                }
-              ]
+            include: {
+              service: true
             }
-          }
+          },
+          partner: true,
+          review: true
         }
       });
 
-      // 3.5 Log status history
-      await tx.bookingStatusHistory.create({
-        data: {
-          bookingId: booking_id,
-          status: 'PENDING'
-        }
-      });
-
-      // 4. Increment coupon usage count
-      if (coupon_code) {
-        const uppercaseCode = coupon_code.trim().toUpperCase();
-        await tx.promoCode.update({
-          where: { code: uppercaseCode },
-          data: { usedCount: { increment: 1 } }
+      if (duplicatePaymentBooking) {
+        console.log(`⚠️  [Idempotency Check] Booking already exists under transaction ID ${transaction_id}. Returning existing.`);
+        return res.status(200).json({
+          success: true,
+          message: 'Booking already confirmed via transaction ID.',
+          booking: sanitizeBookingForUser(duplicatePaymentBooking, req.user)
         });
       }
+    }
 
-      // 5. Fire system notification
-      await tx.notification.create({
-        data: {
-          userId: req.user.id,
-          type: 'PAYMENT_SUCCESS',
-          title: 'Booking Confirmed!',
-          message: `Your booking #${booking_id} for ${service_name} has been processed successfully.`
-        }
-      });
+    let booking;
+    let attempts = 0;
+    const maxAttempts = 3;
+    let lastError;
 
-      // 5.5 Update User's default profile area and pincode
-      await tx.user.update({
-        where: { id: req.user.id },
-        data: {
-          pincode: pincode || undefined,
-          serviceArea: area || undefined
-        }
-      });
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        // ACID transaction: booking + coupon + customer update + notifications
+        booking = await db.transaction(async (tx) => {
+          // 1. Verify/fetch serviceArea pincode
+          const serviceArea = await tx.serviceArea.findUnique({ where: { pincode: pincode || '560073' } });
+          const serviceAreaId = serviceArea ? serviceArea.id : null;
 
-      // 5.6 Save or update Address in user's saved addresses registry
-      if (rawAddress) {
-        const addrRecord = await tx.address.findFirst({
-          where: {
-            userId: req.user.id,
-            houseFlat: rawAddress,
-            street: area || ''
+          // 2. Resolve service reference
+          const matchingService = await tx.service.findFirst({
+            where: { name: { contains: service_name } }
+          });
+          let serviceId;
+          if (matchingService) {
+            serviceId = matchingService.id;
+          } else {
+            const fallbackService = await tx.service.findFirst();
+            serviceId = fallbackService ? fallbackService.id : 's-1';
           }
-        });
 
-        if (!addrRecord) {
-          // Set all other addresses as non-default
-          await tx.address.updateMany({
-            where: { userId: req.user.id },
-            data: { isDefault: false }
+          // 3. Create the Booking entry
+          const newBooking = await tx.booking.create({
+            data: {
+              id: booking_id,
+              userId: req.user.id,
+              serviceAreaId: serviceAreaId,
+              status: 'PENDING',
+              scheduledAt: new Date(),
+              timeSlot: 'Instant Dispatch',
+              address: address,
+              phone: phone,
+              totalPrice: parseFloat(amount) + parseFloat(discount_applied || 0),
+              discountApplied: parseFloat(discount_applied || 0.0),
+              finalPrice: parseFloat(amount),
+              paymentStatus: 'PAID',
+              paymentMethod: 'CARD',
+              paymentId: transaction_id,
+              serviceCategory: matchingService ? matchingService.category : 'General',
+              couponCode: coupon_code || null,
+              
+              customer_name,
+              email,
+              service_name,
+              amount: parseFloat(amount),
+              area,
+              pincode,
+              notes,
+              payment_status: 'Paid',
+              transaction_id,
+              booking_status: 'New Booking',
+              
+              items: {
+                createMany: {
+                  data: [
+                    {
+                      serviceId: serviceId,
+                      quantity: 1,
+                      price: parseFloat(amount)
+                    }
+                  ]
+                }
+              }
+            }
           });
 
-          await tx.address.create({
+          // 3.5 Log status history
+          await tx.bookingStatusHistory.create({
+            data: {
+              bookingId: booking_id,
+              status: 'PENDING'
+            }
+          });
+
+          // 4. Increment coupon usage count
+          if (coupon_code) {
+            const uppercaseCode = coupon_code.trim().toUpperCase();
+            await tx.promoCode.update({
+              where: { code: uppercaseCode },
+              data: { usedCount: { increment: 1 } }
+            });
+          }
+
+          // 5. Fire system notification
+          await tx.notification.create({
             data: {
               userId: req.user.id,
-              houseFlat: rawAddress,
-              street: area || '',
-              landmark: landmark || null,
-              altMobile: altPhone || null,
-              isDefault: true
+              type: 'PAYMENT_SUCCESS',
+              title: 'Booking Confirmed!',
+              message: `Your booking #${booking_id} for ${service_name} has been processed successfully.`
             }
-          });
-        } else {
-          // Make it default and update details
-          await tx.address.updateMany({
-            where: { userId: req.user.id },
-            data: { isDefault: false }
           });
 
-          await tx.address.update({
-            where: { id: addrRecord.id },
+          // 5.5 Update User's default profile area and pincode
+          await tx.user.update({
+            where: { id: req.user.id },
             data: {
-              landmark: landmark || null,
-              altMobile: altPhone || null,
-              isDefault: true
+              pincode: pincode || undefined,
+              serviceArea: area || undefined
             }
           });
+
+          // 5.6 Save or update Address in user's saved addresses registry
+          if (rawAddress) {
+            const addrRecord = await tx.address.findFirst({
+              where: {
+                userId: req.user.id,
+                houseFlat: rawAddress,
+                street: area || ''
+              }
+            });
+
+            if (!addrRecord) {
+              await tx.address.updateMany({
+                where: { userId: req.user.id },
+                data: { isDefault: false }
+              });
+
+              await tx.address.create({
+                data: {
+                  userId: req.user.id,
+                  houseFlat: rawAddress,
+                  street: area || '',
+                  landmark: landmark || null,
+                  altMobile: altPhone || null,
+                  isDefault: true
+                }
+              });
+            } else {
+              await tx.address.updateMany({
+                where: { userId: req.user.id },
+                data: { isDefault: false }
+              });
+
+              await tx.address.update({
+                where: { id: addrRecord.id },
+                data: {
+                  landmark: landmark || null,
+                  altMobile: altPhone || null,
+                  isDefault: true
+                }
+              });
+            }
+          }
+
+          return newBooking;
+        });
+        break; // Success! Exit retry loop
+      } catch (err) {
+        lastError = err;
+        console.warn(`⚠️  [Confirm Payment Success] Transaction attempt ${attempts} failed: ${err.message}.`);
+        if (attempts < maxAttempts) {
+          const delay = attempts * 500;
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
+    }
 
-      return newBooking;
-    });
+    if (!booking) {
+      console.error(`💥 [Confirm Payment Success Fatal] Failed all ${maxAttempts} attempts. Error: ${lastError.message}`);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Your payment succeeded but we encountered a database synchronization issue. Please contact support with your Transaction ID.' 
+      });
+    }
 
     // Audit Logging
     logActivity(req, {
@@ -839,14 +892,10 @@ exports.confirmPaymentSuccess = async (req, res) => {
       message: 'Booking created and payment confirmed successfully!',
       booking
     });
-
   } catch (error) {
     console.error('Confirm Payment Success Error:', error);
-    
-    // Log payment failures
     console.error(`[PAYMENT FAILURE] Failed transaction: ${req.body.transaction_id || 'N/A'} under booking: ${req.body.booking_id || 'N/A'}. Error: ${error.message}`);
-    
-    res.status(500).json({ success: false, message: 'Unable to confirm booking. Please try again shortly.' });
+    res.status(500).json({ success: false, message: 'Unable to confirm booking. Please contact support.' });
   }
 };
 
