@@ -20,8 +20,9 @@ window.fetch = async function (url, options = {}) {
   }
   options.headers = headers;
 
+  const isNotification = typeof url === 'string' && url.includes('/notifications');
   const timeout = options.timeout || 5000; // 5 seconds per attempt to handle serverless database cold starts gracefully
-  const retries = options.hasOwnProperty('retries') ? options.retries : 2; // 2 retries default (total 3 attempts = 15s max)
+  const retries = isNotification ? 0 : (options.hasOwnProperty('retries') ? options.retries : 2); // Disable retries for notifications to prevent console log spam
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -58,7 +59,9 @@ window.fetch = async function (url, options = {}) {
       const isAbort = err.name === 'AbortError' || err.message?.toLowerCase().includes('abort');
       lastError = isAbort ? new Error('Request timed out. Please try again.') : err;
       
-      console.warn(`[Fetch Interceptor] Attempt ${attempt + 1} to ${url} failed: ${err.message}. ${attempt < retries ? 'Retrying...' : 'All attempts exhausted.'}`);
+      if (!isNotification) {
+        console.warn(`[Fetch Interceptor] Attempt ${attempt + 1} to ${url} failed: ${err.message}. ${attempt < retries ? 'Retrying...' : 'All attempts exhausted.'}`);
+      }
       
       if (attempt === retries) {
         throw lastError;

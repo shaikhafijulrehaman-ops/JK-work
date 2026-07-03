@@ -85,9 +85,11 @@ app.use(cors({
       }
     }
 
-    // Allow standard local development and dynamic preview links
+    // Allow standard local development, dynamic previews, and production domains
     const isAllowed = origin.startsWith('http://localhost') || 
                       origin.startsWith('http://127.0.0.1') || 
+                      origin === 'https://jkhomecare.in' ||
+                      origin === 'https://www.jkhomecare.in' ||
                       origin.includes('vercel.app') || 
                       origin.includes('netlify.app') ||
                       origin.includes('gitpod') ||
@@ -107,8 +109,8 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-razorpay-signature']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-razorpay-signature', 'x-rtb-fingerprint-id', 'request-id']
 }));
 
 // ==================== PARSER MIDDLEWARE ====================

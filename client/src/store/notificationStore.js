@@ -28,14 +28,19 @@ export const useNotificationStore = create((set, get) => ({
         },
         credentials: 'include'
       });
+      if (!res.ok) {
+        set({ notifications: [], loading: false });
+        return;
+      }
       const data = await res.json();
-      if (data.success) {
-        set({ notifications: data.notifications, loading: false });
+      if (data && data.success) {
+        set({ notifications: data.notifications || [], loading: false });
       } else {
-        set({ loading: false });
+        set({ notifications: [], loading: false });
       }
     } catch (e) {
-      set({ loading: false });
+      // Quietly fallback on network/CORS failure to empty list to maintain UI stability
+      set({ notifications: [], loading: false });
     }
   },
 

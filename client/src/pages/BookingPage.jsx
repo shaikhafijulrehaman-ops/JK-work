@@ -3,7 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useBookingStore } from '../store/bookingStore';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { catalog as staticCatalog } from '../store/catalog';
 import { getCache } from '../utils/cache';
 import { 
   X, 
@@ -41,7 +40,7 @@ export default function BookingPage() {
       const match = cachedServices.find(s => s.id === serviceId);
       if (match) return match;
     }
-    return staticCatalog.find(s => s.id === serviceId) || null;
+    return null;
   });
   const [loading, setLoading] = useState(() => {
     if (!serviceId) return false;
@@ -53,20 +52,14 @@ export default function BookingPage() {
   useEffect(() => {
     const fetchService = async () => {
       if (!serviceId) return;
-      const matchedStatic = staticCatalog.find(s => s.id === serviceId);
       try {
         const res = await fetch(`/api/services/${serviceId}`);
         const data = await res.json();
         if (data.success) {
           setService(data.service);
-        } else if (!service) {
-          setService(matchedStatic);
         }
       } catch (err) {
-        console.warn('Backend service offline. Falling back to static catalog...', err);
-        if (!service) {
-          setService(matchedStatic);
-        }
+        console.warn('Backend service offline. Unable to load service details.', err);
       } finally {
         setLoading(false);
       }

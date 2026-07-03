@@ -18,7 +18,6 @@ import {
   Truck,
   Paintbrush
 } from 'lucide-react';
-import { catalog as staticCatalog } from '../store/catalog';
 import { getCache, setCache } from '../utils/cache';
 
 const ServiceSkeleton = () => (
@@ -78,14 +77,14 @@ export default function ServicesPage() {
         } else {
           const stale = getCache('services_catalog', { allowStale: true });
           if (!stale || stale.length === 0) {
-            setCatalog(staticCatalog);
+            setCatalog([]);
           }
         }
       } catch (err) {
-        console.warn('Backend services offline. Falling back to static/stale catalog...', err);
+        console.warn('Backend services offline. Falling back to stale catalog...', err);
         const stale = getCache('services_catalog', { allowStale: true });
         if (!stale || stale.length === 0) {
-          setCatalog(staticCatalog);
+          setCatalog([]);
         }
       } finally {
         setLoading(false);
