@@ -7,7 +7,7 @@ import './index.css';
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
   // If the request is not to our backend API, or explicitly skipped, bypass
-  const isApi = typeof url === 'string' && (url.includes('/api') || url.startsWith('http://localhost:5000'));
+  const isApi = typeof url === 'string' && url.includes('/api');
   if (!isApi) {
     return originalFetch(url, options);
   }

@@ -75,57 +75,12 @@ export default function AICallAgent() {
         fetchBookings();
       }
     } catch (e) {
-      // Sandbox fallback in case server offline
-      let serviceName = 'Bathroom Deep Cleaning';
-      let price = 749.0;
-      let address = 'Prestige Jindal City, Anchepalya, Bengaluru';
-
-      if (transcriptText.toLowerCase().includes('electrician') || transcriptText.toLowerCase().includes('current')) {
-        serviceName = 'Electrician Service';
-        price = 499.0;
-      } else if (transcriptText.toLowerCase().includes('baby')) {
-        serviceName = 'Baby Care';
-        price = 799.0;
-      }
-
-      const mockExtracted = {
-        service: serviceName,
-        category: 'Cleaning',
-        price,
-        address
-      };
-
-      const mockReply = language === 'Telugu' 
-        ? `సరేనండి! రేపటి కోసం మీ ${serviceName} బుకింగ్ విజయవంతంగా నమోదు చేయబడింది. మీ చిరునామా: ${address}. రిఫరెన్స్ ఐడి: #AI-MOCK. ధన్యవాదాలు!`
-        : `Got it! I have scheduled a ${serviceName} for tomorrow at ${address}. A booking request has been placed under reference #AI-MOCK. Thank you!`;
-
-      setExtracted(mockExtracted);
-      setVoiceReply(mockReply);
-
+      // Show error notification when server is unavailable
       addNotification(
-        language === 'Telugu' ? 'AI బుకింగ్ విజయవంతమైంది!' : 'AI Call Booking Placed!',
-        mockReply,
-        'BOOKING_ALERT'
+        'Connection Error',
+        'Unable to process AI call booking. Please check your connection and try again.',
+        'ERROR'
       );
-
-      // Local storage append for tracking session visibility
-      const mockBooking = {
-        id: `booking-ai-${Date.now()}`,
-        status: 'PENDING',
-        paymentStatus: 'UNPAID',
-        totalPrice: price,
-        discountApplied: 0.0,
-        finalPrice: price,
-        address,
-        phone: '8431588235',
-        timeSlot: '11:00 AM - 12:00 PM',
-        scheduledAt: new Date(Date.now() + 86400000),
-        items: [{ service: { name: serviceName }, quantity: 1, price }]
-      };
-      const localBookings = JSON.parse(localStorage.getItem('jk_bookings')) || [];
-      localBookings.push(mockBooking);
-      localStorage.setItem('jk_bookings', JSON.stringify(localBookings));
-      fetchBookings();
     } finally {
       setLoading(false);
       setIsRecording(false);

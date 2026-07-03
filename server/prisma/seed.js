@@ -1,6 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ Cannot run seed in production!');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -58,7 +63,7 @@ async function main() {
       price: 799.0,
       durationText: '6 Hours',
       packageText: 'Daily Needs',
-      imageUrl: '/services/babycare.jpg',
+      imageUrl: '/services/babycare.webp',
     },
     {
       name: 'Full House Deep Cleaning',
@@ -67,7 +72,7 @@ async function main() {
       price: 3499.0,
       durationText: '',
       packageText: 'Deep Hygiene',
-      imageUrl: '/services/housecleaning.jpg',
+      imageUrl: '/services/housecleaning.webp',
     },
     {
       name: 'Bathroom Deep Cleaning',
@@ -76,7 +81,7 @@ async function main() {
       price: 749.0,
       durationText: '',
       packageText: 'Premium Sanitation',
-      imageUrl: '/services/bathroom-cleaning.jpg',
+      imageUrl: '/services/bathroom-cleaning.webp',
     },
     {
       name: 'Full Kitchen Cleaning',
@@ -85,7 +90,7 @@ async function main() {
       price: 499.0,
       durationText: '',
       packageText: 'Fresh Kitchen',
-      imageUrl: '/services/kitchen-cleaning.jpg',
+      imageUrl: '/services/kitchen-cleaning.webp',
     },
     {
       name: 'Dust Cleaning',
@@ -94,7 +99,7 @@ async function main() {
       price: 149.0,
       durationText: '1 Hour',
       packageText: 'Quick Dusting',
-      imageUrl: '/services/dust-cleaning.jpg',
+      imageUrl: '/services/dust-cleaning.webp',
     },
     {
       name: 'House Shifting',
@@ -103,7 +108,7 @@ async function main() {
       price: 3499.0,
       durationText: '',
       packageText: '2BHK Package',
-      imageUrl: '/services/house-shifting.jpg',
+      imageUrl: '/services/house-shifting.webp',
     },
     {
       name: 'Cooking Service',
@@ -112,7 +117,7 @@ async function main() {
       price: 149.0,
       durationText: '1 Hour',
       packageText: 'Meal Prep',
-      imageUrl: '/services/cooking-service.jpg',
+      imageUrl: '/services/cooking-service.webp',
     },
     {
       name: 'House Painting',
@@ -121,7 +126,7 @@ async function main() {
       price: 20099.0,
       durationText: '',
       packageText: 'All Materials Included',
-      imageUrl: '/services/house-painting.jpg',
+      imageUrl: '/services/house-painting.webp',
     },
     {
       name: 'Electrician Service',
@@ -130,7 +135,7 @@ async function main() {
       price: 499.0,
       durationText: '1 Hour',
       packageText: 'Essential Repairs',
-      imageUrl: '/services/electrician.jpg',
+      imageUrl: '/services/electrician.webp',
     },
     {
       name: 'Security Provider',
@@ -139,7 +144,7 @@ async function main() {
       price: 899.0,
       durationText: '8 Hours',
       packageText: 'Safe Protection',
-      imageUrl: '/services/security-provider-v2.jpg',
+      imageUrl: '/services/security-provider-v2.webp',
     },
     {
       name: 'Pest Control',
@@ -148,7 +153,7 @@ async function main() {
       price: 2599.0,
       durationText: '',
       packageText: '2BHK Package',
-      imageUrl: '/services/pest-control-v2.jpg',
+      imageUrl: '/services/pest-control-v2.webp',
     },
   ];
 

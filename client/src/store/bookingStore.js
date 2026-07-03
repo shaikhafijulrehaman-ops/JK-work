@@ -172,33 +172,6 @@ export const useBookingStore = create((set, get) => ({
     }
   },
 
-  // Simulated gateway checkout
-  simulatePayment: async (bookingId, method) => {
-    set({ loading: true, error: null });
-    try {
-      const res = await fetch(`${API_URL}/payments/simulate-success`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
-        },
-        body: JSON.stringify({ bookingId, paymentMethod: method })
-      });
-      const data = await res.json();
-      set({ loading: false });
-      if (data.success) {
-        await get().fetchBookings(true);
-        return true;
-      }
-      set({ error: data.message });
-      return false;
-    } catch (e) {
-      console.error('[JK Booking Monitoring] Payment failure: simulatePayment failed', e);
-      set({ error: 'Failed to simulate payment. Please check your connection.', loading: false });
-      return false;
-    }
-  },
-
   // Fetch detailed booking (for real-time status updates)
   fetchBookingDetails: async (bookingId) => {
     try {

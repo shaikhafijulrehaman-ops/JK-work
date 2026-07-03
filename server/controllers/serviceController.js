@@ -5,8 +5,29 @@ const { logActivity } = require('../utils/auditLogger');
  * Get all catalog services
  */
 exports.getAllServices = async (req, res) => {
+  const start = Date.now();
   try {
-    const services = await db.service.findMany({});
+    const services = await db.service.findMany({
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        description: true,
+        price: true,
+        durationText: true,
+        packageText: true,
+        imageUrl: true,
+        isActive: true
+      }
+    });
+    
+    const duration = Date.now() - start;
+    if (duration > 500) {
+      console.warn(`⚠️  [DATABASE PERFORMANCE WARNING] Get all services query took ${duration}ms (exceeds 500ms limit)`);
+    } else {
+      console.log(`[DATABASE LOG] Get all services query took ${duration}ms`);
+    }
+
     res.status(200).json({
       success: true,
       services

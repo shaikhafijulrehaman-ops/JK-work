@@ -55,7 +55,7 @@ const DashboardSkeleton = () => (
 );
 
 export default function Dashboard() {
-  const { bookings, fetchBookings, updateJobStatus, submitReview, verifyArrival, simulatePayment, loading } = useBookingStore();
+  const { bookings, fetchBookings, updateJobStatus, submitReview, verifyArrival, loading } = useBookingStore();
   const { user } = useAuthStore();
   const { addNotification } = useNotificationStore();
 

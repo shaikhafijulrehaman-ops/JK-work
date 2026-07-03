@@ -4,39 +4,11 @@ const db = require('../db');
 const { logActivity } = require('../utils/auditLogger');
 
 const razorpayClient = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'HaYBx1S0DaA1fmDdV2rtgyrQ'
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-/**
- * Simulate payment initialization (generates mock Razorpay order ID / UPI QR payload)
- */
-exports.initializePayment = async (req, res) => {
-  try {
-    const { bookingId } = req.body;
-    if (!bookingId) {
-      return res.status(400).json({ success: false, message: 'Please provide bookingId.' });
-    }
-
-    const booking = await db.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found.' });
-    }
-
-    const mockOrderId = `order_mock_${Date.now()}`;
-    const mockUpiQr = `upi://pay?pa=jayaketanaenterprises@okaxis&pn=JK%20Enterprises&am=${booking.finalPrice}&cu=INR&tn=Booking%20Service`;
-
-    res.status(200).json({
-      success: true,
-      orderId: mockOrderId,
-      amount: booking.finalPrice,
-      upiQrUrl: mockUpiQr,
-      message: 'Secure payment interface generated successfully.'
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to initialize payment.' });
-  }
-};
+// initializePayment and simulatePaymentSuccess removed for production security
 
 /**
  * SECURE: Verify Razorpay webhook signature on backend
@@ -49,7 +21,7 @@ exports.razorpayWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing payment signature header.' });
     }
 
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || 'jk_razorpay_webhook_secret_2026';
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     
     // Hash request body using crypto HMAC-SHA256
     const payload = req.rawBody || JSON.stringify(req.body);
@@ -78,6 +50,12 @@ exports.razorpayWebhook = async (req, res) => {
       if (bookingId) {
         const booking = await db.booking.findUnique({ where: { id: bookingId } });
         if (booking) {
+          // Idempotency: Skip if already paid to prevent duplicate processing
+          if (booking.paymentStatus === 'PAID') {
+            console.log(`⚠️ [Payment Gateway] Duplicate webhook for booking ${bookingId}. Already PAID. Skipping.`);
+            return res.status(200).json({ status: 'ok' });
+          }
+
           await db.booking.update({
             where: { id: booking.id },
             data: {
@@ -153,61 +131,7 @@ exports.razorpayWebhook = async (req, res) => {
   }
 };
 
-/**
- * Simulator Payout Check (Convenient local interface matching the webhook outcome)
- */
-exports.simulatePaymentSuccess = async (req, res) => {
-  try {
-    const { bookingId, paymentMethod } = req.body;
-    if (!bookingId) {
-      return res.status(400).json({ success: false, message: 'Please provide bookingId.' });
-    }
-
-    const booking = await db.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found.' });
-    }
-
-    const simPaymentId = `pay_sim_${Math.random().toString(36).substring(2,10)}`;
-
-    const updated = await db.booking.update({
-      where: { id: booking.id },
-      data: {
-        paymentStatus: 'PAID',
-        payment_status: 'Paid',
-        transaction_id: simPaymentId,
-        paymentId: simPaymentId,
-        paymentMethod: paymentMethod || 'UPI'
-      }
-    });
-
-    // Audit Log
-    logActivity(req, {
-      userId: booking.userId,
-      eventType: 'PAYMENT',
-      action: 'PAYMENT_SUCCESS',
-      details: { bookingId: booking.id, amount: booking.finalPrice, paymentId: simPaymentId }
-    });
-
-    // Notify User
-    await db.notification.create({
-      data: {
-        userId: booking.userId,
-        type: 'PAYMENT_SUCCESS',
-        title: 'Payment Received (Simulation)',
-        message: `Your payment of Rs. ${booking.finalPrice} has been processed via mock gateway. Ref: ${simPaymentId}.`
-      }
-    }).catch(() => {});
-
-    res.status(200).json({
-      success: true,
-      message: 'Simulated payment succeeded.',
-      booking: updated
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to simulate payment.' });
-  }
-};
+// simulatePaymentSuccess removed for production security
 
 /**
  * Standard Razorpay Order Creation
@@ -236,7 +160,7 @@ exports.createOrder = async (req, res) => {
       order_id: order.id,
       amount: order.amount,
       currency: order.currency,
-      key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_Sxuenvd2uTsPCn'
+      key_id: process.env.RAZORPAY_KEY_ID
     });
   } catch (error) {
     console.error('Error creating Razorpay order:', error);
@@ -261,7 +185,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET || 'HaYBx1S0DaA1fmDdV2rtgyrQ';
+    const secret = process.env.RAZORPAY_KEY_SECRET;
     const bodyStr = razorpay_order_id + '|' + razorpay_payment_id;
 
     const expectedSignature = crypto

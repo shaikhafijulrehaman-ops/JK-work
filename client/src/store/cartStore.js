@@ -103,21 +103,9 @@ export const useCartStore = create((set, get) => ({
         return { success: false, message: data.message || 'Invalid or expired promotional code.' };
       }
     } catch (e) {
-      console.warn('Coupon validation offline fallback...', e);
-      if (import.meta.env.MODE === 'production') {
-        return { success: false, message: 'Unable to validate coupon code at this time.' };
-      }
-      if (code.toUpperCase() === '9MINUTES') {
-        const mockCoupon = { code: '9MINUTES', discountType: 'PERCENTAGE', discountValue: 15.0, minOrderValue: 0, maxDiscount: 200 };
-        set({ couponCode: '9MINUTES', activeCoupon: mockCoupon });
-        return { success: true, message: 'Coupon applied successfully!' };
-      }
-      if (code.toUpperCase() === 'WELCOME10') {
-        const mockCoupon = { code: 'WELCOME10', discountType: 'PERCENTAGE', discountValue: 10.0, minOrderValue: 0, maxDiscount: 100 };
-        set({ couponCode: 'WELCOME10', activeCoupon: mockCoupon });
-        return { success: true, message: 'Coupon applied successfully!' };
-      }
-      return { success: false, message: 'Invalid or expired promotional code.' };
+      console.error('Coupon validation failed:', e);
+      set({ couponCode: '', activeCoupon: null });
+      return { success: false, message: 'Unable to validate coupon code at this time.' };
     }
   },
 

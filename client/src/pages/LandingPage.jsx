@@ -332,7 +332,7 @@ export default function LandingPage() {
               {/* White/cyan blending composition card */}
               <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-white to-cyan-50/50">
                 <img 
-                  src="/hero_cleaner.png" 
+                  src="/hero_cleaner.webp" 
                   alt="Professional Home Cleaner" 
                   className="w-full h-auto object-cover transform hover:scale-102 transition-transform duration-700"
                 />

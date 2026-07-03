@@ -827,18 +827,24 @@ ${formattedDate}`;
               /* Already redirected — show success confirmation */
               <div className="pt-4 flex flex-col items-center space-y-4">
                 <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                  <p className="text-xs text-emerald-600 font-bold">
-                    Booking Confirmed Successfully
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                  <p className="text-sm text-emerald-600 font-poppins font-black uppercase tracking-tight">
+                    Booking Confirmed Successfully!
                   </p>
                 </div>
-                <p className="text-[10.5px] text-slate-400 font-semibold max-w-[280px] mx-auto leading-relaxed">
-                  Your booking has been created successfully. Track your service anytime from My Bookings.
-                </p>
+                <div className="text-center space-y-1">
+                  <p className="text-xs text-slate-600 font-bold">
+                    Your booking has been created successfully.
+                  </p>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Track your service anytime from My Bookings.
+                  </p>
+                </div>
                 <button
                   onClick={() => navigate('/my-bookings')}
                   className="w-full bg-slate-950 hover:bg-slate-800 text-white font-poppins font-black text-xs py-4 rounded-xl uppercase tracking-widest shadow-lg flex items-center justify-center space-x-2 transition-all"
                 >
+                  <MapPin className="w-4 h-4 text-brand-light" />
                   <span>Track Your Service</span>
                 </button>
               </div>

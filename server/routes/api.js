@@ -3,7 +3,7 @@ const router = express.Router();
 
 // Middlewares
 const { protect, restrictTo } = require('../middlewares/auth');
-const { authLimiter, bookingLimiter } = require('../middlewares/rateLimiter');
+const { apiLimiter, authLimiter, bookingLimiter } = require('../middlewares/rateLimiter');
 
 // Controllers
 const authCtrl = require('../controllers/authController');
@@ -16,18 +16,18 @@ const statsCtrl = require('../controllers/statsController');
 const addressCtrl = require('../controllers/addressController');
 
 // ==================== AUTHENTICATION ====================
-router.post('/auth/register', authCtrl.register);
+router.post('/auth/register', authLimiter, authCtrl.register);
 router.post('/auth/register-partner', authCtrl.registerPartner);
 router.post('/auth/login', authLimiter, authCtrl.login);
-router.post('/auth/google-login', authCtrl.googleLogin);
+router.post('/auth/google-login', authLimiter, authCtrl.googleLogin);
 router.get('/auth/refresh', authCtrl.refresh);
 router.get('/auth/logout', authCtrl.logout);
 router.get('/auth/me', protect, authCtrl.getMe);
-router.post('/auth/otp', authCtrl.sendOTP);
-router.post('/auth/forgot-password', authCtrl.forgotPassword);
-router.post('/auth/waitlist', authCtrl.joinWaitlist);
-router.post('/auth/sync-supabase', authCtrl.syncSupabase);
-router.post('/auth/verify-otp', authCtrl.verifyOTP);
+router.post('/auth/otp', authLimiter, authCtrl.sendOTP);
+router.post('/auth/forgot-password', authLimiter, authCtrl.forgotPassword);
+router.post('/auth/waitlist', authLimiter, authCtrl.joinWaitlist);
+router.post('/auth/sync-supabase', authLimiter, authCtrl.syncSupabase);
+router.post('/auth/verify-otp', authLimiter, authCtrl.verifyOTP);
 router.put('/auth/update-profile', protect, authCtrl.updateProfile);
 
 // ==================== ADDRESS BOOK CRUD ====================
@@ -69,8 +69,6 @@ router.post('/reviews', protect, reviewCtrl.submitReview);
 router.get('/reviews/worker/:workerId', reviewCtrl.getWorkerReviews);
 
 // ==================== SECURE PAYMENTS ====================
-router.post('/payments/initialize', protect, paymentCtrl.initializePayment);
-router.post('/payments/simulate-success', protect, paymentCtrl.simulatePaymentSuccess);
 router.post('/payments/webhook', paymentCtrl.razorpayWebhook); // Secure signature check
 router.post('/create-order', protect, paymentCtrl.createOrder);
 router.post('/verify-payment', protect, paymentCtrl.verifyPayment);

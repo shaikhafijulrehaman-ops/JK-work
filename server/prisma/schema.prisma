@@ -126,6 +126,9 @@ model Service {
 
   // Relations
   bookingItems BookingItem[]
+
+  @@index([category])
+  @@index([isActive])
 }
 
 model ServicePartner {

@@ -29,13 +29,13 @@ Time: ${time}
 const signTokens = (userId, email, role) => {
   const accessToken = jwt.sign(
     { userId, email, role },
-    process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026',
+    process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
 
   const refreshToken = jwt.sign(
     { userId, email, role },
-    process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026',
+    process.env.JWT_REFRESH_SECRET,
     { expiresIn: '7d' }
   );
 
@@ -102,21 +102,11 @@ exports.register = async (req, res) => {
     }
 
     // Check if email or phone already exists
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
-    console.log('------------------------------');
     const existingEmail = await db.user.findUnique({ where: { email } });
     if (existingEmail) {
       return res.status(400).json({ success: false, message: 'Email address already registered.' });
     }
 
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { phone } }, null, 2));
-    console.log('------------------------------');
     const existingPhone = await db.user.findUnique({ where: { phone } });
     if (existingPhone) {
       return res.status(400).json({ success: false, message: 'Phone number already registered.' });
@@ -247,8 +237,6 @@ exports.refresh = async (req, res) => {
     console.log('--- BEFORE findUnique Call ---');
     console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
     console.log('Model Name: Session');
-    console.log('Query Parameters:', JSON.stringify({ where: { refreshToken: token }, include: { user: true } }, null, 2));
-    console.log('------------------------------');
     const session = await db.session.findUnique({
       where: { refreshToken: token },
       include: { user: true }
@@ -258,12 +246,7 @@ exports.refresh = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Session expired or invalidated. Please log in again.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026');
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { id: decoded.userId } }, null, 2));
-    console.log('------------------------------');
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
     const user = session.user || await db.user.findUnique({ where: { id: decoded.userId } });
 
     if (!user) {
@@ -302,7 +285,7 @@ exports.logout = async (req, res) => {
 
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'jk_enterprises_super_jwt_refresh_secret_token_2026');
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
         if (decoded && decoded.userId) {
           logActivity(req, {
             userId: decoded.userId,
@@ -394,16 +377,18 @@ exports.sendOTP = async (req, res) => {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000);
-    otps[email] = otp;
-    console.log(`✉️ [Mail Gateway] Generating OTP for ${email}: ${otp}`);
+    otps[email] = {
+      code: otp,
+      createdAt: Date.now(),
+      attempts: 0
+    };
 
     // Trigger the actual email send asynchronously
     sendOTPEmail(email, otp);
 
     res.status(200).json({
       success: true,
-      message: 'OTP Code sent successfully. Please check your email.',
-      otp: process.env.NODE_ENV !== 'production' ? otp : undefined // Expose OTP only in development/test
+      message: 'OTP Code sent successfully. Please check your email.'
     });
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -421,23 +406,16 @@ exports.forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide email address.' });
     }
 
-    console.log('--- BEFORE findUnique Call ---');
-    console.log('Prisma Instance:', db.isSandbox() ? 'Sandbox fallback active' : 'Live Prisma connected');
-    console.log('Model Name: User');
-    console.log('Query Parameters:', JSON.stringify({ where: { email } }, null, 2));
-    console.log('------------------------------');
     const user = await db.user.findUnique({ where: { email } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'No user registered with this email.' });
     }
 
     const resetToken = Math.random().toString(36).substring(2, 10).toUpperCase();
-    console.log(`✉️ [Mail Gateway mock] To: ${email} - Reset code: ${resetToken}`);
 
     res.status(200).json({
       success: true,
-      message: 'Reset instructions sent to your email.',
-      resetToken: process.env.NODE_ENV !== 'production' ? resetToken : undefined
+      message: 'Reset instructions sent to your email.'
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'An unexpected error occurred. Please try again shortly.' });
@@ -608,8 +586,28 @@ exports.verifyOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide email and OTP code.' });
     }
 
-    const cachedOtp = otps[email];
-    if (!cachedOtp || String(cachedOtp) !== String(code)) {
+    const cachedOtpRecord = otps[email];
+    if (!cachedOtpRecord) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
+    }
+
+    // Expiry check (10 minutes)
+    const isExpired = Date.now() - cachedOtpRecord.createdAt > 10 * 60 * 1000;
+    if (isExpired) {
+      delete otps[email];
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
+    }
+
+    // Attempt limit check (max 5 attempts)
+    if (cachedOtpRecord.attempts >= 5) {
+      delete otps[email];
+      return res.status(400).json({ success: false, message: 'Too many verification attempts. Please generate a new OTP.' });
+    }
+
+    // Increment attempts
+    cachedOtpRecord.attempts += 1;
+
+    if (String(cachedOtpRecord.code) !== String(code)) {
       return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
     }
 
@@ -750,32 +748,53 @@ exports.updateProfile = async (req, res) => {
  * Google Login (checks if email exists in database, else returns error)
  */
 exports.googleLogin = async (req, res) => {
-  const { email } = req.body;
-  console.log(`[GOOGLE LOGIN TRACE] 🛡️ Google login request initiated for email: ${email}`);
+  const { email, googleToken, supabaseToken } = req.body;
 
   try {
     if (!email) {
-      console.warn(`[GOOGLE LOGIN TRACE] ⚠️ Missing Google email.`);
       return res.status(400).json({ success: false, message: 'Please provide email.' });
     }
 
-    console.log(`[GOOGLE LOGIN TRACE] Step 1: Querying user from database...`);
+    let verifiedEmail = null;
+
+    if (googleToken) {
+      const googleUserInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${googleToken}` }
+      });
+      if (googleUserInfoRes.ok) {
+        const googleUserInfo = await googleUserInfoRes.json();
+        verifiedEmail = googleUserInfo.email;
+      }
+    } else if (supabaseToken) {
+      const supabaseUrl = process.env.SUPABASE_URL || 'https://hiurxjfxdpdxvumpmplp.supabase.co';
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdXJ4amZ4ZHBkeHZ1bXBtcGxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NzU0MTQsImV4cCI6MjA5NTI1MTQxNH0.JLYXEUl30FkOP_0BBkPwXylQK__X1dqEJz7gmL-sXdI';
+      
+      const supabaseUserRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: {
+          'Authorization': `Bearer ${supabaseToken}`,
+          'apikey': supabaseAnonKey
+        }
+      });
+      if (supabaseUserRes.ok) {
+        const supabaseUser = await supabaseUserRes.json();
+        verifiedEmail = supabaseUser.email;
+      }
+    }
+
+    if (!verifiedEmail || verifiedEmail.toLowerCase() !== email.toLowerCase()) {
+      return res.status(401).json({ success: false, message: 'Google/Supabase token verification failed.' });
+    }
+
     const user = await db.user.findUnique({ 
       where: { email }
     });
-    console.log(`[GOOGLE LOGIN TRACE] Database query completed. User found: ${!!user}`);
 
     if (!user) {
-      console.warn(`[GOOGLE LOGIN TRACE] ⚠️ Authentication failed: User email ${email} not found.`);
       return res.status(404).json({ success: false, message: 'Account not found. Please register first.' });
     }
 
-    console.log(`[GOOGLE LOGIN TRACE] Step 2: Triggering WhatsApp admin notification...`);
     sendAdminWhatsAppNotification(user.name, user.phone, user.email, 'Google Login');
-
-    console.log(`[GOOGLE LOGIN TRACE] Step 3: Structuring token response...`);
     sendTokenResponse(user, 200, res);
-    console.log(`[GOOGLE LOGIN TRACE] ✅ Google Login response sent successfully.`);
   } catch (error) {
     console.error('💥 [GOOGLE LOGIN ERROR] Exception caught:', error);
     res.status(500).json({ success: false, message: 'Unable to complete Google login. Please try again shortly.' });

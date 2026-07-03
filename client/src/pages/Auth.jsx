@@ -6,7 +6,7 @@ import { Mail, Lock, User, Phone, CheckCircle, PhoneCall, Key } from 'lucide-rea
 import AuthSignupFlow from '../components/auth/AuthSignupFlow';
 
 export default function Auth() {
-  const { login, register, sendOtp, verifyOtp, simulatedOtp, error, loading, loginWithGoogle } = useAuthStore();
+  const { login, register, sendOtp, verifyOtp, error, loading, loginWithGoogle } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -42,10 +42,10 @@ export default function Auth() {
     e.preventDefault();
     setLocalErr(null);
     setPartnerStatus(null);
-    console.log("Step 1: Login Started");
+
     const res = await login(email, password);
     if (res.success) {
-      console.log("Step 5: Redirect");
+
       if (res.user.role === 'ADMIN') navigate('/admin');
       else if (res.user.role === 'WORKER') navigate('/worker/dashboard');
       else navigate('/services');
@@ -90,7 +90,7 @@ export default function Auth() {
     const sent = await sendOtp(email);
     if (sent) {
       setOtpSent(true);
-      setMsg('Simulated OTP code dispatched successfully! Check developer console or use mock validation.');
+      setMsg('Verification code sent! Please check your email inbox.');
     } else {
       setLocalErr('Failed to send OTP.');
     }

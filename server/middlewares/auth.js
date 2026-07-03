@@ -24,7 +24,7 @@ exports.protect = (req, res, next) => {
 
   try {
     // Verify Access Token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Attach user payload to request
     req.user = {

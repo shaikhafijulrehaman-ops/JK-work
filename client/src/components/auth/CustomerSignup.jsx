@@ -43,7 +43,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export default function CustomerSignup({ onBack }) {
-  const { register, sendOtp, verifyOtp, simulatedOtp, otpSent, loading, joinWaitlist } = useAuthStore();
+  const { register, sendOtp, verifyOtp, otpSent, loading, joinWaitlist } = useAuthStore();
   const navigate = useNavigate();
 
   // Onboarding Step State:

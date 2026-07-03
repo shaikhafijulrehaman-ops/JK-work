@@ -45,7 +45,7 @@ const BookingsSkeleton = () => (
 );
 
 export default function BookingsPage() {
-  const { bookings, fetchBookings, updateJobStatus, submitReview, verifyArrival, simulatePayment, loading } = useBookingStore();
+  const { bookings, fetchBookings, updateJobStatus, submitReview, verifyArrival, loading } = useBookingStore();
   const { user } = useAuthStore();
   const { addNotification } = useNotificationStore();
   const navigate = useNavigate();
@@ -526,16 +526,12 @@ export default function BookingsPage() {
                         <CreditCard className="w-8 h-8 text-amber-500 flex-shrink-0" />
                         <div>
                           <span className="font-black text-amber-800 block">Invoice Payment Required</span>
-                          <span className="text-amber-600 leading-none">Your doorstep professional is paused until paid.</span>
+                          <span className="text-amber-600 leading-none">Please complete the payment to proceed with your doorstep professional dispatch.</span>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => simulatePayment(selectedBooking.id, 'UPI')}
-                        className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-poppins font-black text-xs px-6 py-3 rounded-xl uppercase tracking-widest shadow-sm flex items-center justify-center space-x-1 cursor-pointer animate-transition"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Pay Rs. {selectedBooking.finalPrice.toLocaleString()} Now</span>
-                      </button>
+                      <span className="w-full md:w-auto bg-amber-100 text-amber-800 font-poppins font-black text-xs px-6 py-3 rounded-xl uppercase tracking-widest text-center">
+                        Rs. {selectedBooking.finalPrice.toLocaleString()} Due
+                      </span>
                     </div>
                   )}
 

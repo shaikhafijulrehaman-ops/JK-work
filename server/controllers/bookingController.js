@@ -335,13 +335,13 @@ exports.validateCouponCode = async (req, res) => {
 
     if (req.cookies && req.cookies.accessToken) {
       try {
-        const decoded = jwt.verify(req.cookies.accessToken, process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026');
+        const decoded = jwt.verify(req.cookies.accessToken, process.env.JWT_SECRET);
         userId = decoded.userId;
       } catch (e) {}
     } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       try {
         const token = req.headers.authorization.split(' ')[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jk_enterprises_super_jwt_secret_token_2026');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded.userId;
       } catch (e) {}
     }
@@ -932,8 +932,7 @@ exports.updateBookingStatus = async (req, res) => {
             refundId = refund.id;
             console.log(`✉️ [Refund System] Razorpay Refund completed. Refund ID: ${refundId}`);
           } catch (refundError) {
-            console.error('💥 [Refund System Error] Razorpay refund failed:', refundError.message);
-            return res.status(500).json({ success: false, message: `Status update failed: Razorpay refund failed: ${refundError.message}` });
+            return res.status(500).json({ success: false, message: 'Refund processing failed. Please contact support.' });
           }
         }
 

@@ -553,33 +553,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         addNotification('Operation Failed', data.message || 'Failed to save service.');
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to save service.');
-      } else {
-        console.warn('Backend server offline. Simulating service save locally...', err);
-        if (editingServiceId) {
-          setServices(prev => prev.map(s => s.id === editingServiceId ? { ...s, ...body } : s));
-          addNotification('Service Updated', `Service "${newServiceName}" updated locally (Sandbox mode).`);
-        } else {
-          const fakeService = {
-            id: `s-${Date.now()}`,
-            ...body,
-            imageUrl: newServiceImage || ''
-          };
-          setServices(prev => [...prev, fakeService]);
-          addNotification('Service Created', `Service "${newServiceName}" created locally (Sandbox mode).`);
-        }
-        
-        setNewServiceName('');
-        setNewServiceCategory('');
-        setNewServicePrice('');
-        setNewServiceImage('');
-        setNewServiceDesc('');
-        setNewServiceDuration('');
-        setNewServicePackage('');
-        setNewServiceIsActive(true);
-        setEditingServiceId(null);
-      }
+      addNotification('Operation Failed', 'Unable to save service. Please check your connection.');
     } finally {
       setAddingService(false);
     }
@@ -603,13 +577,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         addNotification('Deletion Failed', data.message || 'Failed to delete service.');
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to delete service.');
-      } else {
-        console.warn('Backend server offline. Simulating service delete locally...', err);
-        setServices(prev => prev.filter(s => s.id !== serviceId));
-        addNotification('Service Deleted', 'Service deleted locally (Sandbox mode).');
-      }
+      addNotification('Operation Failed', 'Unable to delete service. Please check your connection.');
     }
   };
 
@@ -669,41 +637,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         addNotification('Save Failed', data.message || 'Failed to save coupon.');
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to save coupon.');
-      } else {
-        console.warn('Backend server offline. Simulating coupon save locally...', err);
-        const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
-        if (couponForm.id) {
-          const idx = localCoupons.findIndex(c => c.id === couponForm.id);
-          const updatedCoupon = { ...body, id: couponForm.id, usedCount: 0 };
-          if (idx > -1) {
-            localCoupons[idx] = updatedCoupon;
-          } else {
-            localCoupons.push(updatedCoupon);
-          }
-          addNotification('Coupon Updated', `Coupon "${couponForm.code}" updated locally (Sandbox mode).`);
-        } else {
-          const newId = `cp-${Date.now()}`;
-          const newCoupon = { ...body, id: newId, usedCount: 0 };
-          localCoupons.push(newCoupon);
-          addNotification('Coupon Created', `Coupon "${couponForm.code}" created locally (Sandbox mode).`);
-        }
-        localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
-        
-        setCouponForm({
-          id: null,
-          code: '',
-          discountType: 'PERCENTAGE',
-          discountValue: '',
-          minOrderValue: '0',
-          maxDiscount: '',
-          usageLimit: '',
-          expiresAt: '',
-          isActive: true
-        });
-        setTimeout(() => fetchAllData(), 100);
-      }
+      addNotification('Operation Failed', 'Unable to save coupon. Please check your connection.');
     } finally {
       setSavingCoupon(false);
     }
@@ -722,15 +656,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to delete coupon.');
-      } else {
-        const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
-        const updated = localCoupons.filter(c => c.id !== id);
-        localStorage.setItem('jk_sandbox_coupons', JSON.stringify(updated));
-        setCoupons(prev => prev.filter(c => c.id !== id));
-        addNotification('Coupon Deleted', `Coupon ${code} deleted locally (Sandbox mode).`);
-      }
+      addNotification('Operation Failed', 'Unable to delete coupon. Please check your connection.');
     }
   };
 
@@ -749,99 +675,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to toggle coupon status.');
-      } else {
-        const localCoupons = JSON.parse(localStorage.getItem('jk_sandbox_coupons') || '[]');
-        const idx = localCoupons.findIndex(c => c.id === id);
-        if (idx > -1) {
-          localCoupons[idx].isActive = nextStatus;
-          localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
-        } else {
-          const seedCoupon = coupons.find(c => c.id === id);
-          if (seedCoupon) {
-            localCoupons.push({ ...seedCoupon, isActive: nextStatus });
-            localStorage.setItem('jk_sandbox_coupons', JSON.stringify(localCoupons));
-          }
-        }
-        setCoupons(prev => prev.map(c => c.id === id ? { ...c, isActive: nextStatus } : c));
-        addNotification(nextStatus ? 'Coupon Enabled' : 'Coupon Disabled', `Coupon ${code} status updated locally (Sandbox mode).`);
-      }
+      addNotification('Operation Failed', 'Unable to update coupon status. Please check your connection.');
     }
   };
 
-  // Load Sandbox fallback per tab
-  const loadSandboxTab = (tab) => {
-    if (import.meta.env.MODE === 'production') {
-      setError('Database connection error. Service disruption active.');
-      setAnalytics(null);
-      return;
-    }
-    const mockServices = [
-      { id: 's-1', name: 'Baby Care', category: 'Care', price: 799, durationText: '6 Hours', packageText: 'Daily Needs', description: 'Experienced baby care professionals.', imageUrl: '/services/babycare.jpg' },
-      { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499, durationText: '', packageText: 'Deep Hygiene', description: 'Complete deep cleaning.', imageUrl: '/services/housecleaning.jpg' },
-      { id: 's-3', name: 'Bathroom Deep Cleaning', category: 'Cleaning', price: 749, durationText: '', packageText: 'Premium Sanitation', description: 'Deep sanitation.', imageUrl: '/services/bathroom-cleaning.jpg' },
-      { id: 's-4', name: 'Full Kitchen Cleaning', category: 'Cleaning', price: 499, durationText: '', packageText: 'Fresh Kitchen', description: 'Deep degreasing.', imageUrl: '/services/kitchen-cleaning.jpg' },
-      { id: 's-5', name: 'Dust Cleaning', category: 'Cleaning', price: 149, durationText: '1 Hour', packageText: 'Quick Dusting', description: 'Dust removal.', imageUrl: '/services/dust-cleaning.jpg' },
-      { id: 's-6', name: 'House Shifting', category: 'Shifting', price: 3499, durationText: '', packageText: '2BHK Package', description: 'Professional packing and moving.', imageUrl: '/services/house-shifting.jpg' },
-      { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149, durationText: '1 Hour', packageText: 'Meal Prep', description: 'Hygienic home-cooked meals.', imageUrl: '/services/cooking-service.jpg' },
-      { id: 's-8', name: 'House Painting', category: 'Painting', price: 20099, durationText: '', packageText: 'All Materials Included', description: 'Wall painting.', imageUrl: '/services/house-painting.jpg' },
-      { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499, durationText: '1 Hour', packageText: 'Essential Repairs', description: 'Electrical repairs.', imageUrl: '/services/electrician.jpg' },
-      { id: 's-10', name: 'Security Provider', category: 'Care', price: 899, durationText: '8 Hours', packageText: 'Safe Protection', description: 'Vigilant security guards.', imageUrl: '/services/security-provider-v2.jpg' },
-      { id: 's-11', name: 'Pest Control', category: 'Cleaning', price: 2599, durationText: '', packageText: '2BHK Package', description: 'Pest control treatment.', imageUrl: '/services/pest-control-v2.jpg' }
-    ];
-
-    const mockWorkers = [];
-
-    const mockCustomers = [];
-
-    const mockBookings = [];
-
-    const mockCoupons = [];
-
-    if (tab === 'dashboard') {
-      const stats = {
-        todayCount: 0,
-        pendingCount: 0,
-        completedCount: 0,
-        cancelledCount: 0,
-        activePartnersCount: 0,
-        pendingApprovalsCount: 0,
-        todayRev: 0,
-        monthRev: 0,
-        activeCouponsCount: 0,
-        totalCouponsCount: 0
-      };
-      setAnalytics(stats);
-      setWorkers(mockWorkers);
-    } else if (tab === 'bookings') {
-      setBookings(mockBookings);
-    } else if (tab === 'customers') {
-      setCustomers(mockCustomers);
-    } else if (tab === 'services') {
-      setServices(mockServices);
-    } else if (tab === 'coupons') {
-      setCoupons(mockCoupons);
-    } else if (tab === 'audit-logs') {
-      setBookings(mockBookings);
-      setWorkers(mockWorkers);
-      setCustomers(mockCustomers);
-      setServices(mockServices);
-      setCoupons(mockCoupons);
-      
-      const seedLogs = [];
-      setAuditLogs(seedLogs);
-    } else if (tab === 'customer-ratings') {
-      setReviews([
-        { id: 'rev-1', rating: 5, comment: 'Excellent service!', customerOpinion: 'Punctual and polite', createdAt: new Date().toISOString(), user: { name: 'Amit Patel' }, booking: { id: 'bk-12345678' }, partner: { name: 'Vijay Kumar' }, serviceCategory: 'Cleaning' },
-        { id: 'rev-2', rating: 3, comment: 'Average cleaning, could be better.', customerOpinion: 'Left dust on corners', createdAt: new Date().toISOString(), user: { name: 'Sneha Reddy' }, booking: { id: 'bk-87654321' }, partner: { name: 'Ramesh Kumar' }, serviceCategory: 'Cleaning' }
-      ]);
-    } else if (tab === 'partner-overview') {
-      setPartnerPerformances([
-        { id: 'perf-1', partnerName: 'Vijay Kumar', serviceType: 'Cleaning', totalCompletedJobs: 12, totalRevenue: 15400, averageRating: 4.8, activeJobs: 0, completedJobs: 12, cancelledJobs: 1 },
-        { id: 'perf-2', partnerName: 'Ramesh Kumar', serviceType: 'Cleaning', totalCompletedJobs: 8, totalRevenue: 9800, averageRating: 4.2, activeJobs: 1, completedJobs: 8, cancelledJobs: 0 }
-      ]);
-    }
+  // Error handler for failed tab data fetches
+  const handleTabLoadError = (tab) => {
+    setError('Unable to connect to the database. Please check your connection.');
+    setAnalytics(null);
   };
 
   const fetchAuditLogs = async (page = 1, eventType = 'All', force = false) => {
@@ -877,12 +718,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         throw new Error(data.message || 'Failed to retrieve audit logs.');
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        setError('Database connection error. Unable to load audit logs.');
-      } else {
-        console.warn('Backend offline or error loading audit logs. Loading offline sandbox...', err);
-        loadSandboxTab('audit-logs');
-      }
+      setError('Unable to load audit logs. Please check your connection.');
     } finally {
       setTabLoading(false);
     }
@@ -1065,14 +901,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         }
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        setError('Database connection error. Unable to connect to the database.');
-        setAnalytics(null);
-      } else {
-        console.warn('Backend server offline. Simulating local Sandbox metrics...', err);
-        loadSandboxTab(tab);
-        setError(err.message || 'Unable to connect to service registry.');
-      }
+      setError('Unable to connect to the database. Please check your connection.');
+      setAnalytics(null);
     } finally {
       setTabLoading(false);
       setLoading(false);
@@ -1121,18 +951,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to approve partner.');
-      } else {
-        setWorkers(prev => {
-          const updated = prev.map(w => w.id === id ? { ...w, approvalStatus: 'APPROVED' } : w);
-          const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-          const updatedLocal = localWorkers.map(w => w.id === id ? { ...w, approvalStatus: 'APPROVED' } : w);
-          localStorage.setItem('jk_sandbox_workers', JSON.stringify(updatedLocal));
-          return updated;
-        });
-        addNotification('Partner Approved', 'Service partner approved successfully (Sandbox mode).');
-      }
+      addNotification('Operation Failed', 'Unable to approve partner. Please check your connection.');
     }
     setSelectedWorker(null);
   };
@@ -1152,18 +971,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to reject partner.');
-      } else {
-        setWorkers(prev => {
-          const updated = prev.map(w => w.id === id ? { ...w, approvalStatus: 'REJECTED', availability: reason } : w);
-          const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-          const updatedLocal = localWorkers.map(w => w.id === id ? { ...w, approvalStatus: 'REJECTED', availability: reason } : w);
-          localStorage.setItem('jk_sandbox_workers', JSON.stringify(updatedLocal));
-          return updated;
-        });
-        addNotification('Application Rejected', `Partner rejected (Sandbox mode). Reason: ${reason}`);
-      }
+      addNotification('Operation Failed', 'Unable to reject partner. Please check your connection.');
     }
     setSelectedWorker(null);
   };
@@ -1181,18 +989,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to change status.');
-      } else {
-        setWorkers(prev => {
-          const updated = prev.map(w => w.id === id ? { ...w, approvalStatus: 'UNDER_REVIEW' } : w);
-          const localWorkers = JSON.parse(localStorage.getItem('jk_sandbox_workers') || '[]');
-          const updatedLocal = localWorkers.map(w => w.id === id ? { ...w, approvalStatus: 'UNDER_REVIEW' } : w);
-          localStorage.setItem('jk_sandbox_workers', JSON.stringify(updatedLocal));
-          return updated;
-        });
-        addNotification('Status Updated', 'Application status moved to Under Review (Sandbox mode).');
-      }
+      addNotification('Operation Failed', 'Unable to change status. Please check your connection.');
     }
     setSelectedWorker(null);
   };
@@ -1221,15 +1018,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         addNotification('Operation Failed', data.message || 'Unable to assign partner.');
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to assign partner.');
-      } else {
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, partnerId, partnerName, partnerMobile, status: 'ASSIGNED' } : b));
-        if (selectedBooking && selectedBooking.id === bookingId) {
-          setSelectedBooking({ ...selectedBooking, partnerId, partnerName, partnerMobile, status: 'ASSIGNED' });
-        }
-        addNotification('Partner Assigned', 'Service partner successfully assigned (Sandbox mode).');
-      }
+      addNotification('Operation Failed', 'Unable to assign partner. Please check your connection.');
     } finally {
       setIsAssigning(false);
     }
@@ -1253,7 +1042,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         addNotification('Operation Failed', data.message || 'Unable to refresh payout.');
       }
     } catch (err) {
-      console.error('Refresh payout error:', err);
+
       addNotification('Connection Error', 'Failed to refresh payout. Please check your connection.');
     }
   };
@@ -1308,12 +1097,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         fetchAllData();
       }
     } catch (err) {
-      if (import.meta.env.MODE === 'production') {
-        addNotification('Operation Failed', 'Database connection error. Unable to update booking status.');
-      } else {
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status } : b));
-        addNotification('Status Updated', `Booking status changed to ${status} (Sandbox mode).`);
-      }
+      addNotification('Operation Failed', 'Unable to update booking status. Please check your connection.');
     }
   };
 

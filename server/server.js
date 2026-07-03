@@ -32,30 +32,60 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
+const compression = require('compression');
+
 const apiRouter = require('./routes/api');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Enable response compression (Gzip/Brotli)
+app.use(compression());
 
 // ==================== STRUCTURED LOGGER MIDDLEWARE ====================
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    console.log(`[HTTP LOG] 🌍 ${req.method} ${req.originalUrl} | Status: ${res.statusCode} | Time: ${duration}ms | IP: ${req.ip}`);
+    if (duration > 500) {
+      console.warn(`⚠️  [PERFORMANCE WARNING] ${req.method} ${req.originalUrl} took ${duration}ms (exceeds 500ms limit)`);
+    } else {
+      console.log(`[HTTP LOG] 🌍 ${req.method} ${req.originalUrl} | Status: ${res.statusCode} | Time: ${duration}ms | IP: ${req.ip}`);
+    }
   });
   next();
 });
 
 // ==================== SECURITY MIDDLEWARE ====================
-// 1. Helmet: Secure HTTP Headers
-app.use(helmet());
+// 1. Helmet: Secure HTTP Headers with custom policies for third-party scripts (e.g. Razorpay)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "unsafe-none" }
+}));
 
-// 2. CORS: Enable restricted access from client (standard fallback config)
+// Set explicit Permissions-Policy to allow Razorpay sensors and payments
+app.use((req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'accelerometer=(self "https://api.razorpay.com" "https://checkout.razorpay.com"), gyroscope=(self "https://api.razorpay.com" "https://checkout.razorpay.com"), magnetometer=(self "https://api.razorpay.com" "https://checkout.razorpay.com"), payment=*'
+  );
+  next();
+});
+
+// 2. CORS: Enable restricted access from client
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    // Allow standard local development and dynamic preview links (Vercel, Netlify, Github Codespaces, custom local networks, etc.)
+    
+    // Check custom whitelist from environment variables first
+    if (process.env.ALLOWED_ORIGINS) {
+      const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    }
+
+    // Allow standard local development and dynamic preview links
     const isAllowed = origin.startsWith('http://localhost') || 
                       origin.startsWith('http://127.0.0.1') || 
                       origin.includes('vercel.app') || 
@@ -68,8 +98,12 @@ app.use(cors({
     if (isAllowed) {
       callback(null, true);
     } else {
-      // General reliability fallback in dev/sandbox environments to prevent customer lockouts
-      callback(null, true);
+      if (process.env.NODE_ENV === 'production') {
+        callback(new Error('Not allowed by CORS'));
+      } else {
+        // Fallback for non-production environments to prevent customer lockouts
+        callback(null, true);
+      }
     }
   },
   credentials: true,
