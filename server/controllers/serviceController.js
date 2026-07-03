@@ -8,6 +8,7 @@ exports.getAllServices = async (req, res) => {
   const start = Date.now();
   try {
     const services = await db.service.findMany({
+      where: { isDeleted: false },
       select: {
         id: true,
         name: true,
@@ -43,8 +44,8 @@ exports.getAllServices = async (req, res) => {
  */
 exports.getServiceById = async (req, res) => {
   try {
-    const service = await db.service.findUnique({
-      where: { id: req.params.id }
+    const service = await db.service.findFirst({
+      where: { id: req.params.id, isDeleted: false }
     });
 
     if (!service) {
@@ -196,7 +197,10 @@ exports.deleteService = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Service not found.' });
     }
 
-    await db.service.delete({ where: { id: req.params.id } });
+    await db.service.update({
+      where: { id: req.params.id },
+      data: { isDeleted: true, deletedAt: new Date() }
+    });
 
     // Write Audit Log
     logActivity(req, {

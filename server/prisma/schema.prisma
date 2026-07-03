@@ -75,6 +75,8 @@ model User {
   serviceArea       String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  isDeleted         Boolean        @default(false)
+  deletedAt         DateTime?
 
   // Relations
   bookings          Booking[]
@@ -123,6 +125,8 @@ model Service {
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+  isDeleted    Boolean        @default(false)
+  deletedAt    DateTime?
 
   // Relations
   bookingItems BookingItem[]
@@ -140,6 +144,8 @@ model ServicePartner {
   status          String    @default("AVAILABLE") // "AVAILABLE", "ON_JOB", "INACTIVE"
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  isDeleted       Boolean   @default(false)
+  deletedAt       DateTime?
   
   // Relations
   bookings        Booking[]
@@ -210,6 +216,8 @@ model Booking {
   otpGeneratedAt DateTime?
   otpVerifiedAt  DateTime?
   emailSent      Boolean       @default(false)
+  isDeleted      Boolean       @default(false)
+  deletedAt      DateTime?
 
   // Relations
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)

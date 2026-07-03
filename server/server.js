@@ -128,6 +128,15 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
+// ==================== CLOUDFLARE CACHE CONTROL ====================
+// Explicitly prevent Cloudflare, CDN, and browser caching of dynamic API data
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // ==================== MOUNT API ROUTER ====================
 app.use('/api', apiRouter);
 
@@ -148,25 +157,61 @@ const Razorpay = require('razorpay');
 
 // 1. General Health Check
 app.get('/health', async (req, res) => {
-  const dbHealth = await db.ping();
-  res.status(200).json({
-    status: 'UP',
-    database: dbHealth.connected ? 'CONNECTED' : 'DISCONNECTED',
-    timestamp: new Date()
-  });
+  try {
+    const dbHealth = await db.ping();
+    if (!dbHealth.connected) {
+      return res.status(503).json({
+        status: 'DOWN',
+        database: 'DISCONNECTED',
+        error: dbHealth.error || 'Database is offline.'
+      });
+    }
+
+    // Verify all critical tables exist
+    await db.user.findFirst();
+    await db.booking.findFirst();
+    await db.service.findFirst();
+    await db.servicePartner.findFirst();
+    await db.review.findFirst();
+    await db.promoCode.findFirst();
+    await db.notification.findFirst();
+
+    res.status(200).json({
+      status: 'UP',
+      database: 'CONNECTED',
+      schema: 'VALID',
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'DOWN',
+      database: 'UNHEALTHY',
+      error: err.message
+    });
+  }
 });
 
 // 2. Database Health Check
 app.get('/health/db', async (req, res) => {
-  const dbHealth = await db.ping();
-  if (dbHealth.connected) {
-    return res.status(200).json({ status: 'UP', database: 'CONNECTED', message: 'Database connection verified.' });
-  } else {
-    return res.status(503).json({ 
-      status: 'DOWN', 
-      database: 'DISCONNECTED', 
-      error: dbHealth.error || 'Database is offline.' 
-    });
+  try {
+    const dbHealth = await db.ping();
+    if (!dbHealth.connected) {
+      return res.status(503).json({ 
+        status: 'DOWN', 
+        database: 'DISCONNECTED', 
+        error: dbHealth.error || 'Database is offline.' 
+      });
+    }
+
+    // Validate essential tables exist
+    await db.user.findFirst();
+    await db.booking.findFirst();
+    await db.service.findFirst();
+    await db.servicePartner.findFirst();
+
+    return res.status(200).json({ status: 'UP', database: 'CONNECTED', message: 'Database connection and critical tables verified.' });
+  } catch (err) {
+    return res.status(503).json({ status: 'DOWN', database: 'UNHEALTHY', error: err.message });
   }
 });
 
@@ -235,21 +280,33 @@ async function startServer() {
 
     console.log('🏁 [JK Enterprises Server] Running startup health checks...');
     
-    // 1. Database Connection Check
+    // 1. Database Connection & Schema Check
     try {
       const dbConnected = await db.connectDb();
       if (!dbConnected) {
         console.error('❌ Startup check failed: Database connectivity verification failed.');
-        if (process.env.NODE_ENV === 'production') {
-          console.error('💥 Crashing server in production due to DB connection failure.');
-          process.exit(1);
-        }
-      }
-    } catch (err) {
-      console.error('❌ Startup check failed: Exception during database verification:', err.message);
-      if (process.env.NODE_ENV === 'production') {
         process.exit(1);
       }
+
+      console.log('🔍 [Startup Validation] Verifying critical schema tables exist...');
+      const tables = [
+        { name: 'User (Customers)', check: () => db.user.findFirst() },
+        { name: 'Booking (Bookings)', check: () => db.booking.findFirst() },
+        { name: 'Service (Services)', check: () => db.service.findFirst() },
+        { name: 'ServicePartner (Partners)', check: () => db.servicePartner.findFirst() },
+        { name: 'Review (Ratings)', check: () => db.review.findFirst() },
+        { name: 'PromoCode (Coupons)', check: () => db.promoCode.findFirst() },
+        { name: 'Notification (Notifications)', check: () => db.notification.findFirst() }
+      ];
+
+      for (const table of tables) {
+        await table.check();
+      }
+      console.log('✅ [Startup Validation] All critical schema tables successfully verified.');
+    } catch (err) {
+      console.error('❌ Startup check failed: Database schema validation failed:', err.message);
+      console.error('💥 [JK Server] DO NOT recreate. DO NOT seed. Stopping startup sequence immediately to prevent database corruption.');
+      process.exit(1);
     }
 
     // 2. SMTP Connectivity Check (with timeout to prevent hanging)
