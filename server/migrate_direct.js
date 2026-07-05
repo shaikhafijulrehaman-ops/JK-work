@@ -35,7 +35,7 @@ const env = { ...process.env, DATABASE_URL: dbUrl };
 
 // Run prisma db push --accept-data-loss --force-reset
 console.log('Running npx prisma db push --accept-data-loss --force-reset...');
-const child = spawn('npx', ['prisma', 'db', 'push', '--accept-data-loss', '--force-reset'], {
+const child = spawn('npx', ['prisma', 'db', 'push', '--accept-data-loss'], {
   env,
   shell: true,
   stdio: 'inherit',
