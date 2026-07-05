@@ -23,6 +23,7 @@ const PartnerOverviewTab = ({ partnerPerformances, onRefreshPayout }) => {
   const [search, setSearch] = React.useState('');
   const [categoryFilter, setCategoryFilter] = React.useState('ALL');
   const [expandedPartnerId, setExpandedPartnerId] = React.useState(null);
+  const [refreshingId, setRefreshingId] = React.useState(null);
 
   const filteredPerformances = React.useMemo(() => {
     return partnerPerformances.filter(p => {
@@ -136,10 +137,25 @@ const PartnerOverviewTab = ({ partnerPerformances, onRefreshPayout }) => {
 
                       {p.payoutEligible ? (
                         <button
-                          onClick={() => onRefreshPayout(p.id)}
-                          className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg transition-all shadow-sm"
+                          onClick={async () => {
+                            setRefreshingId(p.id);
+                            try {
+                              await onRefreshPayout(p.id);
+                            } finally {
+                              setRefreshingId(null);
+                            }
+                          }}
+                          disabled={refreshingId === p.id}
+                          className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg transition-all shadow-sm flex items-center justify-center space-x-1 disabled:opacity-55 cursor-pointer"
                         >
-                          Refresh Payout
+                          {refreshingId === p.id ? (
+                            <>
+                              <span className="w-2.5 h-2.5 rounded-full border border-white border-t-transparent animate-spin mr-1"></span>
+                              <span>Processing...</span>
+                            </>
+                          ) : (
+                            <span>Refresh Payout</span>
+                          )}
                         </button>
                       ) : (
                         <div className="inline-block text-right align-middle">
@@ -391,6 +407,8 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     isActive: true
   });
   const [savingCoupon, setSavingCoupon] = useState(false);
+  const [savingPartner, setSavingPartner] = useState(false);
+  const [updatingBookingId, setUpdatingBookingId] = useState(null);
 
   // Notifications bell & seen tracking states
   const [showNotifications, setShowNotifications] = useState(false);
@@ -767,6 +785,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   }, [activeTab, auditPage, auditFilter]);
 
   // Fetch page specific data
+  const getTabCacheKey = (tabName) => {
+    if (tabName === 'customer-ratings') return 'tab_customer_ratings';
+    if (tabName === 'partner-overview') return 'tab_partner_overview';
+    return `tab_${tabName}`;
+  };
+
   const fetchTabSpecificData = async (tab, forceRefetch = false) => {
     // If it's one of the extracted tabs, they handle their own data loading
     if (['analytics', 'payments', 'partner-approvals'].includes(tab)) {
@@ -775,21 +799,29 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       return;
     }
 
-    const cached = getCache(`tab_${tab}`);
+    const cached = getCache(getTabCacheKey(tab));
     if (cached && !forceRefetch) {
       if (tab === 'dashboard') {
         setAnalytics(cached.analytics);
         setWorkers(cached.workers);
       } else if (tab === 'bookings') {
         setBookings(cached);
+        const cachedPartners = getCache('tab_partners');
+        if (cachedPartners) {
+          setPartners(cachedPartners);
+        }
+      } else if (tab === 'partners') {
+        setPartners(cached);
       } else if (tab === 'customers') {
         setCustomers(cached);
       } else if (tab === 'services') {
         setServices(cached);
       } else if (tab === 'coupons') {
         setCoupons(cached);
-      } else if (tab === 'audit-logs') {
-        // Handled by dedicated useEffect and state
+      } else if (tab === 'customer-ratings') {
+        setReviews(cached);
+      } else if (tab === 'partner-overview') {
+        setPartnerPerformances(cached);
       }
       setTabLoading(false);
       setLoading(false);
@@ -909,9 +941,115 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     }
   };
 
+  const preloadAllAdminData = async () => {
+    try {
+      const [
+        analyticsRes,
+        workersRes,
+        bookingsRes,
+        partnersRes,
+        customersRes,
+        servicesRes,
+        couponsRes,
+        reviewsRes,
+        perfRes
+      ] = await Promise.all([
+        fetchWithRetry('/api/admin/analytics', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/workers?status=PENDING', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/bookings', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/partners', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/customers', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/services', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/coupons', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/reviews', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/partners/performance', { credentials: 'include' }).catch(() => null)
+      ]);
+
+      if (analyticsRes && workersRes) {
+        const analyticsData = await analyticsRes.json().catch(() => null);
+        const workersData = await workersRes.json().catch(() => null);
+        if (analyticsData?.success && workersData?.success) {
+          const stats = analyticsData.analytics;
+          const pendingList = workersData.workers || [];
+          setCache('tab_dashboard', stats ? { analytics: stats, workers: pendingList } : null);
+          if (activeTab === 'dashboard' && stats) {
+            setAnalytics(stats);
+            setWorkers(pendingList);
+          }
+        }
+      }
+
+      if (bookingsRes) {
+        const bookingsData = await bookingsRes.json().catch(() => null);
+        if (bookingsData?.success) {
+          setCache('tab_bookings', bookingsData.bookings || []);
+          if (activeTab === 'bookings') setBookings(bookingsData.bookings || []);
+        }
+      }
+
+      if (partnersRes) {
+        const partnersData = await partnersRes.json().catch(() => null);
+        if (partnersData?.success) {
+          setCache('tab_partners', partnersData.partners || []);
+          if (activeTab === 'partners') setPartners(partnersData.partners || []);
+          if (activeTab === 'bookings') setPartners(partnersData.partners || []);
+        }
+      }
+
+      if (customersRes) {
+        const customersData = await customersRes.json().catch(() => null);
+        if (customersData?.success) {
+          setCache('tab_customers', customersData.customers || []);
+          if (activeTab === 'customers') setCustomers(customersData.customers || []);
+        }
+      }
+
+      if (servicesRes) {
+        const servicesData = await servicesRes.json().catch(() => null);
+        if (servicesData?.success) {
+          setCache('tab_services', servicesData.services || []);
+          if (activeTab === 'services') setServices(servicesData.services || []);
+        }
+      }
+
+      if (couponsRes) {
+        const couponsData = await couponsRes.json().catch(() => null);
+        if (couponsData?.success) {
+          setCache('tab_coupons', couponsData.coupons || []);
+          if (activeTab === 'coupons') setCoupons(couponsData.coupons || []);
+        }
+      }
+
+      if (reviewsRes) {
+        const reviewsData = await reviewsRes.json().catch(() => null);
+        if (reviewsData?.success) {
+          setCache('tab_customer_ratings', reviewsData.reviews || []);
+          if (activeTab === 'customer-ratings') setReviews(reviewsData.reviews || []);
+        }
+      }
+
+      if (perfRes) {
+        const perfData = await perfRes.json().catch(() => null);
+        if (perfData?.success) {
+          setCache('tab_partner_overview', perfData.performances || []);
+          if (activeTab === 'partner-overview') setPartnerPerformances(perfData.performances || []);
+        }
+      }
+    } catch (err) {
+      console.warn('Background preloading failed:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (user && user.role === 'ADMIN') {
+      preloadAllAdminData();
+    }
+  }, [user]);
+
   const fetchAllData = () => {
-    // Clear all caches
-    clearCache();
+    // Invalidate active tab and dashboard caches, keeping others intact
+    invalidateCache(getTabCacheKey(activeTab));
+    invalidateCache('tab_dashboard');
     // Force sync audit logs if tab is active
     if (activeTab === 'audit-logs') {
       fetchAuditLogs(auditPage, auditFilter, true);
@@ -1053,6 +1191,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       addNotification('Validation Error', 'Please fill in all fields.');
       return;
     }
+    setSavingPartner(true);
     const payload = {
       name: partnerFormName,
       email: partnerFormEmail,
@@ -1075,16 +1214,22 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       if (data.success) {
         addNotification('Success', data.message || 'Service partner saved successfully.');
         setIsPartnerModalOpen(false);
+        invalidateCache('tab_partners');
+        invalidateCache('tab_partner_overview');
+        invalidateCache('tab_dashboard');
         fetchTabSpecificData('partners', true);
       } else {
         addNotification('Operation Failed', data.message || 'Unable to save partner.');
       }
     } catch (err) {
       addNotification('Operation Failed', 'Database connection error.');
+    } finally {
+      setSavingPartner(false);
     }
   };
 
   const handleChangeBookingStatus = async (bookingId, status) => {
+    setUpdatingBookingId(bookingId);
     try {
       const res = await fetch(`/api/bookings/${bookingId}/status`, {
         method: 'PUT',
@@ -1094,10 +1239,16 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       });
       if (res.ok) {
         addNotification('Status Updated', `Booking status changed to ${status}.`);
-        fetchAllData();
+        // Immediately update state locally to prevent UI lag
+        setBookings(prev => prev.map(item => item.id === bookingId ? { ...item, status } : item));
+        // Force refresh bookings tab cache without blocking UI
+        invalidateCache('tab_bookings');
+        invalidateCache('tab_dashboard');
       }
     } catch (err) {
       addNotification('Operation Failed', 'Unable to update booking status. Please check your connection.');
+    } finally {
+      setUpdatingBookingId(null);
     }
   };
 
@@ -2220,7 +2371,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 <td className="p-4">
                                   <select
                                     value={b.status}
-                                    disabled={b.status === 'COMPLETED' || b.status === 'CANCELLED'}
+                                    disabled={b.status === 'COMPLETED' || b.status === 'CANCELLED' || updatingBookingId === b.id}
                                     onChange={async (e) => {
                                       const nextStatus = e.target.value;
                                       if (nextStatus === 'ASSIGNED') {
@@ -2659,10 +2810,19 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           <button 
                             type="submit" 
                             disabled={addingService}
-                            className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer"
+                            className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-55"
                           >
-                            <Plus className="w-4 h-4" />
-                            <span>{addingService ? 'Saving...' : editingServiceId ? 'Save Changes' : 'Create Service'}</span>
+                            {addingService ? (
+                              <>
+                                <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1"></span>
+                                <span>Saving...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4" />
+                                <span>{editingServiceId ? 'Save Changes' : 'Create Service'}</span>
+                              </>
+                            )}
                           </button>
 
                           {editingServiceId && (
@@ -2933,10 +3093,19 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                           <button 
                             type="submit" 
                             disabled={savingCoupon}
-                            className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer"
+                            className="w-full bg-brand hover:bg-brand-dark disabled:bg-slate-350 text-white font-extrabold text-xs uppercase py-3 rounded-xl tracking-wider transition-all shadow-md shadow-brand/10 hover:shadow-brand/20 flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-55"
                           >
-                            <Plus className="w-4 h-4" />
-                            <span>{savingCoupon ? 'Saving...' : couponForm.id ? 'Save Coupon' : 'Create Coupon'}</span>
+                            {savingCoupon ? (
+                              <>
+                                <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1"></span>
+                                <span>Saving...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4" />
+                                <span>{couponForm.id ? 'Save Coupon' : 'Create Coupon'}</span>
+                              </>
+                            )}
                           </button>
 
                           {couponForm.id && (
@@ -3288,9 +3457,17 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
                 <button 
                   type="submit"
-                  className="w-full bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase py-3 rounded-xl transition-all shadow-md shadow-brand/10 cursor-pointer mt-4"
+                  disabled={savingPartner}
+                  className="w-full bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase py-3 rounded-xl transition-all shadow-md shadow-brand/10 cursor-pointer mt-4 flex items-center justify-center space-x-1 disabled:opacity-55"
                 >
-                  <span>{editingPartnerId ? 'Save Changes' : 'Onboard Partner'}</span>
+                  {savingPartner ? (
+                    <>
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1"></span>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>{editingPartnerId ? 'Save Changes' : 'Onboard Partner'}</span>
+                  )}
                 </button>
               </form>
             </motion.div>
