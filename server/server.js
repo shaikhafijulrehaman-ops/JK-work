@@ -281,32 +281,46 @@ async function startServer() {
     console.log('🏁 [JK Enterprises Server] Running startup health checks...');
     
     // 1. Database Connection & Schema Check
-    try {
-      const dbConnected = await db.connectDb();
-      if (!dbConnected) {
-        console.error('❌ Startup check failed: Database connectivity verification failed.');
+    const maxStartupAttempts = 10;
+    let startupAttempt = 1;
+    let dbConnected = false;
+
+    while (startupAttempt <= maxStartupAttempts) {
+      try {
+        console.log(`🔌 Verifying live PostgreSQL database connectivity (Attempt ${startupAttempt}/${maxStartupAttempts})...`);
+        dbConnected = await db.connectDb();
+        if (dbConnected) {
+          console.log('🔍 [Startup Validation] Verifying critical schema tables exist...');
+          const tables = [
+            { name: 'User (Customers)', check: () => db.user.findFirst() },
+            { name: 'Booking (Bookings)', check: () => db.booking.findFirst() },
+            { name: 'Service (Services)', check: () => db.service.findFirst() },
+            { name: 'ServicePartner (Partners)', check: () => db.servicePartner.findFirst() },
+            { name: 'Review (Ratings)', check: () => db.review.findFirst() },
+            { name: 'PromoCode (Coupons)', check: () => db.promoCode.findFirst() },
+            { name: 'Notification (Notifications)', check: () => db.notification.findFirst() }
+          ];
+
+          for (const table of tables) {
+            await table.check();
+          }
+          console.log('✅ [Startup Validation] All critical schema tables successfully verified.');
+          break; // Connected and verified successfully
+        }
+      } catch (err) {
+        console.error(`⚠️ [Startup Validation] Database validation failed on attempt ${startupAttempt}: ${err.message}`);
+      }
+
+      if (startupAttempt === maxStartupAttempts) {
+        console.error('❌ Startup check failed: Database connectivity/schema verification failed after maximum retries.');
+        console.error('💥 [JK Server] DO NOT recreate. DO NOT seed. Stopping startup sequence immediately to prevent database corruption.');
         process.exit(1);
       }
 
-      console.log('🔍 [Startup Validation] Verifying critical schema tables exist...');
-      const tables = [
-        { name: 'User (Customers)', check: () => db.user.findFirst() },
-        { name: 'Booking (Bookings)', check: () => db.booking.findFirst() },
-        { name: 'Service (Services)', check: () => db.service.findFirst() },
-        { name: 'ServicePartner (Partners)', check: () => db.servicePartner.findFirst() },
-        { name: 'Review (Ratings)', check: () => db.review.findFirst() },
-        { name: 'PromoCode (Coupons)', check: () => db.promoCode.findFirst() },
-        { name: 'Notification (Notifications)', check: () => db.notification.findFirst() }
-      ];
-
-      for (const table of tables) {
-        await table.check();
-      }
-      console.log('✅ [Startup Validation] All critical schema tables successfully verified.');
-    } catch (err) {
-      console.error('❌ Startup check failed: Database schema validation failed:', err.message);
-      console.error('💥 [JK Server] DO NOT recreate. DO NOT seed. Stopping startup sequence immediately to prevent database corruption.');
-      process.exit(1);
+      const delayMs = Math.min(startupAttempt * startupAttempt * 1000, 15000);
+      console.log(`⏳ Database connection/schema unavailable. Retrying in ${delayMs / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      startupAttempt++;
     }
 
     // 2. SMTP Connectivity Check (with timeout to prevent hanging)

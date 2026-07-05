@@ -36,46 +36,33 @@ const db = {
   transaction: async (fn) => {
     const maxAttempts = 3;
     let attempt = 1;
-    const queryTimeoutMs = 45000;
 
     while (true) {
-      let timeoutId;
       try {
-        const timeoutPromise = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('DATABASE_TRANSACTION_TIMEOUT')), queryTimeoutMs);
-        });
-
-        const txPromise = prisma.$transaction(async (tx) => {
+        return await prisma.$transaction(async (tx) => {
           return await fn(tx);
         });
-
-        const result = await Promise.race([txPromise, timeoutPromise]);
-        return result;
       } catch (err) {
         console.error(`💥 [DATABASE TRANSACTION ERROR] (Attempt ${attempt}/${maxAttempts}): ${err.message}`);
 
-        const isTimeout = err.message === 'DATABASE_TRANSACTION_TIMEOUT';
-        const isTransient = isTimeout || (
-                            err.message?.toLowerCase().includes('connection') || 
-                            err.message?.toLowerCase().includes('timeout') || 
-                            err.message?.toLowerCase().includes('pool') ||
-                            err.message?.toLowerCase().includes('deadlock') ||
-                            err.message?.toLowerCase().includes('socket') ||
-                            err.code === 'P1001' ||
-                            err.code === 'P1008' ||
-                            err.code === 'P2024');
+        const isTransientConnection = 
+          err.message?.toLowerCase().includes('connection') || 
+          err.message?.toLowerCase().includes('pool') ||
+          err.message?.toLowerCase().includes('socket') ||
+          err.code === 'P1001' ||
+          err.code === 'P1002' ||
+          err.code === 'P1008' ||
+          err.code === 'P2024';
 
-        if (isTransient && attempt < maxAttempts) {
+        if (isTransientConnection && attempt < maxAttempts) {
           const backoff = attempt * attempt * 200;
-          console.warn(`⚠️ [JK Database] Transient transaction error. Retrying in ${backoff}ms...`);
+          console.warn(`⚠️ [JK Database] Transient transaction connection error. Retrying in ${backoff}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoff));
           attempt++;
           continue;
         }
 
         throw err;
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
       }
     }
   }
@@ -120,43 +107,31 @@ activeModels.forEach(modelName => {
     db[modelName][methodName] = async function(...args) {
       const maxAttempts = 3;
       let attempt = 1;
-      const queryTimeoutMs = 10000; // 10 seconds timeout for cold starts
 
       while (true) {
-        let timeoutId;
         try {
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('DATABASE_QUERY_TIMEOUT')), queryTimeoutMs);
-          });
-
-          const queryPromise = prismaModel[methodName].apply(prismaModel, args);
-          const result = await Promise.race([queryPromise, timeoutPromise]);
-          return result;
+          return await prismaModel[methodName].apply(prismaModel, args);
         } catch (err) {
           console.error(`💥 [DATABASE QUERY ERROR] Exception during ${modelName}.${methodName} (Attempt ${attempt}/${maxAttempts}): ${err.message}`);
 
-          const isTimeout = err.message === 'DATABASE_QUERY_TIMEOUT';
-          const isTransient = isTimeout || (
-                              err.message?.toLowerCase().includes('connection') || 
-                              err.message?.toLowerCase().includes('timeout') || 
-                              err.message?.toLowerCase().includes('pool') ||
-                              err.message?.toLowerCase().includes('deadlock') ||
-                              err.message?.toLowerCase().includes('socket') ||
-                              err.code === 'P1001' ||
-                              err.code === 'P1008' ||
-                              err.code === 'P2024');
+          const isTransientConnection = 
+            err.message?.toLowerCase().includes('connection') || 
+            err.message?.toLowerCase().includes('pool') ||
+            err.message?.toLowerCase().includes('socket') ||
+            err.code === 'P1001' ||
+            err.code === 'P1002' ||
+            err.code === 'P1008' ||
+            err.code === 'P2024';
 
-          if (isTransient && attempt < maxAttempts) {
+          if (isTransientConnection && attempt < maxAttempts) {
             const backoff = attempt * attempt * 200;
-            console.warn(`⚠️ [JK Database] Transient error on ${modelName}.${methodName}. Retrying in ${backoff}ms...`);
+            console.warn(`⚠️ [JK Database] Transient connection error on ${modelName}.${methodName}. Retrying in ${backoff}ms...`);
             await new Promise(resolve => setTimeout(resolve, backoff));
             attempt++;
             continue;
           }
 
           throw err;
-        } finally {
-          if (timeoutId) clearTimeout(timeoutId);
         }
       }
     };

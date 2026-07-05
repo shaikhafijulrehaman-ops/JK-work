@@ -80,32 +80,54 @@ exports.getAnalytics = async (req, res) => {
 // Get all database records for the unified Admin SaaS dashboard
 exports.getDashboardData = async (req, res) => {
   try {
-    const bookings = await db.booking.findMany({
-      take: 105,
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true }
+    const [bookings, partners, dbCustomers, services, coupons] = await Promise.all([
+      db.booking.findMany({
+        take: 105,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true }
+          },
+          items: {
+            include: { service: true }
+          }
         },
-        items: {
-          include: { service: true }
+        orderBy: { createdAt: 'desc' }
+      }),
+      db.servicePartner.findMany({}).catch(() => []),
+      db.user.findMany({
+        where: { role: 'USER' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          pincode: true,
+          serviceArea: true,
+          createdAt: true,
+          bookings: {
+            select: { createdAt: true },
+            orderBy: { createdAt: 'desc' }
+          }
         }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+      }),
+      db.service.findMany({
+        where: { isDeleted: false },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          description: true,
+          price: true,
+          durationText: true,
+          packageText: true,
+          imageUrl: true,
+          isActive: true
+        }
+      }),
+      db.promoCode.findMany({}).catch(() => [])
+    ]);
 
-    // Fetch other lists
-    const partners = await db.servicePartner.findMany({}).catch(() => []);
     const workers = partners;
-
-    const dbCustomers = await db.user.findMany({
-      where: { role: 'USER' },
-      include: {
-        bookings: {
-          select: { createdAt: true },
-          orderBy: { createdAt: 'desc' }
-        }
-      }
-    });
 
     const customers = dbCustomers.map(c => {
       const bookingsCount = c.bookings.length;
@@ -122,10 +144,6 @@ exports.getDashboardData = async (req, res) => {
         lastBooking
       };
     });
-
-    const services = await db.service.findMany({});
-
-    const coupons = await db.promoCode.findMany({}).catch(() => []);
 
     res.status(200).json({
       success: true,
@@ -266,7 +284,14 @@ exports.getCustomers = async (req, res) => {
   try {
     const dbCustomers = await db.user.findMany({
       where: { role: 'USER' },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        pincode: true,
+        serviceArea: true,
+        createdAt: true,
         bookings: {
           select: { createdAt: true },
           orderBy: { createdAt: 'desc' }
@@ -300,7 +325,20 @@ exports.getCustomers = async (req, res) => {
 // Get all services
 exports.getServices = async (req, res) => {
   try {
-    const services = await db.service.findMany({});
+    const services = await db.service.findMany({
+      where: { isDeleted: false },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        description: true,
+        price: true,
+        durationText: true,
+        packageText: true,
+        imageUrl: true,
+        isActive: true
+      }
+    });
     res.status(200).json({ success: true, services });
   } catch (error) {
     console.error('Error fetching admin services:', error);
@@ -312,7 +350,13 @@ exports.getServices = async (req, res) => {
 exports.getPayments = async (req, res) => {
   try {
     const bookings = await db.booking.findMany({
-      include: {
+      select: {
+        id: true,
+        finalPrice: true,
+        createdAt: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        paymentId: true,
         user: { select: { name: true } }
       },
       orderBy: { createdAt: 'desc' }
