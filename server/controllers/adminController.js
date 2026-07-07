@@ -1,6 +1,24 @@
 const db = require('../db');
 const cache = require('../utils/cache');
 
+const sanitizeServiceImages = (services) => {
+  const list = Array.isArray(services) ? services : [services];
+  list.forEach(s => {
+    if (s && s.imageUrl && s.imageUrl.startsWith('data:image')) {
+      const cat = s.category || '';
+      const mapping = {
+        'cleaning': '/services/housecleaning.webp',
+        'care': '/services/babycare.webp',
+        'technical': '/services/electrician.webp',
+        'cooking': '/services/cooking-service.webp',
+        'shifting': '/services/house-shifting.webp',
+        'painting': '/services/house-painting.webp'
+      };
+      s.imageUrl = mapping[cat.toLowerCase()] || '/services/housecleaning.webp';
+    }
+  });
+};
+
 // Deprecated worker endpoints
 exports.getWorkers = async (req, res) => {
   return res.status(200).json({ success: true, workers: [] });
@@ -127,6 +145,8 @@ exports.getDashboardData = async (req, res) => {
       }),
       db.promoCode.findMany({}).catch(() => [])
     ]);
+
+    sanitizeServiceImages(services);
 
     const workers = partners;
 
@@ -343,6 +363,7 @@ exports.getServices = async (req, res) => {
         isActive: true
       }
     });
+    sanitizeServiceImages(services);
     res.status(200).json({ success: true, services });
   } catch (error) {
     console.error('Error fetching admin services:', error);
