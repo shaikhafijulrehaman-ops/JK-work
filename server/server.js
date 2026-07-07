@@ -324,7 +324,7 @@ async function startServer() {
       startupAttempt++;
     }
 
-    // 2. SMTP Connectivity Check (with timeout to prevent hanging)
+    // 2. SMTP & Email Gateway Connectivity Check (with timeout to prevent hanging)
     try {
       console.log('🔌 Verifying SMTP email server connection...');
       const transporter = nodemailer.createTransport({
@@ -342,9 +342,31 @@ async function startServer() {
       await transporter.verify();
       console.log('✉️ [SMTP Gateway] Connection verified successfully.');
     } catch (err) {
-      console.error('⚠️ [SMTP Gateway] Warning: SMTP email gateway verification failed:', err.message);
-      // Do not hard-crash the entire HTTP server in production just because email is down/unreachable,
-      // but print a clear warning so the admin can fix SMTP credentials.
+      console.log(`ℹ️ [SMTP Gateway] SMTP connection failed/blocked: ${err.message}. Verifying Resend HTTP API Gateway...`);
+      
+      // Fallback to verify Resend REST API (HTTPS port 443 - never blocked by Render)
+      const apiKey = process.env.RESEND_API_KEY || process.env.SMTP_PASS;
+      if (apiKey) {
+        try {
+          const response = await fetch('https://api.resend.com/domains', {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`
+            },
+            signal: AbortSignal.timeout(10000) // 10s timeout
+          });
+          
+          if (response.ok) {
+            console.log('✉️ [Resend API Gateway] API connection verified successfully via Resend HTTP REST API.');
+          } else {
+            const data = await response.json().catch(() => ({}));
+            console.error(`⚠️ [Email Gateway] Resend HTTP API verification failed: Status ${response.status}. Message: ${data.message || 'Unknown error'}`);
+          }
+        } catch (apiErr) {
+          console.error(`⚠️ [Email Gateway] Resend HTTP API verification check failed: ${apiErr.message}`);
+        }
+      } else {
+        console.error('⚠️ [SMTP Gateway] Warning: SMTP email gateway verification failed and no Resend API Key found.');
+      }
     }
 
     console.log('✅ Startup health checks sequence completed.');
