@@ -1,10 +1,17 @@
 const db = require('../db');
 const { logActivity } = require('../utils/auditLogger');
+const cache = require('../utils/cache');
 
 /**
  * Get all catalog services
  */
 exports.getAllServices = async (req, res) => {
+  const cacheKey = 'all_services';
+  const cached = cache.getCache(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   const start = Date.now();
   try {
     const services = await db.service.findMany({
@@ -29,10 +36,13 @@ exports.getAllServices = async (req, res) => {
       console.log(`[DATABASE LOG] Get all services query took ${duration}ms`);
     }
 
-    res.status(200).json({
+    const payload = {
       success: true,
       services
-    });
+    };
+    cache.setCache(cacheKey, payload, 60000); // 1 minute
+
+    res.status(200).json(payload);
   } catch (error) {
     console.error('Get services error:', error);
     res.status(500).json({ success: false, message: 'Failed to retrieve catalog services.' });
@@ -108,6 +118,7 @@ exports.createService = async (req, res) => {
       details: { id: service.id, name: service.name, price: service.price }
     });
 
+    cache.clearCache();
     res.status(201).json({
       success: true,
       message: 'New catalog service added successfully.',
@@ -173,6 +184,7 @@ exports.updateService = async (req, res) => {
     });
 
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       message: 'Service details updated successfully.',
@@ -210,6 +222,7 @@ exports.deleteService = async (req, res) => {
       details: { id: existing.id, name: existing.name }
     });
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       message: 'Service deleted from catalog successfully.'

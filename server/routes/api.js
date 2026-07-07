@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { cacheMiddleware } = require('../utils/cache');
 
 // Middlewares
 const { protect, restrictTo } = require('../middlewares/auth');
@@ -38,7 +39,7 @@ router.delete('/addresses/:id', protect, addressCtrl.deleteAddress);
 router.put('/addresses/:id/default', protect, addressCtrl.setDefaultAddress);
 
 // ==================== SERVICE CATALOG ====================
-router.get('/services', serviceCtrl.getAllServices);
+router.get('/services', cacheMiddleware(60000), serviceCtrl.getAllServices);
 router.get('/services/:id', serviceCtrl.getServiceById);
 router.post('/services', protect, restrictTo('ADMIN'), serviceCtrl.createService);
 router.put('/services/:id', protect, restrictTo('ADMIN'), serviceCtrl.updateService);

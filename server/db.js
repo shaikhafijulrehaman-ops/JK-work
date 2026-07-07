@@ -33,7 +33,7 @@ const db = {
       return { connected: false, error: err.message };
     }
   },
-  transaction: async (fn) => {
+  transaction: async (fn, options = {}) => {
     const maxAttempts = 3;
     let attempt = 1;
 
@@ -41,7 +41,7 @@ const db = {
       try {
         return await prisma.$transaction(async (tx) => {
           return await fn(tx);
-        });
+        }, options);
       } catch (err) {
         console.error(`💥 [DATABASE TRANSACTION ERROR] (Attempt ${attempt}/${maxAttempts}): ${err.message}`);
 

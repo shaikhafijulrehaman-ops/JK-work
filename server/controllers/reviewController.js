@@ -1,5 +1,7 @@
 const db = require('../db');
-const { logStatusHistory, syncPartnerPerformance } = require('./bookingController');
+const { syncPartnerPerformance } = require('../utils/payoutSync');
+const cache = require('../utils/cache');
+const { logStatusHistory } = require('./bookingController');
 
 /**
  * Submit a rating and review for a completed service call
@@ -104,10 +106,12 @@ exports.submitReview = async (req, res) => {
       });
 
       return { review, updatedBooking };
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     // Sync partner performance (outside transaction to avoid pool deadlock during heavy queries)
     await syncPartnerPerformance(booking.partnerId);
+
+    cache.clearCache();
 
     res.status(201).json({
       success: true,

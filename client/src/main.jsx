@@ -5,6 +5,8 @@ import './index.css';
 
 // Global Fetch Timeout & Retry Wrapper (5s per attempt, 3 attempts max = 15s total)
 const originalFetch = window.fetch;
+const activeRequests = {};
+
 window.fetch = async function (url, options = {}) {
   // If the request is not to our backend API, or explicitly skipped, bypass
   const isApi = typeof url === 'string' && url.includes('/api');
@@ -12,6 +14,39 @@ window.fetch = async function (url, options = {}) {
     return originalFetch(url, options);
   }
 
+  const method = options.method || 'GET';
+  const cacheKey = typeof url === 'string' ? url : url.url;
+
+  if (method.toUpperCase() === 'GET') {
+    if (activeRequests[cacheKey]) {
+      const res = await activeRequests[cacheKey];
+      return res.clone();
+    }
+
+    const promise = (async () => {
+      try {
+        const response = await executeFetch(url, options);
+        return response;
+      } catch (err) {
+        delete activeRequests[cacheKey];
+        throw err;
+      } finally {
+        setTimeout(() => {
+          delete activeRequests[cacheKey];
+        }, 500);
+      }
+    })();
+
+    activeRequests[cacheKey] = promise;
+    const response = await promise;
+    return response.clone();
+  }
+
+  return executeFetch(url, options);
+};
+
+// Helper containing the original retry & timeout loop
+async function executeFetch(url, options) {
   // Automatically inject active Authorization Bearer token from localStorage
   const token = localStorage.getItem('jk_token');
   const headers = { ...options.headers };
@@ -68,7 +103,7 @@ window.fetch = async function (url, options = {}) {
       }
     }
   }
-};
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

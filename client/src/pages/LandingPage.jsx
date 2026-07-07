@@ -178,10 +178,10 @@ export default function LandingPage() {
 
   // Most Booked Services
   const mostBooked = [
-    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, rating: '4.9★', durationText: '5-6 Hours', imageUrl: '/services/housecleaning.jpg' },
-    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/electrician.jpg' },
-    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, rating: '4.9★', durationText: '6 Hours', imageUrl: '/services/babycare.jpg' },
-    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/cooking-service.jpg' }
+    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, rating: '4.9★', durationText: '5-6 Hours', imageUrl: '/services/housecleaning.webp' },
+    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/electrician.webp' },
+    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, rating: '4.9★', durationText: '6 Hours', imageUrl: '/services/babycare.webp' },
+    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/cooking-service.webp' }
   ];
 
 
@@ -482,8 +482,26 @@ export default function LandingPage() {
               <div key={idx} className="premium-card overflow-hidden flex flex-col justify-between group">
                 <div>
                   {/* Image banner with rating tag */}
-                  <div className="h-40 w-full overflow-hidden bg-slate-50 relative">
-                    <img src={service.imageUrl} alt={service.name} className="w-full h-full object-cover group-hover:scale-102 transition-all duration-300" />
+                  <div className="h-40 w-full overflow-hidden bg-slate-50 relative flex items-center justify-center">
+                    <img 
+                      src={service.imageUrl} 
+                      alt={service.name} 
+                      style={{ display: 'none' }}
+                      onLoad={(e) => {
+                        e.target.style.display = 'block';
+                        const fallback = e.target.parentNode.querySelector('.image-fallback');
+                        if (fallback) fallback.style.display = 'none';
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        const fallback = e.target.parentNode.querySelector('.image-fallback');
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                      className="w-full h-full object-cover group-hover:scale-102 transition-all duration-300" 
+                    />
+                    <div className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[10px] font-semibold text-slate-400">
+                      Image Not Available
+                    </div>
                     <span className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs text-slate-800 border border-slate-100 text-[9px] font-black uppercase px-2.5 py-0.5 rounded shadow-xs flex items-center">
                       <Star className="w-3 h-3 text-amber-500 fill-current mr-0.5" />
                       {service.rating.replace('★','')}

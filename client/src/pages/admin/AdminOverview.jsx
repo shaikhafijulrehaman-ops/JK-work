@@ -2887,6 +2887,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                               src={srv.imageUrl} 
                                               alt={srv.name} 
                                               className="w-full h-full object-cover" 
+                                              style={{ display: 'none' }}
+                                              onLoad={(e) => {
+                                                e.target.style.display = 'block';
+                                                const fallback = e.target.parentNode.querySelector('.image-fallback');
+                                                if (fallback) fallback.style.display = 'none';
+                                              }}
                                               onError={(e) => {
                                                 e.target.style.display = 'none';
                                                 const fallback = e.target.parentNode.querySelector('.image-fallback');
@@ -2896,7 +2902,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                           ) : null}
                                           <div 
                                             className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[6px] font-bold text-slate-400 text-center leading-none p-0.5"
-                                            style={{ display: srv.imageUrl ? 'none' : 'flex' }}
                                           >
                                             Image Not Available
                                           </div>

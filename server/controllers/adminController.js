@@ -1,4 +1,5 @@
 const db = require('../db');
+const cache = require('../utils/cache');
 
 // Deprecated worker endpoints
 exports.getWorkers = async (req, res) => {
@@ -205,6 +206,7 @@ exports.createCoupon = async (req, res) => {
       }
     });
 
+    cache.clearCache();
     res.status(201).json({ success: true, message: 'Coupon created successfully.', coupon });
   } catch (error) {
     console.error('Error creating coupon:', error);
@@ -238,6 +240,7 @@ exports.updateCoupon = async (req, res) => {
       }
     });
 
+    cache.clearCache();
     res.status(200).json({ success: true, message: 'Coupon updated successfully.', coupon: updated });
   } catch (error) {
     console.error('Error updating coupon:', error);
@@ -251,6 +254,7 @@ exports.deleteCoupon = async (req, res) => {
     const { id } = req.params;
     
     await db.promoCode.delete({ where: { id } });
+    cache.clearCache();
     res.status(200).json({ success: true, message: 'Coupon deleted successfully.' });
   } catch (error) {
     console.error('Error deleting coupon:', error);
@@ -487,6 +491,7 @@ exports.createPartner = async (req, res) => {
         status: status || 'AVAILABLE'
       }
     });
+    cache.clearCache();
     res.status(201).json({ success: true, message: 'Service partner created successfully.', partner });
   } catch (error) {
     console.error('Error creating service partner:', error);
@@ -525,6 +530,7 @@ exports.updatePartner = async (req, res) => {
         status: status || existing.status
       }
     });
+    cache.clearCache();
     res.status(200).json({ success: true, message: 'Service partner updated successfully.', partner: updated });
   } catch (error) {
     console.error('Error updating service partner:', error);
@@ -537,6 +543,7 @@ exports.deletePartner = async (req, res) => {
   try {
     const { id } = req.params;
     await db.servicePartner.delete({ where: { id } });
+    cache.clearCache();
     res.status(200).json({ success: true, message: 'Service partner deleted successfully.' });
   } catch (error) {
     console.error('Error deleting service partner:', error);
@@ -700,7 +707,9 @@ exports.refreshPartnerPayout = async (req, res) => {
           lastPayoutDate: new Date()
         }
       });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
+
+    cache.clearCache();
 
     res.status(200).json({
       success: true,

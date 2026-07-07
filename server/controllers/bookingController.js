@@ -1,4 +1,5 @@
 const db = require('../db');
+const cache = require('../utils/cache');
 const jwt = require('jsonwebtoken');
 const { logActivity } = require('../utils/auditLogger');
 
@@ -176,6 +177,7 @@ exports.createBooking = async (req, res) => {
       }).catch(() => {});
     }
 
+    cache.clearCache();
     res.status(201).json({
       success: true,
       message: 'Service booking placed successfully.',
@@ -217,6 +219,7 @@ exports.getBookings = async (req, res) => {
       });
     }
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       bookings: sanitizeBookingForUser(bookings, req.user)
@@ -254,6 +257,7 @@ exports.getBookingById = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized access to booking.' });
     }
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       booking: sanitizeBookingForUser(booking, req.user)
@@ -846,7 +850,7 @@ exports.confirmPaymentSuccess = async (req, res) => {
           }
 
           return newBooking;
-        });
+        }, { maxWait: 15000, timeout: 30000 });
         break; // Success! Exit retry loop
       } catch (err) {
         lastError = err;
@@ -893,6 +897,7 @@ exports.confirmPaymentSuccess = async (req, res) => {
     console.log(`Booking Time:\n${new Date(booking.createdAt).toLocaleString()}\n`);
     console.log('==================================================\n');
 
+    cache.clearCache();
     res.status(201).json({
       success: true,
       message: 'Booking created and payment confirmed successfully!',
@@ -1057,6 +1062,7 @@ exports.updateBookingStatus = async (req, res) => {
       await syncPartnerPerformance(booking.partnerId);
     }
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       message: `Job status transitioned successfully to ${status}.`,
@@ -1092,6 +1098,7 @@ exports.verifyArrival = async (req, res) => {
 
     // Idempotency: If arrival was already verified, return success to sync frontend state
     if (booking.status === 'ARRIVED' || booking.status === 'COMPLETED') {
+      cache.clearCache();
       return res.status(200).json({
         success: true,
         message: 'Arrival has already been verified.',
@@ -1137,6 +1144,7 @@ exports.verifyArrival = async (req, res) => {
       await syncPartnerPerformance(booking.partnerId);
     }
 
+    cache.clearCache();
     res.status(200).json({
       success: true,
       message: 'Service Partner Arrival Verified',

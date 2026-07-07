@@ -199,6 +199,12 @@ export default function ServicesPage() {
                           src={s.imageUrl} 
                           alt={s.name}
                           loading="lazy"
+                          style={{ display: 'none' }}
+                          onLoad={(e) => {
+                            e.target.style.display = 'block';
+                            const fallback = e.target.parentNode.querySelector('.image-fallback');
+                            if (fallback) fallback.style.display = 'none';
+                          }}
                           onError={(e) => {
                             e.target.style.display = 'none';
                             const fallback = e.target.parentNode.querySelector('.image-fallback');
@@ -209,7 +215,6 @@ export default function ServicesPage() {
                       ) : null}
                       <div 
                         className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[10px] sm:text-xs font-semibold text-slate-400"
-                        style={{ display: s.imageUrl ? 'none' : 'flex' }}
                       >
                         Image Not Available
                       </div>
