@@ -1,7 +1,6 @@
 const db = require('../db');
-const { syncPartnerPerformance } = require('../utils/payoutSync');
+const { syncPartnerPerformance, logStatusHistory } = require('./bookingController');
 const cache = require('../utils/cache');
-const { logStatusHistory } = require('./bookingController');
 
 /**
  * Submit a rating and review for a completed service call
