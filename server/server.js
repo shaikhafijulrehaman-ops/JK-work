@@ -291,7 +291,7 @@ async function startServer() {
         console.log(`🔌 Verifying live PostgreSQL database connectivity (Attempt ${startupAttempt}/${maxStartupAttempts})...`);
         dbConnected = await db.connectDb();
         if (dbConnected) {
-          console.log('🔍 [Startup Validation] Verifying critical schema tables exist...');
+          process.stdout.write('🔍 [Startup Validation] Verifying critical schema tables exist...\n');
           const tables = [
             { name: 'User (Customers)', check: () => db.user.findFirst() },
             { name: 'Booking (Bookings)', check: () => db.booking.findFirst() },
@@ -305,7 +305,7 @@ async function startServer() {
           for (const table of tables) {
             await table.check();
           }
-          console.log('✅ [Startup Validation] All critical schema tables successfully verified.');
+          process.stdout.write('✅ [Startup Validation] All critical schema tables successfully verified.\n');
           break; // Connected and verified successfully
         }
       } catch (err) {
