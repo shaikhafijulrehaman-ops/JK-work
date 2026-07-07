@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { ServiceImage, preloadServiceImages } from '../components/ServiceImage';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { 
@@ -63,6 +64,7 @@ export default function ServicesPage() {
       // If we have a fresh (non-expired) cache, use it and avoid calling the backend API
       if (freshCached && freshCached.length > 0) {
         setLoading(false);
+        preloadServiceImages(freshCached);
         return;
       }
 
@@ -74,6 +76,7 @@ export default function ServicesPage() {
           const activeServices = data.services.filter(s => s.isActive !== false);
           setCatalog(activeServices);
           setCache('services_catalog', activeServices);
+          preloadServiceImages(activeServices);
         } else {
           const stale = getCache('services_catalog', { allowStale: true });
           if (!stale || stale.length === 0) {
@@ -185,7 +188,7 @@ export default function ServicesPage() {
               No matching services found in our catalog. Try searching another package.
             </div>
           ) : (
-            filtered.map((s) => {
+            filtered.map((s, idx) => {
               return (
                 <div 
                   key={s.id}
@@ -194,30 +197,12 @@ export default function ServicesPage() {
                   <div>
                     {/* Image banner with gradient overlay - responsive height for clean mobile high-density grids */}
                     <div className="h-16 sm:h-32 md:h-48 w-full relative overflow-hidden bg-slate-100 flex items-center justify-center">
-                      {s.imageUrl ? (
-                        <img 
-                          src={s.imageUrl} 
-                          alt={s.name}
-                          loading="lazy"
-                          style={{ display: 'none' }}
-                          onLoad={(e) => {
-                            e.target.style.display = 'block';
-                            const fallback = e.target.parentNode.querySelector('.image-fallback');
-                            if (fallback) fallback.style.display = 'none';
-                          }}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            const fallback = e.target.parentNode.querySelector('.image-fallback');
-                            if (fallback) fallback.style.display = 'flex';
-                          }}
-                          className="w-full h-full object-cover transform group-hover:scale-103 transition-transform duration-500"
-                        />
-                      ) : null}
-                      <div 
-                        className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[10px] sm:text-xs font-semibold text-slate-400"
-                      >
-                        Image Not Available
-                      </div>
+                      <ServiceImage 
+                        src={s.imageUrl} 
+                        alt={s.name}
+                        priority={idx < 3}
+                        className="w-full h-full object-cover transform group-hover:scale-103 transition-transform duration-500"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
                       
                       {s.packageText && (

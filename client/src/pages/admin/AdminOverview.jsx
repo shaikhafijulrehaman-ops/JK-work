@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { ServiceImage } from '../../components/ServiceImage';
 import { useNotificationStore } from '../../store/notificationStore';
 import { getCache, setCache, invalidateCache, clearCache } from '../../utils/cache';
 import { fetchWithRetry } from '../../utils/api';
@@ -2733,17 +2734,17 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs text-slate-750 focus:outline-none"
                               >
                                 <option value="">-- Custom / Uploaded / None --</option>
-                                <option value="/services/babycare.jpg">Baby Care (babycare.jpg)</option>
-                                <option value="/services/housecleaning.jpg">Home Cleaning (housecleaning.jpg)</option>
-                                <option value="/services/bathroom-cleaning.jpg">Bathroom Cleaning (bathroom-cleaning.jpg)</option>
-                                <option value="/services/kitchen-cleaning.jpg">Kitchen Cleaning (kitchen-cleaning.jpg)</option>
-                                <option value="/services/dust-cleaning.jpg">Dust Cleaning (dust-cleaning.jpg)</option>
-                                <option value="/services/house-shifting.jpg">House Shifting (house-shifting.jpg)</option>
-                                <option value="/services/cooking-service.jpg">Cooking Service (cooking-service.jpg)</option>
-                                <option value="/services/house-painting.jpg">House Painting (house-painting.jpg)</option>
-                                <option value="/services/electrician.jpg">Electrician (electrician.jpg)</option>
-                                <option value="/services/security-provider-v2.jpg">Security Provider (security-provider-v2.jpg)</option>
-                                <option value="/services/pest-control-v2.jpg">Pest Control (pest-control-v2.jpg)</option>
+                                <option value="/services/babycare.webp">Baby Care (babycare.webp)</option>
+                                <option value="/services/housecleaning.webp">Home Cleaning (housecleaning.webp)</option>
+                                <option value="/services/bathroom-cleaning.webp">Bathroom Cleaning (bathroom-cleaning.webp)</option>
+                                <option value="/services/kitchen-cleaning.webp">Kitchen Cleaning (kitchen-cleaning.webp)</option>
+                                <option value="/services/dust-cleaning.webp">Dust Cleaning (dust-cleaning.webp)</option>
+                                <option value="/services/house-shifting.webp">House Shifting (house-shifting.webp)</option>
+                                <option value="/services/cooking-service.webp">Cooking Service (cooking-service.webp)</option>
+                                <option value="/services/house-painting.webp">House Painting (house-painting.webp)</option>
+                                <option value="/services/electrician.webp">Electrician (electrician.webp)</option>
+                                <option value="/services/security-provider-v2.webp">Security Provider (security-provider-v2.webp)</option>
+                                <option value="/services/pest-control-v2.webp">Pest Control (pest-control-v2.webp)</option>
                               </select>
                             </div>
 
@@ -2882,29 +2883,11 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                     <tr key={srv.id} className="hover:bg-slate-50/50">
                                       <td className="p-4">
                                         <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center relative">
-                                          {srv.imageUrl ? (
-                                            <img 
-                                              src={srv.imageUrl} 
-                                              alt={srv.name} 
-                                              className="w-full h-full object-cover" 
-                                              style={{ display: 'none' }}
-                                              onLoad={(e) => {
-                                                e.target.style.display = 'block';
-                                                const fallback = e.target.parentNode.querySelector('.image-fallback');
-                                                if (fallback) fallback.style.display = 'none';
-                                              }}
-                                              onError={(e) => {
-                                                e.target.style.display = 'none';
-                                                const fallback = e.target.parentNode.querySelector('.image-fallback');
-                                                if (fallback) fallback.style.display = 'flex';
-                                              }}
-                                            />
-                                          ) : null}
-                                          <div 
-                                            className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[6px] font-bold text-slate-400 text-center leading-none p-0.5"
-                                          >
-                                            Image Not Available
-                                          </div>
+                                          <ServiceImage 
+                                            src={srv.imageUrl} 
+                                            alt={srv.name} 
+                                            className="w-full h-full object-cover" 
+                                          />
                                         </div>
                                       </td>
                                       <td className="p-4 max-w-[200px]">
