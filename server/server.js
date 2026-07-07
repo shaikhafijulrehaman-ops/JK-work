@@ -37,6 +37,7 @@ const compression = require('compression');
 const apiRouter = require('./routes/api');
 
 const app = express();
+app.set('trust proxy', 1); // Trust single reverse proxy (Render, Heroku, etc.)
 const PORT = process.env.PORT || 5000;
 
 // Enable response compression (Gzip/Brotli)
