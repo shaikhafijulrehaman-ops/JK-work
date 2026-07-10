@@ -158,6 +158,51 @@ export default function App() {
                 <AdminOverview defaultTab="services" />
               </ProtectedRoute>
             } />
+            <Route path="/admin/audit-logs" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="audit-logs" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/customers" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="customers" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/partners" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="partners" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/customer-ratings" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="customer-ratings" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/partner-overview" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="partner-overview" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/payments" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="payments" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/coupons" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="coupons" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/analytics" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="analytics" />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/settings" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminOverview defaultTab="settings" />
+              </ProtectedRoute>
+            } />
 
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
