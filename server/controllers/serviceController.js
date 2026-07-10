@@ -3,21 +3,8 @@ const { logActivity } = require('../utils/auditLogger');
 const cache = require('../utils/cache');
 
 const sanitizeServiceImages = (services) => {
-  const list = Array.isArray(services) ? services : [services];
-  list.forEach(s => {
-    if (s && s.imageUrl && s.imageUrl.startsWith('data:image')) {
-      const cat = s.category || '';
-      const mapping = {
-        'cleaning': '/services/housecleaning.webp',
-        'care': '/services/babycare.webp',
-        'technical': '/services/electrician.webp',
-        'cooking': '/services/cooking-service.webp',
-        'shifting': '/services/house-shifting.webp',
-        'painting': '/services/house-painting.webp'
-      };
-      s.imageUrl = mapping[cat.toLowerCase()] || '/services/housecleaning.webp';
-    }
-  });
+  // Disable automatic mapping to default images.
+  // The uploaded or existing saved image must take highest priority.
 };
 
 /**
@@ -106,19 +93,6 @@ exports.createService = async (req, res) => {
 
     const trimmedName = name.trim();
 
-    // Check uniqueness of service name (case-insensitive and trimmed)
-    const existingName = await db.service.findFirst({
-      where: {
-        name: {
-          equals: trimmedName,
-          mode: 'insensitive'
-        }
-      }
-    });
-    if (existingName) {
-      return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
-    }
-
     const service = await db.service.create({
       data: {
         name: trimmedName,
@@ -168,20 +142,6 @@ exports.updateService = async (req, res) => {
     }
 
     let trimmedName = name ? name.trim() : undefined;
-
-    if (trimmedName && trimmedName.toLowerCase() !== existing.name.toLowerCase()) {
-      const existingName = await db.service.findFirst({
-        where: {
-          name: {
-            equals: trimmedName,
-            mode: 'insensitive'
-          }
-        }
-      });
-      if (existingName) {
-        return res.status(400).json({ success: false, message: 'A service with this name already exists in the catalog.' });
-      }
-    }
 
     const updated = await db.service.update({
       where: { id: req.params.id },

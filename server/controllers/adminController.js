@@ -2,21 +2,8 @@ const db = require('../db');
 const cache = require('../utils/cache');
 
 const sanitizeServiceImages = (services) => {
-  const list = Array.isArray(services) ? services : [services];
-  list.forEach(s => {
-    if (s && s.imageUrl && s.imageUrl.startsWith('data:image')) {
-      const cat = s.category || '';
-      const mapping = {
-        'cleaning': '/services/housecleaning.webp',
-        'care': '/services/babycare.webp',
-        'technical': '/services/electrician.webp',
-        'cooking': '/services/cooking-service.webp',
-        'shifting': '/services/house-shifting.webp',
-        'painting': '/services/house-painting.webp'
-      };
-      s.imageUrl = mapping[cat.toLowerCase()] || '/services/housecleaning.webp';
-    }
-  });
+  // Disable automatic mapping to default images.
+  // The uploaded or existing saved image must take highest priority.
 };
 
 // Deprecated worker endpoints

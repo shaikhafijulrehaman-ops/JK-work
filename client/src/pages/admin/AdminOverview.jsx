@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { ServiceImage } from '../../components/ServiceImage';
+import { supabase } from '../../lib/supabaseClient';
 import { useNotificationStore } from '../../store/notificationStore';
 import { getCache, setCache, invalidateCache, clearCache } from '../../utils/cache';
 import { fetchWithRetry } from '../../utils/api';
@@ -387,6 +388,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const [newServiceCategory, setNewServiceCategory] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
   const [newServiceImage, setNewServiceImage] = useState('');
+  const [newServiceImageFile, setNewServiceImageFile] = useState(null);
   const [newServiceDesc, setNewServiceDesc] = useState('');
   const [newServiceDuration, setNewServiceDuration] = useState('');
   const [newServicePackage, setNewServicePackage] = useState('');
@@ -525,28 +527,53 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     }
 
     setAddingService(true);
-    const body = {
-      name: newServiceName,
-      category: newServiceCategory,
-      price: parseFloat(newServicePrice),
-      description: newServiceDesc,
-      durationText: newServiceDuration,
-      packageText: newServicePackage,
-      imageUrl: newServiceImage,
-      isActive: newServiceIsActive
-    };
 
     try {
+      let finalImageUrl = newServiceImage;
+
+      // 1. Verify that the upload completes before inserting/updating the database record
+      if (newServiceImageFile) {
+        const file = newServiceImageFile;
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `services/${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('service-images')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          throw new Error(uploadError.message || 'Supabase storage upload failed.');
+        }
+
+        // Store only the uploaded image URL/path in the database
+        finalImageUrl = `service-images/${filePath}`;
+      }
+
+      const body = {
+        name: newServiceName,
+        category: newServiceCategory,
+        price: parseFloat(newServicePrice),
+        description: newServiceDesc,
+        durationText: newServiceDuration,
+        packageText: newServicePackage,
+        imageUrl: finalImageUrl,
+        isActive: newServiceIsActive
+      };
+
       let res;
       if (editingServiceId) {
-        res = await fetch(`/api/services/${editingServiceId}`, {
+        res = await fetchWithRetry(`/api/services/${editingServiceId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(body)
         });
       } else {
-        res = await fetch('/api/services', {
+        res = await fetchWithRetry('/api/services', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -562,6 +589,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         setNewServiceCategory('');
         setNewServicePrice('');
         setNewServiceImage('');
+        setNewServiceImageFile(null);
         setNewServiceDesc('');
         setNewServiceDuration('');
         setNewServicePackage('');
@@ -584,7 +612,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
       return;
     }
     try {
-      const res = await fetch(`/api/services/${serviceId}`, {
+      const res = await fetchWithRetry(`/api/services/${serviceId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -623,14 +651,14 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       let res;
       if (couponForm.id) {
-        res = await fetch(`/api/admin/coupons/${couponForm.id}`, {
+        res = await fetchWithRetry(`/api/admin/coupons/${couponForm.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(body)
         });
       } else {
-        res = await fetch('/api/admin/coupons', {
+        res = await fetchWithRetry('/api/admin/coupons', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -666,7 +694,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleDeleteCoupon = async (id, code) => {
     if (!confirm(`Are you sure you want to delete coupon ${code}?`)) return;
     try {
-      const res = await fetch(`/api/admin/coupons/${id}`, {
+      const res = await fetchWithRetry(`/api/admin/coupons/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -683,7 +711,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleToggleCouponStatus = async (id, code, currentStatus) => {
     const nextStatus = !currentStatus;
     try {
-      const res = await fetch(`/api/admin/coupons/${id}`, {
+      const res = await fetchWithRetry(`/api/admin/coupons/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1081,7 +1109,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   // Actions
   const handleApprovePartner = async (id) => {
     try {
-      const res = await fetch(`/api/admin/workers/${id}/approve`, { 
+      const res = await fetchWithRetry(`/api/admin/workers/${id}/approve`, { 
         method: 'PUT',
         credentials: 'include'
       });
@@ -1099,7 +1127,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     const reason = prompt('Please enter the reason for rejecting this application:', 'Document details mismatch.');
     if (reason === null) return;
     try {
-      const res = await fetch(`/api/admin/workers/${id}/reject`, {
+      const res = await fetchWithRetry(`/api/admin/workers/${id}/reject`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1117,7 +1145,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const handleMoveToReview = async (id) => {
     try {
-      const res = await fetch(`/api/admin/workers/${id}/status`, {
+      const res = await fetchWithRetry(`/api/admin/workers/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1136,7 +1164,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleAssignPartner = async (bookingId, partnerId, partnerName, partnerMobile) => {
     setIsAssigning(true);
     try {
-      const res = await fetch(`/api/bookings/${bookingId}/assign`, {
+      const res = await fetchWithRetry(`/api/bookings/${bookingId}/assign`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -1165,7 +1193,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   const handleRefreshPayout = async (partnerId) => {
     try {
-      const res = await fetch(`/api/admin/partners/${partnerId}/refresh-payout`, {
+      const res = await fetchWithRetry(`/api/admin/partners/${partnerId}/refresh-payout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1203,7 +1231,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       const url = editingPartnerId ? `/api/admin/partners/${editingPartnerId}` : '/api/admin/partners';
       const method = editingPartnerId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -1232,7 +1260,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const handleChangeBookingStatus = async (bookingId, status) => {
     setUpdatingBookingId(bookingId);
     try {
-      const res = await fetch(`/api/bookings/${bookingId}/status`, {
+      const res = await fetchWithRetry(`/api/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -2567,7 +2595,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                     onClick={async () => {
                                       if (confirm(`Are you sure you want to delete ${p.name}?`)) {
                                         try {
-                                          const res = await fetch(`/api/admin/partners/${p.id}`, {
+                                          const res = await fetchWithRetry(`/api/admin/partners/${p.id}`, {
                                             method: 'DELETE',
                                             headers: { 'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}` }
                                           });
@@ -2761,6 +2789,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                     onChange={(e) => {
                                       const file = e.target.files[0];
                                       if (file) {
+                                        setNewServiceImageFile(file);
                                         const reader = new FileReader();
                                         reader.onloadend = () => {
                                           setNewServiceImage(reader.result);
@@ -2775,7 +2804,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                               <div className="flex flex-col justify-end">
                                 <button
                                   type="button"
-                                  onClick={() => setNewServiceImage('')}
+                                  onClick={() => {
+                                    setNewServiceImage('');
+                                    setNewServiceImageFile(null);
+                                  }}
                                   className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs py-1.5 rounded-lg border border-rose-200 transition-all text-center"
                                 >
                                   Delete Image
@@ -2835,6 +2867,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 setNewServiceCategory('');
                                 setNewServicePrice('');
                                 setNewServiceImage('');
+                                setNewServiceImageFile(null);
                                 setNewServiceDesc('');
                                 setNewServiceDuration('');
                                 setNewServicePackage('');
@@ -2932,6 +2965,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                               setNewServiceCategory(srv.category);
                                               setNewServicePrice(srv.price);
                                               setNewServiceImage(srv.imageUrl);
+                                              setNewServiceImageFile(null);
                                               setNewServiceDesc(srv.description);
                                               setNewServiceDuration(srv.durationText || '');
                                               setNewServicePackage(srv.packageText || '');
