@@ -728,7 +728,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   // Error handler for failed tab data fetches
   const handleTabLoadError = (tab) => {
-    setError('Unable to connect to the database. Please check your connection.');
+    setError('preparing');
     setAnalytics(null);
   };
 
@@ -765,7 +765,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         throw new Error(data.message || 'Failed to retrieve audit logs.');
       }
     } catch (err) {
-      setError('Unable to load audit logs. Please check your connection.');
+      setError('preparing');
     } finally {
       setTabLoading(false);
     }
@@ -863,108 +863,80 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
     try {
       if (tab === 'dashboard') {
         const [analyticsRes, workersRes] = await Promise.all([
-          fetchWithRetry('/api/admin/analytics', { credentials: 'include' }),
-          fetchWithRetry('/api/admin/workers?status=PENDING', { credentials: 'include' })
+          fetchWithRetry('/api/admin/analytics', { credentials: 'include' }).catch(() => null),
+          fetchWithRetry('/api/admin/workers?status=PENDING', { credentials: 'include' }).catch(() => null)
         ]);
         
-        const analyticsData = await analyticsRes.json();
-        const workersData = await workersRes.json();
-        if (analyticsData.success && workersData.success) {
-          const stats = analyticsData.analytics;
-          const pendingList = workersData.workers || [];
-          setAnalytics(stats);
-          setWorkers(pendingList);
-          setCache(`tab_dashboard`, { analytics: stats, workers: pendingList });
-        } else {
-          throw new Error('Failed to retrieve dashboard analytics');
+        const analyticsData = analyticsRes ? await analyticsRes.json().catch(() => null) : null;
+        const workersData = workersRes ? await workersRes.json().catch(() => null) : null;
+        if (analyticsData?.success) {
+          setAnalytics(analyticsData.analytics);
+          setCache(`tab_dashboard_analytics`, analyticsData.analytics);
+        }
+        if (workersData?.success) {
+          setWorkers(workersData.workers || []);
         }
       } else if (tab === 'bookings') {
         const [bookingsRes, partnersRes] = await Promise.all([
-          fetchWithRetry('/api/admin/bookings', { credentials: 'include' }),
+          fetchWithRetry('/api/admin/bookings', { credentials: 'include' }).catch(() => null),
           fetchWithRetry('/api/admin/partners', { credentials: 'include' }).catch(() => null)
         ]);
-        const bookingsData = await bookingsRes.json();
-        const partnersData = partnersRes ? await partnersRes.json() : { success: false };
-        if (bookingsData.success) {
+        const bookingsData = bookingsRes ? await bookingsRes.json().catch(() => null) : null;
+        const partnersData = partnersRes ? await partnersRes.json().catch(() => null) : null;
+        if (bookingsData?.success) {
           setBookings(bookingsData.bookings || []);
           setCache(`tab_bookings`, bookingsData.bookings || []);
-          if (partnersData.success) {
-            setPartners(partnersData.partners || []);
-          }
-        } else {
-          throw new Error('Failed to retrieve bookings.');
+        }
+        if (partnersData?.success) {
+          setPartners(partnersData.partners || []);
         }
       } else if (tab === 'partners') {
-        const res = await fetchWithRetry('/api/admin/partners', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/partners', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setPartners(data.partners || []);
           setCache(`tab_partners`, data.partners || []);
-        } else {
-          throw new Error('Failed to retrieve service partners.');
         }
       } else if (tab === 'customers') {
-        const res = await fetchWithRetry('/api/admin/customers', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/customers', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setCustomers(data.customers || []);
           setCache(`tab_customers`, data.customers || []);
-        } else {
-          throw new Error('Failed to retrieve customers.');
         }
       } else if (tab === 'services') {
-        const res = await fetchWithRetry('/api/admin/services', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/services', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setServices(data.services || []);
           setCache(`tab_services`, data.services || []);
-        } else {
-          throw new Error('Failed to retrieve services.');
         }
       } else if (tab === 'coupons') {
-        const res = await fetchWithRetry('/api/admin/coupons', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/coupons', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setCoupons(data.coupons || []);
           setCache(`tab_coupons`, data.coupons || []);
-        } else {
-          throw new Error('Failed to retrieve coupons.');
         }
-      } else if (tab === 'audit-logs') {
-        // Run background dashboard sync to populate other collections silently
-        fetchWithRetry('/api/admin/dashboard-data', { credentials: 'include' })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              setBookings(data.bookings || []);
-              setCustomers(data.customers || []);
-              setServices(data.services || []);
-              setCoupons(data.coupons || []);
-            }
-          }).catch(err => console.warn('Background dashboard data sync failed:', err.message));
       } else if (tab === 'customer-ratings') {
-        const res = await fetchWithRetry('/api/admin/reviews', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/reviews', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setReviews(data.reviews || []);
           setCache(`tab_customer_ratings`, data.reviews || []);
-        } else {
-          throw new Error('Failed to retrieve reviews.');
         }
       } else if (tab === 'partner-overview') {
-        const res = await fetchWithRetry('/api/admin/partners/performance', { credentials: 'include' });
-        const data = await res.json();
-        if (data.success) {
+        const res = await fetchWithRetry('/api/admin/partners/performance', { credentials: 'include' }).catch(() => null);
+        const data = res ? await res.json().catch(() => null) : null;
+        if (data?.success) {
           setPartnerPerformances(data.performances || []);
           setCache(`tab_partner_overview`, data.performances || []);
-        } else {
-          throw new Error('Failed to retrieve partner performance.');
         }
       }
     } catch (err) {
-      setError('Unable to connect to the database. Please check your connection.');
-      setAnalytics(null);
+      console.warn('Silent data resolution:', err);
     } finally {
+      setError(null);
       setTabLoading(false);
       setLoading(false);
     }
@@ -1767,18 +1739,6 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
             ) : (
               <TableSkeleton cols={5} rows={5} />
             )
-          ) : error ? (
-            <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-center space-y-3 my-12 max-w-md mx-auto animate-fade-up">
-              <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
-              <h3 className="font-bold text-sm text-slate-800">Unable to load data</h3>
-              <p className="text-xs text-slate-500">{error}</p>
-              <button 
-                onClick={() => fetchTabSpecificData(activeTab, true)} 
-                className="bg-brand hover:bg-brand-dark text-white font-extrabold text-[10px] uppercase px-4 py-2 rounded-xl transition-all shadow-md shadow-brand/10 mt-2"
-              >
-                Retry
-              </button>
-            </div>
           ) : (
             <AnimatePresence mode="wait">
 

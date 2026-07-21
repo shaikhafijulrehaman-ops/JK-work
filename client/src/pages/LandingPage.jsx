@@ -177,13 +177,20 @@ export default function LandingPage() {
     { name: 'Pest Control', desc: ' Cockroach extraction', icon: PestControlIcon, targetName: 'Cleaning' }
   ];
 
-  // Most Booked Services
-  const mostBooked = [
-    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, rating: '4.9★', durationText: '5-6 Hours', imageUrl: '/services/housecleaning.webp' },
-    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/electrician.webp' },
-    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, rating: '4.9★', durationText: '6 Hours', imageUrl: '/services/babycare.webp' },
-    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, rating: '4.8★', durationText: '1 Hour', imageUrl: '/services/cooking-service.webp' }
-  ];
+  // Live Most Booked Services state
+  const [mostBookedServices, setMostBookedServices] = useState([]);
+
+  useEffect(() => {
+    fetchWithRetry('/api/services')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.success && Array.isArray(data.services)) {
+          const active = data.services.filter(s => s.isActive !== false);
+          setMostBookedServices(active.slice(0, 4));
+        }
+      })
+      .catch(err => console.warn('Failed to load live top services:', err));
+  }, []);
 
 
 
@@ -479,43 +486,49 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {mostBooked.map((service, idx) => (
-              <div key={idx} className="premium-card overflow-hidden flex flex-col justify-between group">
-                <div>
-                  {/* Image banner with rating tag */}
-                  <div className="h-40 w-full overflow-hidden bg-slate-50 relative flex items-center justify-center">
-                    <ServiceImage 
-                      src={service.imageUrl} 
-                      alt={service.name} 
-                      priority={idx < 4}
-                      className="w-full h-full object-cover group-hover:scale-102 transition-all duration-300"
-                    />
-                    <span className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs text-slate-800 border border-slate-100 text-[9px] font-black uppercase px-2.5 py-0.5 rounded shadow-xs flex items-center">
-                      <Star className="w-3 h-3 text-amber-500 fill-current mr-0.5" />
-                      {service.rating.replace('★','')}
-                    </span>
-                  </div>
-                  {/* Info details */}
-                  <div className="p-4 space-y-1.5 text-left">
-                    <span className="text-[9px] text-brand font-black uppercase tracking-wider bg-cyan-50 border border-cyan-100 rounded px-1.5 py-0.5">{service.category}</span>
-                    <h3 className="font-poppins font-black text-xs text-slate-800 leading-tight block pt-1">{service.name}</h3>
-                    <div className="flex items-center text-[10px] text-slate-400 font-semibold pt-0.5">
-                      <Clock className="w-3 h-3 mr-1 text-slate-300" /> Duration: {service.durationText}
+            {mostBookedServices.length === 0 ? (
+              <div className="col-span-full text-center py-10 text-slate-400 font-medium">
+                No active services cataloged yet.
+              </div>
+            ) : (
+              mostBookedServices.map((service, idx) => (
+                <div key={service.id || idx} className="premium-card overflow-hidden flex flex-col justify-between group">
+                  <div>
+                    {/* Image banner with rating tag */}
+                    <div className="h-40 w-full overflow-hidden bg-slate-50 relative flex items-center justify-center">
+                      <ServiceImage 
+                        src={service.imageUrl} 
+                        alt={service.name} 
+                        priority={idx < 4}
+                        className="w-full h-full object-cover group-hover:scale-102 transition-all duration-300"
+                      />
+                      <span className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs text-slate-800 border border-slate-100 text-[9px] font-black uppercase px-2.5 py-0.5 rounded shadow-xs flex items-center">
+                        <Star className="w-3 h-3 text-amber-500 fill-current mr-0.5" />
+                        {(service.rating || '4.9').toString().replace('★','')}
+                      </span>
+                    </div>
+                    {/* Info details */}
+                    <div className="p-4 space-y-1.5 text-left">
+                      <span className="text-[9px] text-brand font-black uppercase tracking-wider bg-cyan-50 border border-cyan-100 rounded px-1.5 py-0.5">{service.category}</span>
+                      <h3 className="font-poppins font-black text-xs text-slate-800 leading-tight block pt-1">{service.name}</h3>
+                      <div className="flex items-center text-[10px] text-slate-400 font-semibold pt-0.5">
+                        <Clock className="w-3 h-3 mr-1 text-slate-300" /> Duration: {service.durationText || 'Standard'}
+                      </div>
                     </div>
                   </div>
+                  {/* Book Action footer */}
+                  <div className="p-4 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
+                    <span className="font-poppins font-black text-xs text-brand">Rs. {service.price.toLocaleString()}</span>
+                    <button 
+                      onClick={() => handleDirectBook(service)}
+                      className="bg-brand hover:bg-brand-dark text-white font-poppins font-black text-[9px] py-1.5 px-4 rounded-lg uppercase tracking-wider shadow-sm transition-all"
+                    >
+                      Book Now
+                    </button>
+                  </div>
                 </div>
-                {/* Book Action footer */}
-                <div className="p-4 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
-                  <span className="font-poppins font-black text-xs text-brand">Rs. {service.price.toLocaleString()}</span>
-                  <button 
-                    onClick={() => handleDirectBook(service)}
-                    className="bg-brand hover:bg-brand-dark text-white font-poppins font-black text-[9px] py-1.5 px-4 rounded-lg uppercase tracking-wider shadow-sm transition-all"
-                  >
-                    Book Now
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </section>

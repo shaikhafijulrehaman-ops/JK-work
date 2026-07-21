@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCartStore } from '../../store/cartStore';
 import { useNotificationStore } from '../../store/notificationStore';
+import { fetchWithRetry } from '../../utils/api';
 import { 
   Layers, 
   DollarSign, 
@@ -16,26 +17,9 @@ export default function AdminServices() {
   const { applyCoupon } = useCartStore();
   const { addNotification } = useNotificationStore();
 
-  // Sandbox catalog list populating brochure services
-  const [catalog, setCatalog] = useState([
-    { id: 's-1', name: 'Baby Care', category: 'Care', price: 799.0, durationText: '6 Hours', packageText: 'Daily Needs' },
-    { id: 's-2', name: 'Full House Deep Cleaning', category: 'Cleaning', price: 3499.0, durationText: '5 Hours', packageText: 'Deep Hygiene' },
-    { id: 's-3', name: 'Bathroom Deep Cleaning', category: 'Cleaning', price: 749.0, durationText: '1.5 Hours', packageText: 'Premium Sanitation' },
-    { id: 's-4', name: 'Full Kitchen Cleaning', category: 'Cleaning', price: 499.0, durationText: '2 Hours', packageText: 'Fresh Kitchen' },
-    { id: 's-5', name: 'Dust Cleaning', category: 'Cleaning', price: 149.0, durationText: '1 Hour', packageText: 'Quick Dusting' },
-    { id: 's-6', name: 'House Shifting', category: 'Shifting', price: 3499.0, durationText: '1 Day', packageText: '2BHK Package' },
-    { id: 's-7', name: 'Cooking Service', category: 'Cooking', price: 149.0, durationText: '1 Hour', packageText: 'Meal Prep' },
-    { id: 's-8', name: 'House Painting', category: 'Painting', price: 20099.0, durationText: '2-3 Days', packageText: 'All Materials Included' },
-    { id: 's-9', name: 'Electrician Service', category: 'Technical', price: 499.0, durationText: '1 Hour', packageText: 'Essential Repairs' },
-    { id: 's-10', name: 'Security Provider', category: 'Care', price: 899.0, durationText: '8 Hours', packageText: 'Safe Protection' },
-    { id: 's-11', name: 'Pest Control', category: 'Cleaning', price: 2599.0, durationText: '2 Hours', packageText: '2BHK Package' }
-  ]);
-
-  // Dynamic promo codes list
-  const [promos, setPromos] = useState([
-    { code: '9MINUTES', discount: '15%', used: 12 },
-    { code: 'WELCOME10', discount: '10%', used: 34 }
-  ]);
+  const [catalog, setCatalog] = useState([]);
+  const [promos, setPromos] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [newCode, setNewCode] = useState('');
   const [newDiscount, setNewDiscount] = useState('10');
@@ -43,33 +27,91 @@ export default function AdminServices() {
   const [editId, setEditId] = useState(null);
   const [newPrice, setNewPrice] = useState('');
 
-  const handlePriceUpdate = (id) => {
-    const updated = catalog.map(s => {
-      if (s.id === id) {
-        const parsed = parseFloat(newPrice);
-        if (!isNaN(parsed) && parsed > 0) {
-          addNotification('Pricing update audit logged', `${s.name} pricing adjusted to Rs. ${parsed}`);
-          setEditId(null);
-          setNewPrice('');
-          return { ...s, price: parsed };
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [servicesRes, couponsRes] = await Promise.all([
+        fetchWithRetry('/api/admin/services', { credentials: 'include' }).catch(() => null),
+        fetchWithRetry('/api/admin/coupons', { credentials: 'include' }).catch(() => null)
+      ]);
+
+      if (servicesRes) {
+        const sData = await servicesRes.json().catch(() => null);
+        if (sData?.success) {
+          setCatalog(sData.services || []);
         }
       }
-      return s;
-    });
-    setCatalog(updated);
+
+      if (couponsRes) {
+        const cData = await couponsRes.json().catch(() => null);
+        if (cData?.success) {
+          setPromos((cData.coupons || []).map(c => ({
+            code: c.code,
+            discount: `${c.discountValue}%`,
+            used: c.usedCount || 0
+          })));
+        }
+      }
+    } catch (err) {
+      console.warn('Error loading services & promos:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreatePromo = (e) => {
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handlePriceUpdate = async (id) => {
+    const parsed = parseFloat(newPrice);
+    if (isNaN(parsed) || parsed <= 0) return;
+
+    try {
+      const res = await fetchWithRetry(`/api/admin/services/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price: parsed })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification('Pricing Audit Logged', `Pricing adjusted to Rs. ${parsed}`);
+        setEditId(null);
+        setNewPrice('');
+        loadData();
+      }
+    } catch (err) {
+      addNotification('Operation Failed', 'Unable to update pricing. Please try again.');
+    }
+  };
+
+  const handleCreatePromo = async (e) => {
     e.preventDefault();
     if (!newCode) return;
     const code = newCode.toUpperCase();
-    const exist = promos.find(p => p.code === code);
-    if (exist) return;
 
-    const fresh = { code, discount: `${newDiscount}%`, used: 0 };
-    setPromos(prev => [...prev, fresh]);
-    addNotification('Coupon Created', `Discount Promo "${code}" (${newDiscount}%) added successfully.`);
-    setNewCode('');
+    try {
+      const res = await fetchWithRetry('/api/admin/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          discountType: 'PERCENTAGE',
+          discountValue: parseFloat(newDiscount),
+          minOrderValue: 0
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification('Coupon Created', `Discount Promo "${code}" (${newDiscount}%) added successfully.`);
+        setNewCode('');
+        loadData();
+      } else {
+        addNotification('Save Failed', data.message || 'Failed to create coupon.');
+      }
+    } catch (err) {
+      addNotification('Operation Failed', 'Unable to save coupon. Please try again.');
+    }
   };
 
   return (
@@ -103,40 +145,48 @@ export default function AdminServices() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 text-slate-600 font-medium">
-                    {catalog.map((s) => (
-                      <tr key={s.id} className="hover:bg-slate-50/50">
-                        <td className="p-3 font-bold text-slate-800">{s.name}</td>
-                        <td className="p-3"><span className="text-[10px] bg-brand/10 text-brand px-2 py-0.5 rounded font-bold uppercase">{s.category}</span></td>
-                        <td className="p-3 font-semibold text-slate-400">{s.packageText || s.durationText || 'doorstep'}</td>
-                        <td className="p-3 font-black text-slate-700">Rs. {s.price.toLocaleString()}</td>
-                        <td className="p-3 text-right">
-                          {editId === s.id ? (
-                            <div className="flex items-center space-x-1.5 justify-end">
-                              <input
-                                type="number"
-                                className="w-20 px-2 py-1 border border-slate-200 rounded outline-none text-xs text-right font-black"
-                                placeholder="New Price"
-                                value={newPrice}
-                                onChange={e => setNewPrice(e.target.value)}
-                              />
-                              <button
-                                onClick={() => handlePriceUpdate(s.id)}
-                                className="bg-brand text-white font-bold px-2.5 py-1 rounded shadow-sm text-[10px]"
-                              >
-                                Save
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => { setEditId(s.id); setNewPrice(s.price); }}
-                              className="text-brand hover:underline font-bold text-[10px]"
-                            >
-                              Edit Price
-                            </button>
-                          )}
+                    {catalog.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="p-8 text-center text-slate-400 font-medium">
+                          No catalog services available
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      catalog.map((s) => (
+                        <tr key={s.id} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-bold text-slate-800">{s.name}</td>
+                          <td className="p-3"><span className="text-[10px] bg-brand/10 text-brand px-2 py-0.5 rounded font-bold uppercase">{s.category}</span></td>
+                          <td className="p-3 font-semibold text-slate-400">{s.packageText || s.durationText || 'doorstep'}</td>
+                          <td className="p-3 font-black text-slate-700">Rs. {s.price.toLocaleString()}</td>
+                          <td className="p-3 text-right">
+                            {editId === s.id ? (
+                              <div className="flex items-center space-x-1.5 justify-end">
+                                <input
+                                  type="number"
+                                  className="w-20 px-2 py-1 border border-slate-200 rounded outline-none text-xs text-right font-black"
+                                  placeholder="New Price"
+                                  value={newPrice}
+                                  onChange={e => setNewPrice(e.target.value)}
+                                />
+                                <button
+                                  onClick={() => handlePriceUpdate(s.id)}
+                                  className="bg-brand text-white font-bold px-2.5 py-1 rounded shadow-sm text-[10px]"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setEditId(s.id); setNewPrice(s.price); }}
+                                className="text-brand hover:underline font-bold text-[10px]"
+                              >
+                                Edit Price
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -195,17 +245,23 @@ export default function AdminServices() {
               </h3>
 
               <div className="divide-y divide-slate-50">
-                {promos.map((p, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2.5 text-xs font-semibold">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-poppins font-black bg-brand/10 text-brand px-2.5 py-1 rounded text-[10px] tracking-wide">
-                        {p.code}
-                      </span>
-                      <span className="text-slate-400 text-[10px] font-medium">{p.used} usages logged</span>
-                    </div>
-                    <span className="text-brand font-black text-sm">{p.discount} OFF</span>
+                {promos.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                    No promotional coupons created yet
                   </div>
-                ))}
+                ) : (
+                  promos.map((p, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-2.5 text-xs font-semibold">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-poppins font-black bg-brand/10 text-brand px-2.5 py-1 rounded text-[10px] tracking-wide">
+                          {p.code}
+                        </span>
+                        <span className="text-slate-400 text-[10px] font-medium">{p.used} usages logged</span>
+                      </div>
+                      <span className="text-brand font-black text-sm">{p.discount} OFF</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

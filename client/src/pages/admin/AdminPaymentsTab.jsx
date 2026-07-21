@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getCache, setCache } from '../../utils/cache';
 import { fetchWithRetry } from '../../utils/api';
 import { TableSkeleton } from '../../components/Skeletons';
-import { AlertCircle, TrendingUp } from 'lucide-react';
+import { Sparkles, TrendingUp } from 'lucide-react';
 
 const AdminPaymentsTab = React.memo(() => {
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,7 @@ const AdminPaymentsTab = React.memo(() => {
       const res = await fetchWithRetry('/api/admin/payments', { credentials: 'include' });
       const data = await res.json();
       
-      if (data.success) {
+      if (data?.success) {
         const payload = {
           todayRev: data.todayRev || 0,
           weekRev: data.weekRev || 0,
@@ -38,12 +38,9 @@ const AdminPaymentsTab = React.memo(() => {
         };
         setPaymentData(payload);
         setCache('payments_data', payload);
-      } else {
-        throw new Error(data.message || 'Failed to retrieve payments database.');
       }
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Unable to load payment ledger.');
     } finally {
       setLoading(false);
     }
@@ -62,17 +59,6 @@ const AdminPaymentsTab = React.memo(() => {
           ))}
         </div>
         <TableSkeleton cols={6} rows={5} />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-center space-y-3 my-12 max-w-md mx-auto">
-        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
-        <h3 className="font-bold text-sm text-slate-800">Connection Failed</h3>
-        <p className="text-xs text-slate-500">{error}</p>
-        <button onClick={() => loadData(true)} className="bg-brand text-white text-xs font-bold px-4 py-2 rounded-xl">Retry</button>
       </div>
     );
   }

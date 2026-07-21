@@ -140,17 +140,30 @@ exports.createOrder = async (req, res) => {
   try {
     const { amount, currency = 'INR', receipt } = req.body;
 
-    if (!amount || amount < 100) {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      console.error('❌ [Payment Gateway] Missing Razorpay Key ID or Secret in environment variables.');
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway configuration is missing on the server.'
+      });
+    }
+
+    if (!amount || isNaN(amount) || amount < 100) {
       return res.status(400).json({
         success: false,
         message: 'Invalid amount. Minimum amount is 100 paise (Rs. 1).'
       });
     }
 
+    // Sanitize receipt to contain only valid alphanumeric, underscore, or hyphen characters up to 40 chars
+    const cleanReceipt = (receipt || `order_${Date.now()}`)
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .substring(0, 40) || `order_${Date.now()}`;
+
     const options = {
       amount: Math.round(amount), // in paise
-      currency,
-      receipt: receipt || `receipt_order_${Date.now()}`
+      currency: currency || 'INR',
+      receipt: cleanReceipt
     };
 
     const order = await razorpayClient.orders.create(options);
@@ -165,9 +178,9 @@ exports.createOrder = async (req, res) => {
   } catch (error) {
     console.error('Error creating Razorpay order:', error);
     if (error.statusCode === 401) {
-      return res.status(401).json({ success: false, message: 'Razorpay authentication failed.' });
+      return res.status(401).json({ success: false, message: 'Razorpay authentication failed. Check API keys.' });
     }
-    res.status(500).json({ success: false, message: 'Failed to create payment order.' });
+    res.status(500).json({ success: false, message: error.message || 'Failed to create payment order.' });
   }
 };
 

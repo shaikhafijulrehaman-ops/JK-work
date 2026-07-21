@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useBookingStore } from '../store/bookingStore';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
+import { ServiceImage } from '../components/ServiceImage';
 import { getCache } from '../utils/cache';
 import { 
   X, 
@@ -413,8 +414,16 @@ export default function BookingPage() {
   };
 
   const handlePayNow = async () => {
+    if (isProcessingPayment) return;
     setIsProcessingPayment(true);
     setErrorMsg('');
+
+    const token = localStorage.getItem('jk_token');
+    if (!token) {
+      setErrorMsg('Your session has expired. Please log in again to proceed with payment.');
+      setIsProcessingPayment(false);
+      return;
+    }
 
     const loaded = await loadRazorpayScript();
     if (!loaded) {
@@ -431,7 +440,7 @@ export default function BookingPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('jk_token') || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           amount: Math.round(amountInINR * 100), // in paise
@@ -525,11 +534,7 @@ export default function BookingPage() {
       rzp.open();
     } catch (orderError) {
       console.error('Order creation error:', orderError);
-      if (import.meta.env.MODE === 'production') {
-        setErrorMsg('Failed to initialize payment transaction. Please try again shortly.');
-      } else {
-        setErrorMsg(orderError.message || 'Failed to initialize payment transaction.');
-      }
+      setErrorMsg(orderError.message || 'Failed to initialize payment transaction. Please try again shortly.');
       setIsProcessingPayment(false);
     }
   };
@@ -857,8 +862,8 @@ ${formattedDate}`;
             
             {/* Selected Service Header summary card */}
             <div className="bg-slate-50/60 border border-slate-100/50 rounded-2xl p-3 flex items-center space-x-3 shadow-xs">
-              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-slate-200 shadow-inner">
-                <img src={service.imageUrl} alt={service.name} className="w-full h-full object-cover" />
+              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-slate-200 shadow-inner relative flex items-center justify-center">
+                <ServiceImage src={service.imageUrl} alt={service.name} priority={true} className="w-full h-full object-cover" />
               </div>
               <div className="text-left leading-tight">
                 <span className="text-[8px] font-black text-brand uppercase tracking-wider bg-cyan-100/55 px-1.5 py-0.2 rounded-full leading-none">{service.category}</span>

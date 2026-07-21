@@ -39,7 +39,7 @@ export const fetchWithTimeout = async (url, options = {}) => {
 };
 
 export const fetchWithRetry = async (url, options = {}) => {
-  const { retries = 3, backoff = 1000, headers = {}, ...rest } = options;
+  const { retries = 4, backoff = 1000, headers = {}, ...rest } = options;
   
   const token = localStorage.getItem('jk_token');
   const mergedHeaders = {
@@ -51,6 +51,13 @@ export const fetchWithRetry = async (url, options = {}) => {
   for (let i = 0; i <= retries; i++) {
     try {
       const response = await fetchWithTimeout(url, { headers: mergedHeaders, ...rest });
+      if (response.ok) return response;
+      // If server responded with a non-2xx server error, attempt silent retry
+      if (response.status >= 500 && i < retries) {
+        console.warn(`⚠️ Server response ${response.status} (Attempt ${i + 1}/${retries + 1}). Retrying silently...`);
+        await new Promise(resolve => setTimeout(resolve, backoff * (i + 1)));
+        continue;
+      }
       return response;
     } catch (error) {
       lastError = error;
@@ -58,9 +65,9 @@ export const fetchWithRetry = async (url, options = {}) => {
         // Immediately fail without retrying if request was aborted by caller/unmount
         throw error;
       }
-      console.warn(`⚠️ Request failed (Attempt ${i + 1}/${retries + 1}): ${error.message || 'Error'}. Retrying in ${backoff}ms...`);
+      console.warn(`⚠️ Request failed (Attempt ${i + 1}/${retries + 1}): ${error.message || 'Error'}. Retrying silently in ${backoff * (i + 1)}ms...`);
       if (i < retries) {
-        await new Promise(resolve => setTimeout(resolve, backoff));
+        await new Promise(resolve => setTimeout(resolve, backoff * (i + 1)));
       }
     }
   }

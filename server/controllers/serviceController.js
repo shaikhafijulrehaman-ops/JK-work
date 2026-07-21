@@ -2,10 +2,34 @@ const db = require('../db');
 const { logActivity } = require('../utils/auditLogger');
 const cache = require('../utils/cache');
 
-const sanitizeServiceImages = (services) => {
-  // Disable automatic mapping to default images.
-  // The uploaded or existing saved image must take highest priority.
+const SUPABASE_STORAGE_BASE = process.env.SUPABASE_URL || 'https://hiurxjfxdpdxvumpmplp.supabase.co';
+
+const formatServiceImageUrl = (imageUrl) => {
+  if (!imageUrl) return '';
+  if (imageUrl.startsWith('http') || imageUrl.startsWith('data:image') || imageUrl.startsWith('/')) {
+    return imageUrl;
+  }
+  let path = imageUrl;
+  if (path.startsWith('storage://')) {
+    path = path.replace('storage://', '');
+  }
+  if (!path.startsWith('service-images/')) {
+    path = `service-images/${path}`;
+  }
+  return `${SUPABASE_STORAGE_BASE}/storage/v1/object/public/${path}`;
 };
+
+const sanitizeServiceImages = (services) => {
+  if (!services) return;
+  if (Array.isArray(services)) {
+    services.forEach(s => {
+      if (s.imageUrl) s.imageUrl = formatServiceImageUrl(s.imageUrl);
+    });
+  } else if (typeof services === 'object' && services.imageUrl) {
+    services.imageUrl = formatServiceImageUrl(services.imageUrl);
+  }
+};
+
 
 /**
  * Get all catalog services
