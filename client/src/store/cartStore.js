@@ -1,8 +1,17 @@
 import { create } from 'zustand';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+const getInitialCart = () => {
+  try {
+    const saved = localStorage.getItem('jk_cart');
+    return saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
 export const useCartStore = create((set, get) => ({
-  items: JSON.parse(localStorage.getItem('jk_cart')) || [],
+  items: getInitialCart(),
   pincode: '560073', // Default to Anchepalya
   isPincodeValid: true,
   couponCode: '',
