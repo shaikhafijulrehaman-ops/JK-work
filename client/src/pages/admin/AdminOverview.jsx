@@ -538,6 +538,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           timeout: 30000,
+          retries: 0,
           body: JSON.stringify({ image: newServiceImage })
         });
 
@@ -567,6 +568,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          retries: 0,
           body: JSON.stringify(body)
         });
       } else {
@@ -574,6 +576,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          retries: 0,
           body: JSON.stringify(body)
         });
       }
@@ -592,7 +595,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         setNewServicePackage('');
         setNewServiceIsActive(true);
         setEditingServiceId(null);
-        fetchAllData();
+        
+        // Refresh only the services list
+        invalidateCache('tab_services');
+        fetchTabSpecificData('services', true);
       } else {
         console.error('Service save failed backend response:', data);
         addNotification('Operation Failed', data.message || 'Failed to save service.');
