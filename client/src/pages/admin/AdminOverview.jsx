@@ -533,24 +533,20 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
       // 1. Verify that the upload completes before inserting/updating the database record
       if (newServiceImageFile) {
-        const file = newServiceImageFile;
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
-        const filePath = `services/${fileName}`;
+        const uploadRes = await fetchWithRetry('/api/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image: newServiceImage })
+        });
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('service-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          throw new Error(uploadError.message || 'Supabase storage upload failed.');
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json().catch(() => ({}));
+          throw new Error(errData.message || 'Cloudinary storage upload failed.');
         }
 
-        // Store only the uploaded image URL/path in the database
-        finalImageUrl = `service-images/${filePath}`;
+        const uploadData = await uploadRes.json();
+        finalImageUrl = uploadData.imageUrl;
       }
 
       const body = {
