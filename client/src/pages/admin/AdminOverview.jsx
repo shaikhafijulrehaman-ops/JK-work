@@ -537,6 +537,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          timeout: 30000,
           body: JSON.stringify({ image: newServiceImage })
         });
 
