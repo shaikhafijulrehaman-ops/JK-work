@@ -7,13 +7,13 @@ const db = require('../db');
 exports.protect = async (req, res, next) => {
   let token = null;
 
-  // 1. Check HttpOnly cookies first
-  if (req.cookies && req.cookies.accessToken) {
-    token = req.cookies.accessToken;
-  }
-  // 2. Fallback to Authorization Header (Bearer Token)
-  else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // 1. Check Authorization Header (Bearer Token) first as it is explicitly sent by the SPA
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
+  }
+  // 2. Fallback to HttpOnly cookies
+  else if (req.cookies && req.cookies.accessToken) {
+    token = req.cookies.accessToken;
   }
 
   if (!token) {
