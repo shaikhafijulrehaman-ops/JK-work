@@ -544,7 +544,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
         if (!uploadRes.ok) {
           const errData = await uploadRes.json().catch(() => ({}));
-          throw new Error(errData.message || 'Cloudinary storage upload failed.');
+          const errMsg = errData.details
+            ? `Cloudinary upload failed: ${errData.details}`
+            : (errData.message || 'Cloudinary storage upload failed.');
+          throw new Error(errMsg);
         }
 
         const uploadData = await uploadRes.json();
