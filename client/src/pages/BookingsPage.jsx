@@ -480,7 +480,7 @@ export default function BookingsPage() {
                         )}
                         <div className="flex justify-between text-[10px] text-slate-400">
                           <span>Platform Dispatch Fee</span>
-                          <span>Rs. 49</span>
+                          <span>Rs. 0</span>
                         </div>
                         <div className="border-t border-slate-200 pt-2 flex justify-between font-poppins font-black text-brand text-sm">
                           <span>Final Paid</span>

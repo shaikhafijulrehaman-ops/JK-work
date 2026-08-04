@@ -287,11 +287,11 @@ export default function BookingPage() {
     return base * qty;
   };
 
-  const getTaxes = () => getServicePrice() * 0.05; // 5% Platform Dispatch Taxes
+  const getTaxes = () => 0.0; // Flat Platform Dispatch Fee
   
   const getFinalTotal = () => {
     const servicePrice = getServicePrice();
-    const taxes = servicePrice * 0.05;
+    const taxes = 0.0;
     const total = servicePrice + taxes - discountAmount;
     return total > 0 ? total : 0;
   };

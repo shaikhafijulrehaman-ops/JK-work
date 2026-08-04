@@ -137,7 +137,7 @@ export const useCartStore = create((set, get) => ({
     }
     
     discount = parseFloat(discount.toFixed(2));
-    const platformFee = subtotal > 0 ? 49.0 : 0.0;
+    const platformFee = 0.0;
     const total = Math.max(0, subtotal - discount + platformFee);
 
     return {
