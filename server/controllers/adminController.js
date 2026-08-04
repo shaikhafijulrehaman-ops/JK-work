@@ -34,43 +34,114 @@ exports.getAnalytics = async (req, res) => {
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const prevSevenDaysAgo = new Date();
+    prevSevenDaysAgo.setDate(prevSevenDaysAgo.getDate() - 14);
+
     const [
-      todayCount,
-      pendingCount,
-      completedCount,
-      cancelledCount,
-      activeCouponsCount,
-      totalCouponsCount,
+      totalCustomers,
+      totalBookings,
+      todayBookings,
+      pendingBookings,
+      assignedBookings,
+      completedBookings,
+      cancelledBookings,
+      totalRevenueObj,
       todayRevenueObj,
-      monthRevenueObj
+      weeklyRevenueObj,
+      monthlyRevenueObj,
+      activePartnersCount,
+      activeServicesCount,
+      avgRatingObj,
+      currentPeriodBookings,
+      prevPeriodBookings,
+      currentPeriodRevObj,
+      prevPeriodRevObj
     ] = await Promise.all([
-      db.booking.count({ where: { createdAt: { gte: todayStart, lte: todayEnd } } }),
-      db.booking.count({ where: { status: 'PENDING' } }),
-      db.booking.count({ where: { status: 'COMPLETED' } }),
-      db.booking.count({ where: { status: 'CANCELLED' } }),
-      db.promoCode.count({ where: { isActive: true } }),
-      db.promoCode.count(),
+      db.user.count({ where: { role: 'USER', isDeleted: false } }),
+      db.booking.count({ where: { isDeleted: false } }),
+      db.booking.count({ where: { isDeleted: false, createdAt: { gte: todayStart, lte: todayEnd } } }),
+      db.booking.count({ where: { isDeleted: false, status: 'PENDING' } }),
+      db.booking.count({
+        where: {
+          isDeleted: false,
+          status: {
+            in: ['ASSIGNED', 'PARTNER_ACCEPTED', 'PENDING_PARTNER_ACCEPTANCE', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS']
+          }
+        }
+      }),
+      db.booking.count({ where: { isDeleted: false, status: 'COMPLETED' } }),
+      db.booking.count({ where: { isDeleted: false, status: 'CANCELLED' } }),
       db.booking.aggregate({
-        where: { paymentStatus: 'PAID', createdAt: { gte: todayStart, lte: todayEnd } },
+        where: { isDeleted: false, paymentStatus: 'PAID' },
         _sum: { finalPrice: true }
       }),
       db.booking.aggregate({
-        where: { paymentStatus: 'PAID', createdAt: { gte: firstDayOfMonth } },
+        where: { isDeleted: false, paymentStatus: 'PAID', createdAt: { gte: todayStart, lte: todayEnd } },
+        _sum: { finalPrice: true }
+      }),
+      db.booking.aggregate({
+        where: { isDeleted: false, paymentStatus: 'PAID', createdAt: { gte: sevenDaysAgo } },
+        _sum: { finalPrice: true }
+      }),
+      db.booking.aggregate({
+        where: { isDeleted: false, paymentStatus: 'PAID', createdAt: { gte: firstDayOfMonth } },
+        _sum: { finalPrice: true }
+      }),
+      db.servicePartner.count({ where: { isDeleted: false, status: { in: ['AVAILABLE', 'ON_JOB'] } } }),
+      db.service.count({ where: { isDeleted: false, isActive: true } }),
+      db.review.aggregate({
+        _avg: { rating: true }
+      }),
+      db.booking.count({ where: { isDeleted: false, createdAt: { gte: sevenDaysAgo } } }),
+      db.booking.count({ where: { isDeleted: false, createdAt: { gte: prevSevenDaysAgo, lt: sevenDaysAgo } } }),
+      db.booking.aggregate({
+        where: { isDeleted: false, paymentStatus: 'PAID', createdAt: { gte: sevenDaysAgo } },
+        _sum: { finalPrice: true }
+      }),
+      db.booking.aggregate({
+        where: { isDeleted: false, paymentStatus: 'PAID', createdAt: { gte: prevSevenDaysAgo, lt: sevenDaysAgo } },
         _sum: { finalPrice: true }
       })
     ]);
 
+    const bookingGrowth = prevPeriodBookings > 0
+      ? parseFloat((((currentPeriodBookings - prevPeriodBookings) / prevPeriodBookings) * 100).toFixed(2))
+      : 0;
+
+    const currentPeriodRev = currentPeriodRevObj._sum.finalPrice || 0;
+    const prevPeriodRev = prevPeriodRevObj._sum.finalPrice || 0;
+    const revenueGrowth = prevPeriodRev > 0
+      ? parseFloat((((currentPeriodRev - prevPeriodRev) / prevPeriodRev) * 100).toFixed(2))
+      : 0;
+
     const stats = {
-      todayCount,
-      pendingCount,
-      completedCount,
-      cancelledCount,
-      activePartnersCount: 0,
-      pendingApprovalsCount: 0,
+      totalCustomers,
+      totalBookings,
+      todayBookings,
+      pendingBookings,
+      assignedBookings,
+      completedBookings,
+      cancelledBookings,
+      totalRevenue: totalRevenueObj._sum.finalPrice || 0,
+      todayRevenue: todayRevenueObj._sum.finalPrice || 0,
+      weeklyRevenue: weeklyRevenueObj._sum.finalPrice || 0,
+      monthlyRevenue: monthlyRevenueObj._sum.finalPrice || 0,
+      activePartnersCount,
+      activeServicesCount,
+      customerRatings: avgRatingObj._avg.rating ? parseFloat(avgRatingObj._avg.rating.toFixed(2)) : 0,
+      bookingGrowth,
+      revenueGrowth,
+      // Backward compatibility mappings
+      todayCount: todayBookings,
+      pendingCount: pendingBookings,
+      completedCount: completedBookings,
+      cancelledCount: cancelledBookings,
       todayRev: todayRevenueObj._sum.finalPrice || 0,
-      monthRev: monthRevenueObj._sum.finalPrice || 0,
-      activeCouponsCount,
-      totalCouponsCount
+      monthRev: monthlyRevenueObj._sum.finalPrice || 0,
+      activeCouponsCount: 0,
+      totalCouponsCount: 0
     };
 
     res.status(200).json({
@@ -273,12 +344,49 @@ exports.deleteCoupon = async (req, res) => {
 exports.getBookings = async (req, res) => {
   try {
     const bookings = await db.booking.findMany({
-      include: {
+      select: {
+        id: true,
+        userId: true,
+        partnerId: true,
+        status: true,
+        scheduledAt: true,
+        timeSlot: true,
+        address: true,
+        phone: true,
+        totalPrice: true,
+        discountApplied: true,
+        finalPrice: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        paymentId: true,
+        couponCode: true,
+        serviceCategory: true,
+        createdAt: true,
+        customer_name: true,
+        email: true,
+        service_name: true,
+        amount: true,
+        area: true,
+        pincode: true,
+        notes: true,
+        payment_status: true,
+        booking_status: true,
+        partnerName: true,
+        partnerMobile: true,
         user: {
           select: { id: true, name: true, email: true, phone: true }
         },
         items: {
-          include: { service: true }
+          select: {
+            id: true,
+            serviceId: true,
+            quantity: true,
+            price: true,
+            variant: true,
+            service: {
+              select: { id: true, name: true }
+            }
+          }
         }
       },
       orderBy: { createdAt: 'desc' }

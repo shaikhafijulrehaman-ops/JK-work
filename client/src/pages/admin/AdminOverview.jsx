@@ -1271,41 +1271,30 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
   // Dashboard Stats Calculations
   const getDashboardStats = () => {
-    const today = new Date().toDateString();
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    const todayBookings = bookings.filter(b => new Date(b.createdAt).toDateString() === today);
-    const pendingBookings = bookings.filter(b => ['PENDING', 'NEW'].includes(b.status.toUpperCase()));
-    const completedBookings = bookings.filter(b => b.status.toUpperCase() === 'COMPLETED');
-    const cancelledBookings = bookings.filter(b => b.status.toUpperCase() === 'CANCELLED');
-    
-    const activePartners = workers.filter(w => w.approvalStatus === 'APPROVED');
-    const pendingApprovals = workers.filter(w => w.approvalStatus === 'PENDING');
-    
-    const activeCoupons = coupons.filter(c => c.isActive);
-
-    const todayRevenue = bookings
-      .filter(b => (b.paymentStatus === 'PAID' || b.payment_status === 'Paid') && new Date(b.createdAt).toDateString() === today)
-      .reduce((sum, b) => sum + (b.finalPrice || b.amount || 0), 0);
-
-    const monthRevenue = bookings
-      .filter(b => (b.paymentStatus === 'PAID' || b.payment_status === 'Paid') && new Date(b.createdAt).getMonth() === currentMonth && new Date(b.createdAt).getFullYear() === currentYear)
-      .reduce((sum, b) => sum + (b.finalPrice || b.amount || 0), 0);
-
-    const preferAnalytics = activeTab === 'dashboard';
-
     return {
-      todayCount: preferAnalytics ? (analytics?.todayCount || 0) : todayBookings.length,
-      pendingCount: preferAnalytics ? (analytics?.pendingCount || 0) : pendingBookings.length,
-      completedCount: preferAnalytics ? (analytics?.completedCount || 0) : completedBookings.length,
-      cancelledCount: preferAnalytics ? (analytics?.cancelledCount || 0) : cancelledBookings.length,
-      activePartnersCount: preferAnalytics ? (analytics?.activePartnersCount || 0) : activePartners.length,
-      pendingApprovalsCount: preferAnalytics ? (analytics?.pendingApprovalsCount || 0) : pendingApprovals.length,
-      todayRev: preferAnalytics ? (analytics?.todayRev || 0) : todayRevenue,
-      monthRev: preferAnalytics ? (analytics?.monthRev || 0) : monthRevenue,
-      activeCouponsCount: preferAnalytics ? (analytics?.activeCouponsCount || 0) : activeCoupons.length,
-      totalCouponsCount: preferAnalytics ? (analytics?.totalCouponsCount || 0) : coupons.length
+      totalCustomers: analytics?.totalCustomers || 0,
+      totalBookings: analytics?.totalBookings || 0,
+      todayBookings: analytics?.todayBookings || 0,
+      pendingBookings: analytics?.pendingBookings || 0,
+      assignedBookings: analytics?.assignedBookings || 0,
+      completedBookings: analytics?.completedBookings || 0,
+      cancelledBookings: analytics?.cancelledBookings || 0,
+      totalRevenue: analytics?.totalRevenue || 0,
+      todayRevenue: analytics?.todayRevenue || 0,
+      weeklyRevenue: analytics?.weeklyRevenue || 0,
+      monthlyRevenue: analytics?.monthlyRevenue || 0,
+      activePartnersCount: analytics?.activePartnersCount || 0,
+      activeServicesCount: analytics?.activeServicesCount || 0,
+      customerRatings: analytics?.customerRatings || 0,
+      bookingGrowth: analytics?.bookingGrowth || 0,
+      revenueGrowth: analytics?.revenueGrowth || 0,
+      // Fallback aliases for any legacy components
+      todayCount: analytics?.todayBookings || 0,
+      pendingCount: analytics?.pendingBookings || 0,
+      completedCount: analytics?.completedBookings || 0,
+      cancelledCount: analytics?.cancelledBookings || 0,
+      todayRev: analytics?.todayRevenue || 0,
+      monthRev: analytics?.monthlyRevenue || 0
     };
   };
 
@@ -1774,66 +1763,142 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                       
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Today's Revenue</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.todayRev.toLocaleString()}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Total Customers</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.totalCustomers.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Users className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">This Month Revenue</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.monthRev.toLocaleString()}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Total Bookings</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.totalBookings.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><ShoppingBag className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Today's Bookings</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.todayCount}</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.todayBookings.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><ShoppingBag className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><Calendar className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Pending Bookings</span>
-                          <span className="font-poppins font-black text-xl text-amber-600 mt-1 block">{stats.pendingCount}</span>
+                          <span className="font-poppins font-black text-xl text-amber-600 mt-1 block">{stats.pendingBookings.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><Calendar className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><AlertCircle className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Assigned Bookings</span>
+                          <span className="font-poppins font-black text-xl text-sky-600 mt-1 block">{stats.assignedBookings.toLocaleString()}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center"><Layers className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Completed Bookings</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.completedCount}</span>
+                          <span className="font-poppins font-black text-xl text-emerald-600 mt-1 block">{stats.completedBookings.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center"><CheckCircle className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><CheckCircle className="w-5 h-5" /></div>
                       </div>
 
                       <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Cancelled Bookings</span>
-                          <span className="font-poppins font-black text-xl text-rose-600 mt-1 block">{stats.cancelledCount}</span>
+                          <span className="font-poppins font-black text-xl text-rose-600 mt-1 block">{stats.cancelledBookings.toLocaleString()}</span>
                         </div>
                         <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center"><XCircle className="w-5 h-5" /></div>
                       </div>
 
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('customers')}>
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                         <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Total Customers</span>
-                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{customerList.length}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Total Revenue</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.totalRevenue.toLocaleString()}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center"><CreditCard className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Today's Revenue</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.todayRevenue.toLocaleString()}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Weekly Revenue</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.weeklyRevenue.toLocaleString()}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Monthly Revenue</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">Rs. {stats.monthlyRevenue.toLocaleString()}</span>
+                        </div>
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><TrendingUp className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('partners')}>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Active Partners</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.activePartnersCount.toLocaleString()}</span>
                         </div>
                         <div className="w-10 h-10 bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center"><Award className="w-5 h-5" /></div>
                       </div>
 
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('coupons')}>
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('services')}>
                         <div>
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Active Coupons</span>
-                          <span className="font-poppins font-black text-xl text-brand mt-1 block">{stats.activeCouponsCount} / {stats.totalCouponsCount}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Active Services</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block">{stats.activeServicesCount.toLocaleString()}</span>
                         </div>
-                        <div className="w-10 h-10 bg-brand/10 text-brand rounded-xl flex items-center justify-center"><Percent className="w-5 h-5" /></div>
+                        <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center"><Grid className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer" onClick={() => setActiveTab('customer-ratings')}>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Customer Ratings</span>
+                          <span className="font-poppins font-black text-xl text-slate-800 mt-1 block flex items-center gap-1">
+                            {stats.customerRatings || '0'} <Star className="w-4 h-4 fill-amber-400 text-amber-400 inline" />
+                          </span>
+                        </div>
+                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><Star className="w-5 h-5" /></div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Booking Growth</span>
+                          <span className={`font-poppins font-black text-xl mt-1 block flex items-center gap-1 ${stats.bookingGrowth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {stats.bookingGrowth >= 0 ? '+' : ''}{stats.bookingGrowth}%
+                            {stats.bookingGrowth >= 0 ? <ArrowUpRight className="w-4 h-4 inline" /> : <ArrowDownRight className="w-4 h-4 inline" />}
+                          </span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.bookingGrowth >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                          <BarChart3 className="w-5 h-5" />
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-slate-100 p-5 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Revenue Growth</span>
+                          <span className={`font-poppins font-black text-xl mt-1 block flex items-center gap-1 ${stats.revenueGrowth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {stats.revenueGrowth >= 0 ? '+' : ''}{stats.revenueGrowth}%
+                            {stats.revenueGrowth >= 0 ? <ArrowUpRight className="w-4 h-4 inline" /> : <ArrowDownRight className="w-4 h-4 inline" />}
+                          </span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.revenueGrowth >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                          <TrendingUp className="w-5 h-5" />
+                        </div>
                       </div>
 
                     </div>

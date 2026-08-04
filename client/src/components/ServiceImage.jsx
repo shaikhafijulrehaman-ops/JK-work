@@ -1,8 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// In-memory cache to prevent duplicate URL resolution
-const resolvedUrlCache = {};
+// Persistent localStorage cache to prevent duplicate URL resolution across reloads
+const loadUrlCache = () => {
+  try {
+    const data = localStorage.getItem('resolved_url_cache');
+    return data ? JSON.parse(data) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const saveUrlCache = (cache) => {
+  try {
+    localStorage.setItem('resolved_url_cache', JSON.stringify(cache));
+  } catch (e) {}
+};
+
+const resolvedUrlCache = loadUrlCache();
 const failedImagesCache = new Set();
 
 export const getServiceImageUrl = (imageUrl) => {
@@ -17,6 +32,7 @@ export const getServiceImageUrl = (imageUrl) => {
   // Handle standard HTTP URLs (non-Supabase or already complete public Supabase URLs)
   if (imageUrl.startsWith('http')) {
     resolvedUrlCache[cacheKey] = imageUrl;
+    saveUrlCache(resolvedUrlCache);
     return imageUrl;
   }
 
@@ -35,6 +51,7 @@ export const getServiceImageUrl = (imageUrl) => {
   } else if (imageUrl.startsWith('/')) {
     // Local public asset path (e.g., "/services/kitchen.webp")
     resolvedUrlCache[cacheKey] = imageUrl;
+    saveUrlCache(resolvedUrlCache);
     return imageUrl;
   }
 
@@ -43,6 +60,7 @@ export const getServiceImageUrl = (imageUrl) => {
     const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
     if (data && data.publicUrl) {
       resolvedUrlCache[cacheKey] = data.publicUrl;
+      saveUrlCache(resolvedUrlCache);
       return data.publicUrl;
     }
   } catch (err) {
@@ -50,6 +68,7 @@ export const getServiceImageUrl = (imageUrl) => {
   }
 
   resolvedUrlCache[cacheKey] = imageUrl;
+  saveUrlCache(resolvedUrlCache);
   return imageUrl;
 };
 
@@ -129,8 +148,11 @@ export const ServiceImage = ({ src, alt, className, priority = false }) => {
 
   if (error) {
     return (
-      <div className="image-fallback absolute inset-0 flex items-center justify-center bg-slate-100 text-[10px] sm:text-xs font-bold text-slate-400">
-        No Image Available
+      <div className="image-fallback absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400 p-4 border border-slate-250/20 rounded-2xl select-none">
+        <svg className="w-8 h-8 text-slate-300 mb-1 animate-pulse" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"></path>
+        </svg>
+        <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400/80">No Image</span>
       </div>
     );
   }
@@ -158,4 +180,5 @@ export const ServiceImage = ({ src, alt, className, priority = false }) => {
     </div>
   );
 };
+
 

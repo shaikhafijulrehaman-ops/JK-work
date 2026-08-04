@@ -1,21 +1,21 @@
 import re
 
-file_path = r'c:\Users\shaik\OneDrive\Documents\jkproject\client\src\store\catalog.js'
+file_path = r'C:\Users\shaik\Documents\jkproject\client\src\store\catalog.js'
 with open(file_path, 'r', encoding='utf-8') as f:
     content = f.read()
 
 mapping = {
-    's-1': '/services/babycare.jpg',
-    's-2': '/services/housecleaning.jpg',
-    's-3': '/services/bathroom-cleaning.jpg',
-    's-4': '/services/kitchen-cleaning.jpg',
-    's-5': '/services/dust-cleaning.jpg',
-    's-6': '/services/house-shifting.jpg',
-    's-7': '/services/cooking-service.jpg',
-    's-8': '/services/house-painting.jpg',
-    's-9': '/services/electrician.jpg',
-    's-10': '/services/security-provider.jpg',
-    's-11': '/services/pest-control.jpg'
+    's-1': '/services/babycare.webp',
+    's-2': '/services/housecleaning.webp',
+    's-3': '/services/bathroom-cleaning.webp',
+    's-4': '/services/kitchen-cleaning.webp',
+    's-5': '/services/dust-cleaning.webp',
+    's-6': '/services/house-shifting.webp',
+    's-7': '/services/cooking-service.webp',
+    's-8': '/services/house-painting.webp',
+    's-9': '/services/electrician.webp',
+    's-10': '/services/security-provider-v2.webp',
+    's-11': '/services/pest-control-v2.webp'
 }
 
 for s_id, img_path in mapping.items():
