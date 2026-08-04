@@ -594,10 +594,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         setEditingServiceId(null);
         fetchAllData();
       } else {
+        console.error('Service save failed backend response:', data);
         addNotification('Operation Failed', data.message || 'Failed to save service.');
       }
     } catch (err) {
-      addNotification('Operation Failed', 'Unable to save service. Please check your connection.');
+      console.error('Service creation/update error details:', err);
+      addNotification('Operation Failed', `Unable to save service. Error: ${err.message || 'Unknown error'}`);
     } finally {
       setAddingService(false);
     }
