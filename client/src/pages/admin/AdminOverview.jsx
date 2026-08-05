@@ -288,8 +288,12 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   const { user, logout } = useAuthStore();
   const { addNotification, notifications, fetchNotifications, markAsRead } = useNotificationStore();
 
-  // Selected view: dashboard, bookings, partner-approvals, partners, customers, payments, services, analytics, settings, coupons
   const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
+
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // Database States
@@ -919,6 +923,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
           setServices(data.services || []);
           setCache(`tab_services`, data.services || []);
         }
+        const cachedBookings = getCache('tab_bookings');
+        if (cachedBookings) {
+          setBookings(cachedBookings);
+        }
       } else if (tab === 'coupons') {
         const res = await fetchWithRetry('/api/admin/coupons', { credentials: 'include' }).catch(() => null);
         const data = res ? await res.json().catch(() => null) : null;
@@ -992,7 +1000,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
         const bookingsData = await bookingsRes.json().catch(() => null);
         if (bookingsData?.success) {
           setCache('tab_bookings', bookingsData.bookings || []);
-          if (activeTab === 'bookings') setBookings(bookingsData.bookings || []);
+          setBookings(bookingsData.bookings || []);
         }
       }
 
@@ -2790,6 +2798,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 onChange={(e) => {
                                   if (e.target.value) {
                                     setNewServiceImage(e.target.value);
+                                    setNewServiceImageFile(null);
                                   }
                                 }}
                                 className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs text-slate-750 focus:outline-none"
@@ -2855,7 +2864,10 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                 type="text"
                                 placeholder="No image assigned"
                                 value={newServiceImage}
-                                onChange={(e) => setNewServiceImage(e.target.value)}
+                                onChange={(e) => {
+                                  setNewServiceImage(e.target.value);
+                                  setNewServiceImageFile(null);
+                                }}
                                 className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs text-slate-750 font-mono focus:outline-none"
                               />
                             </div>

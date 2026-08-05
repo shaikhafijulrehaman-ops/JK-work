@@ -61,14 +61,14 @@ export default function ServicesPage() {
     const fetchServices = async () => {
       const freshCached = getCache('services_catalog');
       
-      // If we have a fresh (non-expired) cache, use it and avoid calling the backend API
+      // If we have a fresh cache, immediately render it for speed
       if (freshCached && freshCached.length > 0) {
+        setCatalog(freshCached);
         setLoading(false);
         preloadServiceImages(freshCached);
-        return;
       }
 
-      // If cache is expired or missing, fetch fresh data in the background (SWR)
+      // Always fetch fresh data in the background (SWR pattern)
       try {
         const res = await fetch('/api/services');
         const data = await res.json();
@@ -77,17 +77,15 @@ export default function ServicesPage() {
           setCatalog(activeServices);
           setCache('services_catalog', activeServices);
           preloadServiceImages(activeServices);
-        } else {
+        } else if (!freshCached) {
           const stale = getCache('services_catalog', { allowStale: true });
-          if (!stale || stale.length === 0) {
-            setCatalog([]);
-          }
+          setCatalog(stale || []);
         }
       } catch (err) {
         console.warn('Backend services offline. Falling back to stale catalog...', err);
-        const stale = getCache('services_catalog', { allowStale: true });
-        if (!stale || stale.length === 0) {
-          setCatalog([]);
+        if (!freshCached) {
+          const stale = getCache('services_catalog', { allowStale: true });
+          setCatalog(stale || []);
         }
       } finally {
         setLoading(false);

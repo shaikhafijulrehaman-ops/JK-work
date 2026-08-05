@@ -69,8 +69,8 @@ exports.createBooking = async (req, res) => {
 
     for (const item of items) {
       const s = await db.service.findUnique({ where: { id: item.serviceId } });
-      if (!s) {
-        return res.status(404).json({ success: false, message: `Selected service reference not found.` });
+      if (!s || s.isDeleted || !s.isActive) {
+        return res.status(404).json({ success: false, message: `Selected service is no longer active or available.` });
       }
       
       if (!firstCategory) {

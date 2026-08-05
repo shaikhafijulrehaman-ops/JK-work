@@ -144,8 +144,13 @@ exports.createService = async (req, res) => {
   try {
     const { name, category, description, price, durationText, packageText, imageUrl, isActive } = req.body;
 
-    if (!name || !category || !price || !description) {
+    if (!name || !category || price === undefined || price === null || !description) {
       return res.status(400).json({ success: false, message: 'Please supply service name, category, pricing, and description.' });
+    }
+
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ success: false, message: 'Please supply a valid positive pricing value.' });
     }
 
     const trimmedName = name.trim();
@@ -172,7 +177,7 @@ exports.createService = async (req, res) => {
         name: trimmedName,
         category,
         description,
-        price: parseFloat(price),
+        price: parsedPrice,
         durationText: durationText || '',
         packageText: packageText || '',
         imageUrl: finalImageUrl,
@@ -211,8 +216,16 @@ exports.updateService = async (req, res) => {
     const { name, category, price, description, durationText, packageText, imageUrl, isActive } = req.body;
 
     const existing = await db.service.findUnique({ where: { id: req.params.id } });
-    if (!existing) {
+    if (!existing || existing.isDeleted) {
       return res.status(404).json({ success: false, message: 'Service not found.' });
+    }
+
+    let parsedPrice = undefined;
+    if (price !== undefined) {
+      parsedPrice = parseFloat(price);
+      if (isNaN(parsedPrice) || parsedPrice < 0) {
+        return res.status(400).json({ success: false, message: 'Please supply a valid positive pricing value.' });
+      }
     }
 
     let trimmedName = name ? name.trim() : undefined;
@@ -252,7 +265,7 @@ exports.updateService = async (req, res) => {
       data: {
         name: trimmedName || existing.name,
         category: category || existing.category,
-        price: price !== undefined ? parseFloat(price) : existing.price,
+        price: parsedPrice !== undefined ? parsedPrice : existing.price,
         description: description || existing.description,
         durationText: durationText !== undefined ? durationText : existing.durationText,
         packageText: packageText !== undefined ? packageText : existing.packageText,
@@ -291,24 +304,19 @@ exports.updateService = async (req, res) => {
 exports.deleteService = async (req, res) => {
   try {
     const existing = await db.service.findUnique({ where: { id: req.params.id } });
-    if (!existing) {
+    if (!existing || existing.isDeleted) {
       return res.status(404).json({ success: false, message: 'Service not found.' });
     }
 
-    // 1. Delete associated image from Cloudinary
-    const publicId = getCloudinaryPublicId(existing.imageUrl);
-    if (publicId) {
-      try {
-        await cloudinary.uploader.destroy(publicId);
-        console.log(`Deleted Cloudinary image: ${publicId} for deleted service.`);
-      } catch (destroyError) {
-        console.error(`Failed to delete Cloudinary image ${publicId}:`, destroyError);
+    // Soft delete database record to preserve data safety and prevent cascading deletes
+    // that would corrupt/wipe historical booking items in customer bookings.
+    await db.service.update({
+      where: { id: req.params.id },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        isActive: false
       }
-    }
-
-    // 2. Hard delete database record
-    await db.service.delete({
-      where: { id: req.params.id }
     });
 
     // Write Audit Log
@@ -325,6 +333,7 @@ exports.deleteService = async (req, res) => {
       message: 'Service deleted from catalog successfully.'
     });
   } catch (error) {
+    console.error('Delete service error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete service.' });
   }
 };
