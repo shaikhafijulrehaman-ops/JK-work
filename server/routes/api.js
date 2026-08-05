@@ -15,8 +15,6 @@ const paymentCtrl = require('../controllers/paymentController');
 const aiAgentCtrl = require('../controllers/aiAgentController');
 const statsCtrl = require('../controllers/statsController');
 const addressCtrl = require('../controllers/addressController');
-const uploadCtrl = require('../controllers/uploadController');
-
 // ==================== AUTHENTICATION ====================
 router.post('/auth/register', authLimiter, authCtrl.register);
 router.post('/auth/register-partner', authCtrl.registerPartner);
@@ -45,7 +43,6 @@ router.get('/services/:id', serviceCtrl.getServiceById);
 router.post('/services', protect, restrictTo('ADMIN'), serviceCtrl.createService);
 router.put('/services/:id', protect, restrictTo('ADMIN'), serviceCtrl.updateService);
 router.delete('/services/:id', protect, restrictTo('ADMIN'), serviceCtrl.deleteService);
-router.post('/upload-image', protect, restrictTo('ADMIN'), uploadCtrl.uploadImage);
 
 // ==================== DYNAMIC COUPONS ====================
 router.post('/coupons/validate', bookingCtrl.validateCouponCode);

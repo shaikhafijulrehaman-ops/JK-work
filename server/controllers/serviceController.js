@@ -3,38 +3,6 @@ const { logActivity } = require('../utils/auditLogger');
 const cache = require('../utils/cache');
 const fs = require('fs');
 const path = require('path');
-const cloudinary = require('cloudinary').v2;
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true
-});
-
-const getCloudinaryPublicId = (url) => {
-  if (!url || !url.includes('cloudinary.com')) return null;
-  try {
-    const parts = url.split('/upload/');
-    if (parts.length < 2) return null;
-    const pathAfterUpload = parts[1];
-    const pathParts = pathAfterUpload.split('/');
-    if (pathParts[0].startsWith('v') && !isNaN(pathParts[0].substring(1))) {
-      pathParts.shift();
-    }
-    const relativePath = pathParts.join('/');
-    const lastDotIndex = relativePath.lastIndexOf('.');
-    if (lastDotIndex !== -1) {
-      return relativePath.substring(0, lastDotIndex);
-    }
-    return relativePath;
-  } catch (error) {
-    console.error('Error extracting Cloudinary public ID:', error);
-    return null;
-  }
-};
-
 const SUPABASE_STORAGE_BASE = process.env.SUPABASE_URL || 'https://hiurxjfxdpdxvumpmplp.supabase.co';
 
 const formatServiceImageUrl = (imageUrl) => {
@@ -156,22 +124,6 @@ exports.createService = async (req, res) => {
     const trimmedName = name.trim();
     let finalImageUrl = imageUrl || '';
 
-    // Safeguard: upload local service image path to Cloudinary on-the-fly
-    if (finalImageUrl.startsWith('/services/')) {
-      const localPath = path.join(__dirname, '../../client/public', finalImageUrl);
-      if (fs.existsSync(localPath)) {
-        try {
-          const uploadResponse = await cloudinary.uploader.upload(localPath, {
-            folder: 'service-images',
-            resource_type: 'image'
-          });
-          finalImageUrl = uploadResponse.secure_url;
-        } catch (uploadError) {
-          console.error('Failed to upload default image to Cloudinary during creation:', uploadError);
-        }
-      }
-    }
-
     const service = await db.service.create({
       data: {
         name: trimmedName,
@@ -231,35 +183,6 @@ exports.updateService = async (req, res) => {
     let trimmedName = name ? name.trim() : undefined;
     let finalImageUrl = imageUrl || existing.imageUrl;
 
-    if (imageUrl && imageUrl !== existing.imageUrl) {
-      // 1. If it's a local file path, upload to Cloudinary first
-      if (imageUrl.startsWith('/services/')) {
-        const localPath = path.join(__dirname, '../../client/public', imageUrl);
-        if (fs.existsSync(localPath)) {
-          try {
-            const uploadResponse = await cloudinary.uploader.upload(localPath, {
-              folder: 'service-images',
-              resource_type: 'image'
-            });
-            finalImageUrl = uploadResponse.secure_url;
-          } catch (uploadError) {
-            console.error('Failed to upload default image to Cloudinary during update:', uploadError);
-          }
-        }
-      }
-
-      // 2. Delete old image from Cloudinary if it was a Cloudinary URL
-      const oldPublicId = getCloudinaryPublicId(existing.imageUrl);
-      if (oldPublicId) {
-        try {
-          await cloudinary.uploader.destroy(oldPublicId);
-          console.log(`Deleted old Cloudinary image: ${oldPublicId}`);
-        } catch (destroyError) {
-          console.error(`Failed to delete old Cloudinary image ${oldPublicId}:`, destroyError);
-        }
-      }
-    }
-
     const updated = await db.service.update({
       where: { id: req.params.id },
       data: {
@@ -304,19 +227,13 @@ exports.updateService = async (req, res) => {
 exports.deleteService = async (req, res) => {
   try {
     const existing = await db.service.findUnique({ where: { id: req.params.id } });
-    if (!existing || existing.isDeleted) {
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Service not found.' });
     }
 
-    // Soft delete database record to preserve data safety and prevent cascading deletes
-    // that would corrupt/wipe historical booking items in customer bookings.
-    await db.service.update({
-      where: { id: req.params.id },
-      data: {
-        isDeleted: true,
-        deletedAt: new Date(),
-        isActive: false
-      }
+    // Hard delete database record
+    await db.service.delete({
+      where: { id: req.params.id }
     });
 
     // Write Audit Log
