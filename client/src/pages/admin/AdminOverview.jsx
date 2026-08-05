@@ -537,41 +537,23 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
 
       // 1. Verify that the upload completes before inserting/updating the database record
       if (newServiceImageFile) {
-        const fileExt = newServiceImageFile.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-        const filePath = `${fileName}`;
+        const uploadRes = await fetchWithRetry('/api/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          timeout: 30000,
+          retries: 0,
+          body: JSON.stringify({ image: newServiceImage })
+        });
 
-        const { data, error } = await supabase.storage
-          .from('service-images')
-          .upload(filePath, newServiceImageFile, {
-            cacheControl: '3600',
-            upsert: true
-          });
-
-        if (error) {
-          throw new Error(`Supabase upload failed: ${error.message}`);
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json().catch(() => ({}));
+          const errMsg = errData.message || 'Image storage upload failed.';
+          throw new Error(errMsg);
         }
 
-        const { data: urlData } = supabase.storage
-          .from('service-images')
-          .getPublicUrl(filePath);
-
-        if (!urlData || !urlData.publicUrl) {
-          throw new Error('Failed to retrieve public URL from Supabase Storage.');
-        }
-
-        finalImageUrl = urlData.publicUrl;
-
-        // Clean up old image if editing and it was a Supabase stored image
-        if (editingServiceId && newServiceImage && newServiceImage.includes('supabase.co/storage')) {
-          const parts = newServiceImage.split('/public/service-images/');
-          if (parts.length > 1) {
-            const oldPath = parts[1];
-            await supabase.storage.from('service-images').remove([oldPath]).catch(err => {
-              console.warn('Failed to delete old image from Supabase:', err);
-            });
-          }
-        }
+        const uploadData = await uploadRes.json();
+        finalImageUrl = uploadData.imageUrl;
       }
 
       const body = {
@@ -635,23 +617,11 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
   };
 
   // Delete Service handler
-  const handleDeleteService = async (serviceId, imageUrl) => {
+  const handleDeleteService = async (serviceId) => {
     if (!window.confirm("Are you sure you want to delete this service?")) {
       return;
     }
     try {
-      // 1. Delete image from Supabase Storage if it is hosted there
-      if (imageUrl && imageUrl.includes('supabase.co/storage')) {
-        const parts = imageUrl.split('/public/service-images/');
-        if (parts.length > 1) {
-          const oldPath = parts[1];
-          await supabase.storage.from('service-images').remove([oldPath]).catch(err => {
-            console.warn('Failed to remove image from Supabase Storage:', err);
-          });
-        }
-      }
-
-      // 2. Call backend delete
       const res = await fetchWithRetry(`/api/services/${serviceId}`, {
         method: 'DELETE',
         credentials: 'include'
@@ -3051,7 +3021,7 @@ export default function AdminOverview({ defaultTab = 'dashboard' }) {
                                           </button>
 
                                           <button 
-                                            onClick={() => handleDeleteService(srv.id, srv.imageUrl)}
+                                            onClick={() => handleDeleteService(srv.id)}
                                             title="Delete Service"
                                             className="p-1.5 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 rounded shadow-sm cursor-pointer flex items-center justify-center transition-colors font-bold"
                                           >

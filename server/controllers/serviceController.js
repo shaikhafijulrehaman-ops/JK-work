@@ -231,7 +231,32 @@ exports.deleteService = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Service not found.' });
     }
 
-    // Hard delete database record
+    // 1. Delete corresponding image from Supabase Storage if hosted there
+    const imageUrl = existing.imageUrl;
+    if (imageUrl && imageUrl.includes('supabase.co/storage')) {
+      try {
+        const parts = imageUrl.split('/public/service-images/');
+        if (parts.length > 1) {
+          const fileName = parts[1];
+          const supabaseUrl = process.env.SUPABASE_URL || 'https://hiurxjfxdpdxvumpmplp.supabase.co';
+          const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdXJ4amZ4ZHBkeHZ1bXBtcGxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NzU0MTQsImV4cCI6MjA5NTI1MTQxNH0.JLYXEUl30FkOP_0BBkPwXylQK__X1dqEJz7gmL-sXdI';
+          const deleteUrl = `${supabaseUrl}/storage/v1/object/service-images/${fileName}`;
+          
+          await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${supabaseKey}`,
+              'apiKey': supabaseKey
+            }
+          });
+          console.log(`Deleted old Supabase image from storage: ${fileName}`);
+        }
+      } catch (err) {
+        console.error('Failed to delete image from Supabase Storage:', err);
+      }
+    }
+
+    // 2. Hard delete database record
     await db.service.delete({
       where: { id: req.params.id }
     });
